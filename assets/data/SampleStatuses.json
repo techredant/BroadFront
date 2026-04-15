@@ -1,0 +1,209 @@
+[
+  {
+    "id": "1",
+    "viewed": false,
+    "user": {
+      "name": "Alex",
+      "avatar": "https://randomuser.me/api/portraits/men/32.jpg"
+    },
+    "content": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee"
+    }
+  },
+  {
+    "id": "11",
+    "viewed": true,
+    "user": {
+      "name": "Alex",
+      "avatar": "https://randomuser.me/api/portraits/men/32.jpg"
+    },
+    "content": {
+      "type": "text",
+      "text": "Morning vibes ☀️",
+      "background": "#020617"
+    }
+  },
+
+  {
+    "id": "2",
+    "viewed": false,
+    "user": {
+      "name": "Maya",
+      "avatar": "https://randomuser.me/api/portraits/women/44.jpg"
+    },
+    "content": {
+      "type": "video",
+      "url": "https://www.w3schools.com/html/mov_bbb.mp4"
+    }
+  },
+  {
+    "id": "12",
+    "viewed": false,
+    "user": {
+      "name": "Maya",
+      "avatar": "https://randomuser.me/api/portraits/women/44.jpg"
+    },
+    "content": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1520975916090-3105956dac38"
+    }
+  },
+
+  {
+    "id": "3",
+    "viewed": true,
+    "user": {
+      "name": "Kevin",
+      "avatar": "https://randomuser.me/api/portraits/men/75.jpg"
+    },
+    "content": {
+      "type": "text",
+      "text": "Grinding every day 💪",
+      "background": "#111827"
+    }
+  },
+  {
+    "id": "13",
+    "viewed": false,
+    "user": {
+      "name": "Kevin",
+      "avatar": "https://randomuser.me/api/portraits/men/75.jpg"
+    },
+    "content": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1506784983877-45594efa4cbe"
+    }
+  },
+
+  {
+    "id": "4",
+    "viewed": false,
+    "user": {
+      "name": "Lina",
+      "avatar": "https://randomuser.me/api/portraits/women/68.jpg"
+    },
+    "content": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1492724441997-5dc865305da7"
+    }
+  },
+
+  {
+    "id": "5",
+    "viewed": true,
+    "user": {
+      "name": "Brian",
+      "avatar": "https://randomuser.me/api/portraits/men/12.jpg"
+    },
+    "content": {
+      "type": "text",
+      "text": "Late night coding 🌙💻",
+      "background": "#0f172a"
+    }
+  },
+  {
+    "id": "14",
+    "viewed": false,
+    "user": {
+      "name": "Brian",
+      "avatar": "https://randomuser.me/api/portraits/men/12.jpg"
+    },
+    "content": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1517430816045-df4b7de11d1c"
+    }
+  },
+
+  {
+    "id": "6",
+    "viewed": false,
+    "user": {
+      "name": "Nia",
+      "avatar": "https://randomuser.me/api/portraits/women/21.jpg"
+    },
+    "content": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1511988617509-a57c8a288659"
+    }
+  },
+
+  {
+    "id": "7",
+    "viewed": true,
+    "user": {
+      "name": "Sam",
+      "avatar": "https://randomuser.me/api/portraits/men/9.jpg"
+    },
+    "content": {
+      "type": "text",
+      "text": "Coffee first ☕",
+      "background": "#1f2933"
+    }
+  },
+
+  {
+    "id": "8",
+    "viewed": false,
+    "user": {
+      "name": "Zara",
+      "avatar": "https://randomuser.me/api/portraits/women/52.jpg"
+    },
+    "content": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1506744038136-46273834b3fb"
+    }
+  },
+  {
+    "id": "15",
+    "viewed": false,
+    "user": {
+      "name": "Zara",
+      "avatar": "https://randomuser.me/api/portraits/women/52.jpg"
+    },
+    "content": {
+      "type": "text",
+      "text": "Weekend mood ✨",
+      "background": "#020617"
+    }
+  },
+
+  {
+    "id": "9",
+    "viewed": false,
+    "user": {
+      "name": "Daniel",
+      "avatar": "https://randomuser.me/api/portraits/men/41.jpg"
+    },
+    "content": {
+      "type": "video",
+      "url": "https://www.w3schools.com/html/movie.mp4"
+    }
+  },
+
+  {
+    "id": "10",
+    "viewed": true,
+    "user": {
+      "name": "Aisha",
+      "avatar": "https://randomuser.me/api/portraits/women/17.jpg"
+    },
+    "content": {
+      "type": "text",
+      "text": "Sunsets hit different 🌅",
+      "background": "#020617"
+    }
+  },
+  {
+    "id": "16",
+    "viewed": false,
+    "user": {
+      "name": "Aisha",
+      "avatar": "https://randomuser.me/api/portraits/women/17.jpg"
+    },
+    "content": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429"
+    }
+  }
+]

@@ -1,0 +1,207 @@
+export const POSTS = [
+    {
+        id: "1",
+        level: "home",
+        author: {
+            name: "Gibson Sang",
+            handle: "@gibsondev",
+            avatar: "https://i.pravatar.cc/150?img=11",
+        },
+        text: "Building a location-based social app in Kenya 🇰🇪🚀 Loving Expo Router + Gorhom BottomSheet!",
+        images: [
+            "https://images.unsplash.com/photo-1522202176988-66273c2fd55f",
+        ],
+        createdAt: "2h",
+        likes: 128,
+        reposts: 34,
+        commentsCount: 18,
+        views: 2400,
+        isLiked: false,
+        isReposted: false,
+        comments: [
+            { id: "c1", user: "Anne", text: "This looks amazing 🔥" },
+            { id: "c2", user: "Brian", text: "Expo Router is 🔥🔥" },
+        ],
+    },
+
+    {
+        id: "2",
+        level: "county",
+        author: {
+            name: "Nairobi Updates",
+            handle: "@nairobicity",
+            avatar: "https://i.pravatar.cc/150?img=32",
+        },
+        text: "Traffic building up along Thika Road 🚗🚨 Avoid if you can.",
+        images: [
+            "https://images.unsplash.com/photo-1503376780353-7e6692767b70",
+            "https://images.unsplash.com/photo-1542362567-b07e54358753",
+        ],
+        createdAt: "45m",
+        likes: 342,
+        reposts: 210,
+        commentsCount: 64,
+        views: 8900,
+        isLiked: true,
+        isReposted: false,
+        comments: [
+            { id: "c1", user: "James", text: "Stuck here right now 😭" },
+            { id: "c2", user: "Mary", text: "Thanks for the update!" },
+        ],
+    },
+
+    {
+        id: "3",
+        level: "ward",
+        author: {
+            name: "Tech Ward",
+            handle: "@techward",
+            avatar: "https://i.pravatar.cc/150?img=45",
+        },
+        text: "Community meetup this Saturday 📍 Free Wi-Fi, talks & pizza 🍕",
+        images: [],
+        createdAt: "1d",
+        likes: 56,
+        reposts: 12,
+        commentsCount: 9,
+        views: 980,
+        isLiked: false,
+        isReposted: true,
+        comments: [
+            { id: "c1", user: "Alex", text: "Count me in 🙌" },
+        ],
+    },
+
+    {
+        id: "4",
+        level: "home",
+        author: {
+            name: "Expo Tips",
+            handle: "@expodev",
+            avatar: "https://i.pravatar.cc/150?img=18",
+        },
+        text: "Pro tip 💡: Gorhom BottomSheet must live at screen level, not inside FlatList items.",
+        images: [],
+        createdAt: "3h",
+        likes: 901,
+        reposts: 320,
+        commentsCount: 77,
+        views: 12000,
+        isLiked: true,
+        isReposted: true,
+        comments: [
+            { id: "c1", user: "Sam", text: "This saved me HOURS!" },
+            { id: "c2", user: "Lilian", text: "Wish I knew this earlier 😅" },
+        ],
+    },
+    {
+        id: "5",
+        level: "home",
+        author: {
+            name: "Gibson Sang",
+            handle: "@gibsondev",
+            avatar: "https://i.pravatar.cc/150?img=11",
+        },
+        text: "Building a location-based social app in Kenya 🇰🇪🚀 Loving Expo Router + Gorhom BottomSheet!",
+        images: [
+            "https://images.unsplash.com/photo-1522202176988-66273c2fd55f",
+        ],
+        createdAt: "2h",
+        likes: 128,
+        reposts: 34,
+        commentsCount: 18,
+        views: 2400,
+        isLiked: false,
+        isReposted: false,
+        comments: [
+            { id: "c1", user: "Anne", text: "This looks amazing 🔥" },
+            { id: "c2", user: "Brian", text: "Expo Router is 🔥🔥" },
+        ],
+    },
+
+    {
+        id: "6",
+        level: "county",
+        author: {
+            name: "Nairobi Updates",
+            handle: "@nairobicity",
+            avatar: "https://i.pravatar.cc/150?img=32",
+        },
+        text: "Traffic building up along Thika Road 🚗🚨 Avoid if you can.",
+        images: [
+            "https://images.unsplash.com/photo-1503376780353-7e6692767b70",
+            "https://images.unsplash.com/photo-1542362567-b07e54358753",
+        ],
+        createdAt: "45m",
+        likes: 342,
+        reposts: 210,
+        commentsCount: 64,
+        views: 8900,
+        isLiked: true,
+        isReposted: false,
+        comments: [
+            { id: "c1", user: "James", text: "Stuck here right now 😭" },
+            { id: "c2", user: "Mary", text: "Thanks for the update!" },
+        ],
+    },
+
+    {
+        id: "7",
+        level: "ward",
+        author: {
+            name: "Tech Ward",
+            handle: "@techward",
+            avatar: "https://i.pravatar.cc/150?img=45",
+        },
+        text: "Community meetup this Saturday 📍 Free Wi-Fi, talks & pizza 🍕",
+        images: [],
+        createdAt: "1d",
+        likes: 56,
+        reposts: 12,
+        commentsCount: 9,
+        views: 980,
+        isLiked: false,
+        isReposted: true,
+        comments: [
+            { id: "c1", user: "Alex", text: "Count me in 🙌" },
+        ],
+    },
+
+    {
+        id: "8",
+        level: "home",
+        author: {
+            name: "Expo Tips",
+            handle: "@expodev",
+            avatar: "https://i.pravatar.cc/150?img=18",
+        },
+        text: "Pro tip 💡: Gorhom BottomSheet must live at screen level, not inside FlatList items.",
+        images: [],
+        createdAt: "3h",
+        likes: 901,
+        reposts: 320,
+        commentsCount: 77,
+        views: 12000,
+        isLiked: true,
+        isReposted: true,
+        comments: [
+            { id: "c1", user: "Sam", text: "This saved me HOURS!" },
+            { id: "c2", user: "Lilian", text: "Wish I knew this earlier 😅" },
+        ],
+    },
+    {
+        id: "9",
+        level: "home",
+        author: { name: "Tech Guru", handle: "@techguru", avatar: "https://i.pravatar.cc/150?img=20" },
+        text: "Check out this cool clip!",
+        images: ["https://images.unsplash.com/photo-1522202176988-66273c2fd55f"],
+        videos: ["https://www.w3schools.com/html/mov_bbb.mp4"],
+        createdAt: "1h",
+        likes: 50,
+        reposts: 10,
+        commentsCount: 3,
+        views: 120,
+        comments: [{ id: "c1", user: "Alice", text: "Awesome!" }]
+    }
+
+];
