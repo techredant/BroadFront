@@ -91,18 +91,18 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            tabBarLabel: "Home",
+            tabBarLabel: currentLevel?.value,
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="planet-outline" size={size} color={color} />
             ),
           }}
         />
         <Tabs.Screen
-          name="market/index"
+          name="trends"
           options={{
-            tabBarLabel: "Market",
+            tabBarLabel: "Trends",
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="cart-outline" size={size} color={color} />
+              <Ionicons name="flame-outline" size={size} color={color} />
             ),
           }}
         />

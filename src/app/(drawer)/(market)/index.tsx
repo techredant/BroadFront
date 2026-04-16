@@ -99,8 +99,7 @@ export default function MarketScreen() {
       <DrawerMenuButton />
 
       {/* TOP ROW */}
-      <View
-        style={{
+      <View        style={{
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",

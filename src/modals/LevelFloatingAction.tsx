@@ -111,7 +111,7 @@ export function FloatingLevelButton() {
       offset: 300,
     },
     {
-      key: "audioRoom",
+      key: "audio",
       label: "Join Audio",
       icon: <Ionicons name="mic-circle" size={22} color="#fff" />,
       offset: 360,

@@ -20,6 +20,7 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
   const { user } = useUser();
   const { userDetails, isLoadingUser, setCurrentLevel } = useLevel();
   const { theme } = useTheme();
+const navigation = useNavigation();
 
   return (
     <DrawerContentScrollView
@@ -88,22 +89,28 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
         </View>
         <Ionicons name="chevron-forward" size={18} color={theme.subtext} />
       </Pressable>
-      <Pressable
-        onPress={() => {
-          // Set the current level to "home"
-          setCurrentLevel({ type: "home", value: "home" });
-        }}
-        style={{
-          paddingTop: 20,
-          paddingBottom: 16,
-          paddingHorizontal: 16,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.border,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 5,
-        }}
-      >
+     <Pressable
+  onPress={() => {
+    setCurrentLevel({ type: "home", value: "home" });
+
+    // 🔴 CLOSE DRAWER (correct navigator level)
+
+    // 🔴 CLOSE DRAWER (correct navigator level)
+    navigation.getParent()?.dispatch(DrawerActions.closeDrawer());
+
+    router.replace("/(drawer)/(tabs)"); // force go home (reset stack)
+  }}
+  style={{
+    paddingTop: 20,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  }}
+  >
         <Ionicons name="home-outline" size={26} color={theme.subtext} />
         <Text style={{ color: theme.text, fontWeight: "bold" }}>
           Go National
@@ -145,7 +152,8 @@ export default function DrawerLayout() {
         drawerActiveTintColor: theme.primary,
         drawerInactiveTintColor: theme.subtext,
         drawerType: "front",
-        swipeEdgeWidth: 200,
+          swipeEnabled: false, // 🔴 THIS disables swipe opening
+
       }}
       initialRouteName="(tabs)" // ✅ default route ONLY
     >

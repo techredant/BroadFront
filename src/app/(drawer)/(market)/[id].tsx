@@ -19,6 +19,7 @@ import { useChatContext } from "stream-chat-expo";
 import { useTheme } from "@/context/ThemeContext";
 import { useUser } from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
+import { useAppContext } from "@/contexts/AppProvider";
 
 const { width } = Dimensions.get("window");
 
@@ -50,6 +51,7 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const { client } = useChatContext();
+  const { setChannel } = useAppContext(); // you MUST have this
 
   useEffect(() => {
     if (!id) return;
@@ -119,25 +121,19 @@ export default function ProductDetail() {
     if (!client || !client.userID || !product?.userId) return;
 
     try {
-      const channel = client.channel("messaging", {
-        members: [client.userID, product.userId],
-        //   distinct: true,
+      const currentUserId = client.userID;
 
-        // 👇 Attach product context to the channel
-        //   productId: product._id,
-        //   productTitle: product.title,
-        //   productPrice: product.price,
-        //   productImage: product.images?.[0], // main image
+      const channel = client.channel("messaging", {
+        members: [currentUserId, product.userId],
+        distinct: true,
       });
 
       await channel.watch();
 
-      await channel.sendMessage({
-        text:
-          `${product.title}` +
-          "\n" +
-          `price:  KES ${product.price.toLocaleString("en-KE")}${product.price}  + "\n"  + ${(<Link href={`/${product._id}`}></Link>)}`,
+      setChannel(channel); // 🔥 THIS IS WHAT YOU'RE MISSING
 
+      await channel.sendMessage({
+        text: `${product.title}\nPrice: KES ${product.price.toLocaleString("en-KE")}`,
         attachments: [
           {
             type: "image",
@@ -151,7 +147,6 @@ export default function ProductDetail() {
       console.error("❌ Failed to start chat:", err);
     }
   };
-
   // const { handleStartChat } = useStartChat({
   //   client,
   //   userId,
@@ -176,7 +171,7 @@ export default function ProductDetail() {
         }}
       >
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.push("/")}
           style={{ position: "absolute", left: 16 }}
         >
           <Ionicons name="arrow-back" size={28} color={theme.subtext} />

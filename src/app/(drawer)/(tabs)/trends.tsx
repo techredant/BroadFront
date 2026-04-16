@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { View, Text, FlatList, Pressable, StyleSheet } from "react-native";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
-import { DrawerMenuButton } from "../components/Button/DrawerMenuButton";
+import { DrawerMenuButton } from "../../components/Button/DrawerMenuButton";
 
 type Trend = {
   id: string;
