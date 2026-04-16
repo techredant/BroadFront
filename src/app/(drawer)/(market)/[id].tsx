@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useChatContext } from "stream-chat-expo";
 import { useTheme } from "@/context/ThemeContext";
 import { useUser } from "@clerk/clerk-expo";
+import * as Linking from "expo-linking";
 
 const { width } = Dimensions.get("window");
 
@@ -29,6 +30,7 @@ type Product = {
   category: string;
   description?: string;
   userId: string;
+  phoneNumber: number;
 };
 
 interface Member {
@@ -67,6 +69,19 @@ export default function ProductDetail() {
 
     fetchProduct();
   }, [id]);
+
+  const callSeller = (phoneNumber: string) => {
+    if (!phoneNumber) {
+      alert("No phone number available");
+      return;
+    }
+
+    const url = `tel:${phoneNumber}`;
+
+    Linking.openURL(url).catch(() => {
+      alert("Unable to make a call");
+    });
+  };
 
   if (loading) {
     return (
@@ -137,6 +152,13 @@ export default function ProductDetail() {
     }
   };
 
+  // const { handleStartChat } = useStartChat({
+  //   client,
+  //   userId,
+  //   setChannel,
+  //   setCreating,
+  // });
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <StatusBar
@@ -192,37 +214,33 @@ export default function ProductDetail() {
             />
           ))}
         </ScrollView>
-
-        {/* IMAGE COUNT */}
-        {product.images.length > 1 && (
-          <View
-            style={{
-              position: "absolute",
-              bottom: 16,
-              right: 16,
-              backgroundColor: `${theme.text}60`,
-              paddingHorizontal: 12,
-              paddingVertical: 4,
-              borderRadius: 999,
-            }}
-          >
-            <Text style={{ color: theme.subtext, fontSize: 12 }}>
-              {activeIndex + 1}/{product.images.length}
-            </Text>
-          </View>
-        )}
       </View>
 
       {/* CONTENT */}
       <ScrollView
         style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 72 }}
       >
-        {/* PRICE */}
-        <Text style={{ fontSize: 24, fontWeight: "800", color: theme.success }}>
-          KES {product.price.toLocaleString("en-KE")}
-        </Text>
-
-        {/* TITLE */}
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          {/* PRICE */}
+          <Text
+            style={{ fontSize: 24, fontWeight: "800", color: theme.success }}
+          >
+            KES {product.price.toLocaleString("en-KE")}
+          </Text>
+          {/* IMAGE COUNT */}
+          {product.images.length > 1 && (
+            <Text
+              style={{
+                color: theme.subtext,
+                fontSize: 20,
+                marginLeft: "auto",
+                fontWeight: "bold",
+              }}
+            >
+              {activeIndex + 1}/{product.images.length}
+            </Text>
+          )}
+        </View>
 
         {/* CATEGORY */}
         <View
@@ -325,7 +343,9 @@ export default function ProductDetail() {
       >
         {!owner && (
           <>
+            {/* CALL BUTTON */}
             <TouchableOpacity
+              onPress={() => callSeller(product?.phoneNumber)} // 👈 pass seller number
               style={{
                 flex: 1,
                 marginRight: 8,
@@ -334,12 +354,18 @@ export default function ProductDetail() {
                 borderRadius: 999,
                 paddingVertical: 12,
                 alignItems: "center",
+                flexDirection: "row", // ✅ align icon + text horizontally
+                justifyContent: "center",
+                gap: 6, // ✅ spacing (RN >= 0.71)
               }}
             >
+              <Ionicons name="call-outline" size={18} color={theme.success} />
               <Text style={{ color: theme.success, fontWeight: "600" }}>
                 Call Seller
               </Text>
             </TouchableOpacity>
+
+            {/* CHAT BUTTON */}
             <Pressable
               onPress={startDM}
               style={{
@@ -349,8 +375,12 @@ export default function ProductDetail() {
                 borderRadius: 999,
                 paddingVertical: 12,
                 alignItems: "center",
+                flexDirection: "row", // ✅ horizontal
+                justifyContent: "center",
+                gap: 6,
               }}
             >
+              <Ionicons name="chatbubble-outline" size={18} color="#fff" />
               <Text style={{ color: "#fff", fontWeight: "600" }}>
                 Chat with seller
               </Text>

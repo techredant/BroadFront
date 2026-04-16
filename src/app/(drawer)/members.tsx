@@ -30,7 +30,8 @@ const MembersScreen = () => {
   const { theme, isDark } = useTheme();
 
   // ✅ comes from FollowContext (NOT local state anymore)
-  const { members, currentUserId, loading, toggleFollow } = useUserContext();
+  const { members, currentUserId, loading, toggleFollow, loadingUserId } =
+    useUserContext();
 
   // ---------------- RENDER ITEM ----------------
   const renderMember = ({ item }: { item: Member }) => {
@@ -61,24 +62,20 @@ const MembersScreen = () => {
         </View>
 
         {/* FOLLOW BUTTON */}
-     
-        {isCurrentUser ? (
-          <View style={styles.youChip}>
-            <Text style={styles.youText}>You</Text>
-          </View>
-        ) : (  
-            <>
-           {loading ? <ActivityIndicator size={"small"} color={theme.text}/> : (       
-      
-          <TouchableOpacity onPress={() => toggleFollow(item)}>
+
+        {loadingUserId === item.clerkId ? (
+          <ActivityIndicator size="small" color={theme.text} />
+        ) : (
+          <TouchableOpacity
+            disabled={loadingUserId === item.clerkId}
+            onPress={() => toggleFollow(item)}
+          >
             <Text
               style={item.isFollowing ? styles.unfollowText : styles.followText}
             >
               {item.isFollowing ? "Unfollow" : "Follow"}
             </Text>
           </TouchableOpacity>
-        )}    
-          </>
         )}
       </View>
     );

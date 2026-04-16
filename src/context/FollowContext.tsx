@@ -8,7 +8,6 @@ import React, {
 import axios from "axios";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app/api/users";
-const FOLLOW_URL = "https://cast-api-zeta.vercel.app/api/follow";
 
 interface User {
   id: string;
@@ -31,6 +30,7 @@ interface FollowContextType {
   fetchUsers: () => Promise<void>;
   fetchSuggestions: () => Promise<void>;
   toggleFollow: (user: User) => Promise<void>;
+  loadingUserId: string | null;
 }
 
 const FollowContext = createContext<FollowContextType | undefined>(undefined);
@@ -51,6 +51,7 @@ export const UserProvider: React.FC<Props> = ({ children, currentUserId }) => {
   const [suggestions, setSuggestions] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
 
   // ---------------- FETCH ALL USERS ----------------
   const fetchUsers = useCallback(async () => {
@@ -97,18 +98,51 @@ export const UserProvider: React.FC<Props> = ({ children, currentUserId }) => {
 
   // ---------------- FOLLOW / UNFOLLOW ----------------
 const toggleFollow = async (user: User) => {
+  const action = user.isFollowing ? "unfollow" : "follow";
+
+  // 🔥 OPTIMISTIC UPDATE
+  setMembers((prev) =>
+    prev.map((u) =>
+      u.clerkId === user.clerkId ? { ...u, isFollowing: !u.isFollowing } : u,
+    ),
+  );
+
+  // optional: update suggestions too
+  setSuggestions((prev) =>
+    prev.map((u) =>
+      u.clerkId === user.clerkId ? { ...u, isFollowing: !u.isFollowing } : u,
+    ),
+  );
+
   try {
-    const action = user.isFollowing ? "unfollow" : "follow";
+    setLoadingUserId(user.clerkId);
 
     await axios.post(
       `${BASE_URL}/${currentUserId}/follow-action/${user.clerkId}?action=${action}`,
     );
 
-    // 🔥 ALWAYS REFRESH AFTER CHANGE
-    await fetchUsers();
-    await fetchSuggestions();
+    // ❌ NO refetch anymore
   } catch (err) {
     console.error(err);
+
+    // 🔁 REVERT if API fails
+    setMembers((prev) =>
+      prev.map((u) =>
+        u.clerkId === user.clerkId
+          ? { ...u, isFollowing: user.isFollowing }
+          : u,
+      ),
+    );
+
+    setSuggestions((prev) =>
+      prev.map((u) =>
+        u.clerkId === user.clerkId
+          ? { ...u, isFollowing: user.isFollowing }
+          : u,
+      ),
+    );
+  } finally {
+    setLoadingUserId(null);
   }
 };
 
@@ -131,6 +165,7 @@ const toggleFollow = async (user: User) => {
         fetchUsers,
         fetchSuggestions,
         toggleFollow,
+        loadingUserId,
       }}
     >
       {children}

@@ -13,6 +13,8 @@ import { LevelProvider } from "@/context/LevelContext";
 import { UserOnboardingProvider } from "@/context/UserOnBoardingContext";
 import { UserProvider } from "@/context/FollowContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import ChatWrapper from "./components/ChatWrapper";
+import VideoProvider from "./components/VideoProvider";
 
 export default function RootLayout() {
   return (
@@ -24,95 +26,6 @@ export default function RootLayout() {
     </ClerkProvider>
   );
 }
-
-// function RootInnerLayout() {
-//   const { isLoaded, isSignedIn } = useAuth();
-//   const { user } = useUser();
-//   const router = useRouter();
-//   const segments = useSegments();
-
-//   // 🔑 Redirect / Auth Gate Logic
-//   useEffect(() => {
-//     if (!isLoaded) return;
-
-//     const inAuthGroup = segments[0] === "(auth)";
-//     const inOnboardingGroup = segments[0] === "(onboarding)";
-//     const inDrawerGroup = segments[0] === "(drawer)";
-
-//     const hasCompletedName = user?.unsafeMetadata?.hasCompletedName;
-//     const onboardingComplete = user?.unsafeMetadata?.onboardingComplete;
-
-//     if (!isSignedIn && !inAuthGroup) {
-//       router.replace("/(auth)");
-//       return;
-//     }
-
-//     if (isSignedIn && !hasCompletedName && !inOnboardingGroup) {
-//       router.replace("/(onboarding)/nameScreen");
-//       return;
-//     }
-
-//     if (
-//       isSignedIn &&
-//       hasCompletedName &&
-//       !onboardingComplete &&
-//       !inOnboardingGroup
-//     ) {
-//       router.replace("/(onboarding)/location");
-//       return;
-//     }
-
-//     if (
-//       isSignedIn &&
-//       hasCompletedName &&
-//       onboardingComplete &&
-//       !inDrawerGroup
-//     ) {
-//       router.replace("/(drawer)/(tabs)");
-//     }
-
-//     useEffect(() => {
-//       SplashScreen.preventAutoHideAsync();
-//     }, []);
-//   }, [isLoaded, isSignedIn, user, segments]);
-
-//   // Clerk loading
-//   if (!isLoaded) {
-//     return (
-//       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-//         <ActivityIndicator size="small" />
-//       </View>
-//     );
-//   }
-
-//   // If not signed in → just render auth stack
-//   if (!isSignedIn) {
-//     return <Stack screenOptions={{ headerShown: false }} />;
-//   }
-
-//   // ✅ Fully signed-in: wrap all providers
-//   return (
-//     <GestureHandlerRootView style={{ flex: 1 }}>
-//       <ThemeProvider>
-//         <LevelProvider>
-//           <UserOnboardingProvider>
-//             <UserProvider currentUserId={user!.id}>
-//               <MenuProvider>
-//                 <ChatWrapper user={user!}>
-//                   <VideoProvider>
-//                     <AppProvider>
-//                       <Stack screenOptions={{ headerShown: false }} />
-//                     </AppProvider>
-//                   </VideoProvider>
-//                 </ChatWrapper>
-//               </MenuProvider>
-//             </UserProvider>
-//           </UserOnboardingProvider>
-//         </LevelProvider>
-//       </ThemeProvider>
-//     </GestureHandlerRootView>
-//   );
-// }
 
 function RootInnerLayout() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -176,28 +89,30 @@ function RootInnerLayout() {
   }
 
   return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <ThemeProvider>
-          <LevelProvider>
-            <UserOnboardingProvider>
-              {/* Wrap specific providers only if user exists to prevent crashes */}
-              {isSignedIn ? (
-                <UserProvider currentUserId={user!.id}>
-                  <MenuProvider>                    
-                        <AppProvider>
-                          <Stack screenOptions={{ headerShown: false }} />
-                        </AppProvider>
-                  </MenuProvider>
-                </UserProvider>
-              ) : (
-                // Auth stack (doesn't need Stream/Chat contexts)
-                <Stack screenOptions={{ headerShown: false }} />
-              )}
-            </UserOnboardingProvider>
-          </LevelProvider>
-        </ThemeProvider>
-      </GestureHandlerRootView>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <LevelProvider>
+          <UserOnboardingProvider>
+            {/* Wrap specific providers only if user exists to prevent crashes */}
+            {isSignedIn ? (
+              <UserProvider currentUserId={user!.id}>
+                <MenuProvider>
+                  <ChatWrapper userDetail={user!}>
+                    <VideoProvider>
+                      <AppProvider>
+                        <Stack screenOptions={{ headerShown: false }} />
+                      </AppProvider>
+                    </VideoProvider>
+                  </ChatWrapper>
+                </MenuProvider>
+              </UserProvider>
+            ) : (
+              // Auth stack (doesn't need Stream/Chat contexts)
+              <Stack screenOptions={{ headerShown: false }} />
+            )}
+          </UserOnboardingProvider>
+        </LevelProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
-
-

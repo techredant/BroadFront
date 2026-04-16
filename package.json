@@ -1,7 +1,7 @@
 {
   "name": "broadcast",
   "main": "expo-router/entry",
-  "version": "2.1.29",
+  "version": "2.1.30",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",

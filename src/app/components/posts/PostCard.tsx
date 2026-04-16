@@ -468,7 +468,7 @@ export function PostCard({
                   color: theme.subtext,
                 }}
               >
-                {postCard.levelValue === "home"
+                {postCard.levelValue === "Home"
                   ? ""
                   : `#${postCard.levelValue} ${postCard.levelType}`}
               </Text>

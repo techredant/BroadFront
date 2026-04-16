@@ -112,10 +112,16 @@ function CallUI() {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["bottom"]}>
       <CallContent
+        layout="spotlight"
         onHangupCallHandler={async () => {
           await call?.endCall();
         }}
-        layout="spotlight"
+        styles={{
+          participantView: {
+            borderWidth: 0,
+            borderColor: "transparent",
+          },
+        }}
       />
     </SafeAreaView>
   );

@@ -8,10 +8,10 @@ import { useLevel } from "@/context/LevelContext";
 export default function stream_layout() {
   const { userDetails } = useLevel();
   return (
-    <ChatWrapper userDetail={userDetails!}>
-      <VideoProvider>
+    // <ChatWrapper userDetail={userDetails!}>
+    //   <VideoProvider>
         <Stack screenOptions={{ headerShown: false }} />
-      </VideoProvider>
-    </ChatWrapper>
+    //   </VideoProvider>
+    // </ChatWrapper>
   );
 }

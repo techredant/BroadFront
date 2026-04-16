@@ -27,6 +27,8 @@ const SellFormScreen = () => {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [loading, setLoading] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState("");
+
 
   const [media, setMedia] = useState<
     { uri: string; type: "image" | "video" }[]
@@ -37,6 +39,8 @@ const SellFormScreen = () => {
   const [descriptionError, setDescriptionError] = useState("");
   const [imagesError, setImagesError] = useState("");
   const [categoryError, setCategoryError] = useState("");
+  const [phoneNumberError, setPhoneNumberError] = useState("");
+
   const [showCategoryModal, setShowCategoryModal] = useState(false);
 
   const categories = [
@@ -148,6 +152,10 @@ const SellFormScreen = () => {
         setPriceError("Price is required");
         hasError = true;
       }
+      if (!/^(\+254|0)[0-9]{9}$/.test(phoneNumber)) {
+        setPhoneNumberError("Enter a valid Kenyan phone number");
+        hasError = true;
+      }
       if (!description.trim()) {
         setDescriptionError("Description is required");
         hasError = true;
@@ -179,6 +187,7 @@ const SellFormScreen = () => {
           category,
           images: uploadedUrls,
           userId: user.id,
+          phoneNumber,
         }),
       });
 
@@ -251,6 +260,28 @@ const SellFormScreen = () => {
           placeholderTextColor={theme.subtext}
         />
         {priceError ? <Text style={styles.errorText}>{priceError}</Text> : null}
+
+        <Text style={[styles.label, { color: theme.text }]}>Phone Number</Text>
+
+        <TextInput
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.card,
+              color: theme.text,
+              borderColor: theme.border,
+            },
+          ]}
+          placeholder="Enter phone number"
+          keyboardType="phone-pad"
+          value={phoneNumber}
+          onChangeText={setPhoneNumber}
+          placeholderTextColor={theme.subtext}
+        />
+
+        {phoneNumberError ? (
+          <Text style={styles.errorText}>{phoneNumberError}</Text>
+        ) : null}
 
         {/* Description */}
         <Text style={[styles.label, { color: theme.text }]}>Description</Text>

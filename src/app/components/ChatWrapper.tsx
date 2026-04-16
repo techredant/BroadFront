@@ -14,9 +14,9 @@ async function getStreamToken(userDetail: any) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      userId: userDetail?.clerkId,
+      userId: userDetail?.id,
       name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""}`.trim(),
-      image: userDetail?.image,
+      image: userDetail?.imageUrl,
     }),
   });
 
@@ -48,14 +48,14 @@ export const ChatWrapper = ({ userDetail, children }: ChatWrapperProps) => {
     {
       apiKey: STREAM_API_KEY,
       userData: {
-        id: userDetail?.clerkId, // only ID (backend controls name/image)
+        id: userDetail?.id, // only ID (backend controls name/image)
       },
       tokenOrProvider: async () => {
         console.log("🔥 FETCHING TOKEN");
         return await getStreamToken(userDetail);
       },
     },
-    [userDetail?.clerkId], // 👈 forces re-init when user changes
+    [userDetail?.id], // 👈 forces re-init when user changes
   );
 
   // ✅ Force disconnect old session when user changes
@@ -68,7 +68,7 @@ export const ChatWrapper = ({ userDetail, children }: ChatWrapperProps) => {
     };
 
     reset();
-  }, [userDetail?.clerkId]);
+  }, [userDetail?.id]);
 
   // ✅ Ready state
   useEffect(() => {
@@ -78,7 +78,7 @@ export const ChatWrapper = ({ userDetail, children }: ChatWrapperProps) => {
   }, [chatClient]);
 
   if (!chatClient || !clientReady) {
-    return <FullScreenLoader message="Connecting to chat..." />;
+    return <FullScreenLoader message="Synchronising..." />;
   }
 
   return (
