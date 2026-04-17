@@ -23,7 +23,7 @@ const AboutScreen = () => {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Image source={require("../../../assets/images/icon.png")} style={styles.logo} />
+        <Image source={require("../../../assets/images/icon.jpg")} style={styles.logo} />
         <Text style={[styles.title, { color: theme.text }]}>BroadCast</Text>
         <Text style={[styles.subtitle, { color: theme.subtext }]}>
           Your Voice. Your Platform.

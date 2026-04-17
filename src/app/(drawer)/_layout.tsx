@@ -20,7 +20,6 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
   const { user } = useUser();
   const { userDetails, isLoadingUser, setCurrentLevel } = useLevel();
   const { theme } = useTheme();
-const navigation = useNavigation();
 
   return (
     <DrawerContentScrollView
@@ -89,34 +88,6 @@ const navigation = useNavigation();
         </View>
         <Ionicons name="chevron-forward" size={18} color={theme.subtext} />
       </Pressable>
-     <Pressable
-  onPress={() => {
-    setCurrentLevel({ type: "home", value: "home" });
-
-    // 🔴 CLOSE DRAWER (correct navigator level)
-
-    // 🔴 CLOSE DRAWER (correct navigator level)
-    navigation.getParent()?.dispatch(DrawerActions.closeDrawer());
-
-    router.replace("/(drawer)/(tabs)"); // force go home (reset stack)
-  }}
-  style={{
-    paddingTop: 20,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  }}
-  >
-        <Ionicons name="home-outline" size={26} color={theme.subtext} />
-        <Text style={{ color: theme.text, fontWeight: "bold" }}>
-          Go National
-        </Text>
-      </Pressable>
-
       {/* DRAWER ITEMS */}
       <View style={{ paddingTop: 8 }}>
         <DrawerItemList {...props} />
@@ -134,7 +105,8 @@ const navigation = useNavigation();
 ======================= */
 export default function DrawerLayout() {
   const { theme } = useTheme();
-  const { currentLevel } = useLevel();
+  const { userDetails, setCurrentLevel } = useLevel();
+  const { user } = useUser();
 
   return (
     <Drawer
@@ -152,21 +124,23 @@ export default function DrawerLayout() {
         drawerActiveTintColor: theme.primary,
         drawerInactiveTintColor: theme.subtext,
         drawerType: "front",
-          swipeEnabled: false, // 🔴 THIS disables swipe opening
-
+        swipeEnabled: false, // 🔴 THIS disables swipe opening
       }}
       initialRouteName="(tabs)" // ✅ default route ONLY
     >
       <Drawer.Screen
         name="(tabs)"
         options={{
-          drawerLabel: currentLevel?.value
-            ? currentLevel.value.charAt(0).toUpperCase() +
-              currentLevel.value.slice(1)
-            : "Home",
+          drawerLabel: "Home",
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="planet-outline" size={size} color={color} />
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
+        }}
+        listeners={{
+          drawerItemPress: (e) => {
+            // Run your logic BEFORE navigation
+            setCurrentLevel({ type: "home", value: "home" });
+          },
         }}
       />
 
@@ -246,6 +220,25 @@ export default function DrawerLayout() {
           drawerLabel: "Audio Rooms",
           drawerIcon: ({ color, size }) => (
             <Ionicons name="mic-circle" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="profile"
+        options={{
+          drawerLabel: "Your Profile",
+          drawerIcon: ({ color, size }) => (
+            <Image
+              source={{
+                uri: userDetails?.image || user?.imageUrl,
+              }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 32,
+                backgroundColor: theme.border,
+              }}
+            />
           ),
         }}
       />

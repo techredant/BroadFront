@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TextInput,
   ScrollView,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
 import axios from "axios";
@@ -35,23 +36,32 @@ export default function MarketScreen() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
+    const [refreshing, setRefreshing] = useState(false);
+  
   // Fetch products
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const res = await axios.get<Product[]>(
-          "https://cast-api-zeta.vercel.app/api/products",
-        );
-        setProducts(res.data);
-      } catch (err) {
-        console.error("❌ Product fetch error:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProducts();
-  }, []);
+const fetchProducts = useCallback(async () => {
+  try {
+    setLoading(true);
+
+    const res = await axios.get<Product[]>(
+      "https://cast-api-zeta.vercel.app/api/products",
+    );
+
+    setProducts(res.data);
+      onRefresh?.();
+
+  } catch (err) {
+    console.error("❌ Product fetch error:", err);
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+}, []);
+
+const onRefresh = useCallback(() => {
+  setRefreshing(true);
+  fetchProducts();
+}, [fetchProducts]);
 
   // Derive categories
   const categories = useMemo(() => {
@@ -99,7 +109,8 @@ export default function MarketScreen() {
       <DrawerMenuButton />
 
       {/* TOP ROW */}
-      <View        style={{
+      <View
+        style={{
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
@@ -116,7 +127,6 @@ export default function MarketScreen() {
             fontSize: 22,
             color: theme.text,
             textAlign: "center",
-
           }}
         >
           Market
@@ -251,6 +261,13 @@ export default function MarketScreen() {
           justifyContent: "flex-start",
           paddingHorizontal: 12,
         }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.text}
+          />
+        }
         renderItem={({ item, index }) => (
           <Pressable
             onPress={() => router.push(`/${item._id}`)}

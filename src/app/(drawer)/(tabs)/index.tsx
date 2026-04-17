@@ -73,21 +73,20 @@ export default function HomeScreen() {
     }
   }, [currentLevel]);
 
-  useEffect(() => {
-    setPosts([]); // 🔥 clear old posts
-    setLoading(true); // 🔥 show loader immediately
-  }, [currentLevel]);
+useEffect(() => {
+  if (!currentLevel?.type || !currentLevel?.value) return;
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchPosts();
-    }, [fetchPosts]),
-  );
+  setPosts([]);
+  setLoading(true);
+  fetchPosts();
+}, [currentLevel, fetchPosts]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchPosts();
-  };
+ 
+
+const onRefresh = useCallback(() => {
+  setRefreshing(true);
+  fetchPosts();
+}, [fetchPosts]);
 
   // ---------------- Socket setup ----------------
   useEffect(() => {
@@ -106,6 +105,12 @@ export default function HomeScreen() {
 
     socket.on("deletePost", (deletedPostId) => {
       setPosts((prev) => prev.filter((p) => p._id !== deletedPostId));
+    });
+
+    socket.on("postUpdated", (updatedPost) => {
+      setPosts((prev) =>
+        prev.map((p) => (p._id === updatedPost._id ? updatedPost : p)),
+      );
     });
 
     return () => {
@@ -154,6 +159,12 @@ export default function HomeScreen() {
             isVisible={visiblePostId === item._id && isFocused}
             socket={socketRef.current}
             allPosts={posts}
+            onRefresh={onRefresh}
+            onUpdatePost={(updatedPost: { _id: any; }) => {
+              setPosts((prev) =>
+                prev.map((p) => (p._id === updatedPost._id ? updatedPost : p)),
+              );
+            }}
             onDeletePost={(postId: any) =>
               setPosts((prev) => prev.filter((p) => p._id !== postId))
             }

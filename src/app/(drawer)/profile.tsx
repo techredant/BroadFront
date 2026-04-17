@@ -9,13 +9,7 @@ import {
   Dimensions,
   RefreshControl,
 } from "react-native";
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import {
   useAnimatedStyle,
@@ -48,7 +42,8 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(true);
+  
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -66,6 +61,8 @@ export default function ProfileScreen() {
     m.followers?.includes(userDetails?.clerkId),
   );
   const followingData = members.filter((m) => m.isFollowing);
+
+
 
   const getData = () => {
     if (activeTab === "posts") return mediaPosts;
@@ -102,11 +99,14 @@ export default function ProfileScreen() {
     fetchMedia();
   }, [fetchMedia]);
 
-  const mediaPosts = useMemo(() => {
-    const result = posts.filter((p) => p.media?.length).flatMap((p) => p.media);
+const mediaPosts = useMemo(() => {
+  const result = posts.filter((p) => p.media?.length).flatMap((p) => p.media);
 
-    return result;
-  }, [posts]);
+  console.log("🖼 mediaPosts computed:", result);
+
+  return result;
+}, [posts]);
+
 
   /* ---------------- REALTIME SOCKET ---------------- */
   useEffect(() => {
@@ -282,14 +282,14 @@ export default function ProfileScreen() {
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 140 }}
-               refreshControl={
-                          <RefreshControl
-                            refreshing={refreshing}
-                            onRefresh={onRefresh}
-                            tintColor={theme.background}
-                            colors={[theme.text]}
-                          />
-                        }
+              refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    tintColor={theme.background}
+                    colors={[theme.text]}
+                  />
+                }
       />
 
       {/* MODAL */}

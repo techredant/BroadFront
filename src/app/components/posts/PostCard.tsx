@@ -76,6 +76,8 @@ export function PostCard({
   onDeletePost,
   socket,
   allPosts,
+  onUpdatePost,
+  onRefresh,
   ...otherProps
 }: any) {
   const { theme } = useTheme();
@@ -204,11 +206,7 @@ export function PostCard({
     fetchComments();
   }, [fetchComments]);
 
-  // Pull-to-refresh
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchComments();
-  };
+
 
   // /* ---------------- PINCH ZOOM ---------------- */
   const pinchScale = useSharedValue(1);
@@ -328,6 +326,8 @@ export function PostCard({
 
       await incrementViews();
       await incrementRecite();
+      onRefresh?.();
+
 
       setQuoteVisible(false);
     } catch (err) {
@@ -337,13 +337,13 @@ export function PostCard({
       setLoadingRecite(false);
     }
   };
+  // Prepare the recast payload
 
   // recast
   const handleRecast = async (text: string) => {
     if (!userDetails?.clerkId || !postCard) return;
-    setLoadingRecast(true);
 
-    // Prepare the recast payload
+    setLoadingRecast(true);
     const newRecast = {
       userId: userDetails.clerkId,
       originalPostId: postCard._id, // required for backend to copy
@@ -360,21 +360,22 @@ export function PostCard({
       reciteNickName: postCard?.user?.nickName || "",
       reciteImage: postCard?.user?.image || "",
     };
-
     try {
-      const res = await axios.post(
-        `https://cast-api-zeta.vercel.app/api/posts`, // same backend route
-        newRecast,
-      );
+      await axios.post(`https://cast-api-zeta.vercel.app/api/posts`, newRecast);
 
-      setReposted(true);
+      const updated = {
+        ...postCard,
+        recastCount: (postCard.recastCount || 0) + 1,
+      };
 
-      // Increment counters if you track them
-      await incrementViews();
+      setPostCard(updated);
+
+      onUpdatePost?.(updated); // 🔥 IMPORTANT
+      // ✅ THIS is what you missed
+      onRefresh?.();
       await incrementRecasts();
     } catch (err) {
       console.error("❌ Error reposting:", err);
-      setReposted(false);
     } finally {
       setLoadingRecast(false);
     }
@@ -517,32 +518,6 @@ export function PostCard({
                 },
               }}
             >
-              {/* Follow */}
-              {postCard?.clerkId !== currentUserId && (
-                   <MenuOption onSelect={() => toggleFollow(postCard)}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: 8,
-                  }}
-                >
-                  <Feather name="user-plus" size={16} color="#111" />
-                  <Text
-                    style={
-                      postCard.user.isFollowing
-                        ? styles.unfollowText
-                        : styles.followText
-                    }
-                  >
-                    {postCard.user.isFollowing ? "Unfollow" : "Follow"}
-                  </Text>
-                </View>
-              </MenuOption>
-              )}
-           
-
               {/* Save */}
               <MenuOption onSelect={() => alert("Save post")}>
                 <View
@@ -585,21 +560,6 @@ export function PostCard({
                 >
                   <Feather name="flag" size={16} color="#E11D48" />
                   <Text style={{ color: "#E11D48" }}>Report</Text>
-                </View>
-              </MenuOption>
-
-              {/* Mute */}
-              <MenuOption onSelect={() => alert("Mute user")}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: 8,
-                  }}
-                >
-                  <Feather name="volume-x" size={16} color="#6B7280" />
-                  <Text style={{ color: "#6B7280" }}>Mute</Text>
                 </View>
               </MenuOption>
 

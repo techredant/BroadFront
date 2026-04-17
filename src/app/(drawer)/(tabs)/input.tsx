@@ -203,6 +203,7 @@ export default function InputScreen() {
         levelValue,
         linkPreview: safeLinkData,
         type: postType,
+        contentType: uploadedUrls?.length ? "media" : "text", // ✅ ADD THIS
         originalPostId: originalPostId || null,
       };
 

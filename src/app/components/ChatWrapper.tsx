@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Chat, OverlayProvider, useCreateChatClient } from "stream-chat-expo";
 import { FullScreenLoader } from "./FullScreenLoader";
 import { studyBuddyTheme } from "@/lib/theme";
+import { ActivityIndicator, View } from "react-native";
 
 const API_URL = "https://cast-api-zeta.vercel.app";
 const STREAM_API_KEY = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
@@ -41,8 +42,6 @@ type ChatWrapperProps = {
 export const ChatWrapper = ({ userDetail, children }: ChatWrapperProps) => {
   const [clientReady, setClientReady] = useState(false);
 
-  console.log("USER DETAIL:", userDetail);
-
   // ✅ Create client with dependency (IMPORTANT)
   const chatClient = useCreateChatClient(
     {
@@ -78,7 +77,11 @@ export const ChatWrapper = ({ userDetail, children }: ChatWrapperProps) => {
   }, [chatClient]);
 
   if (!chatClient || !clientReady) {
-    return <FullScreenLoader message="Synchronising..." />;
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#0000ff" />
+      </View>
+    );
   }
 
   return (

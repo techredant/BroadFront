@@ -1,3 +1,4 @@
+// media.tsx
 import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
@@ -8,6 +9,7 @@ import {
   StyleSheet,
   Dimensions,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import axios from "axios";
 import Video from "react-native-video";
@@ -37,6 +39,7 @@ export default function MediaScreen() {
   const { theme, isDark } = useTheme();
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   // -------------------- Media Modal --------------------
   const openMedia = (index: number) => {
@@ -80,12 +83,19 @@ export default function MediaScreen() {
       console.error("❌ Error fetching media:", err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
+
     }
   }, [currentLevel]);
 
   useEffect(() => {
     fetchMedia();
   }, [fetchMedia]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchMedia();
+  };
 
   const renderItem = ({ item, index }: { item: string; index: number }) => {
     const isVideo = item.endsWith(".mp4") || item.endsWith(".mov");
@@ -108,14 +118,14 @@ export default function MediaScreen() {
     );
   };
 
-  if (loading) {
-    return (
-      <View style={[styles.loader, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color="#1DA1F2" />
-        <Text>Loading media...</Text>
-      </View>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <View style={[styles.loader, { backgroundColor: theme.background }]}>
+  //       <ActivityIndicator size="large" color="#1DA1F2" />
+  //       <Text>Loading media...</Text>
+  //     </View>
+  //   );
+  // }
 
   return (
     <>
@@ -131,6 +141,14 @@ export default function MediaScreen() {
           flex: 1,
         }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.background}
+            colors={[theme.text]}
+          />
+        }
         ListHeaderComponent={
           <View
             style={[styles.headerContainer, { backgroundColor: theme.card }]}

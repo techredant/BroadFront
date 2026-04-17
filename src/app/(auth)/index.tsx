@@ -37,7 +37,7 @@ const AuthScreen = () => {
 
           <View className="items-center px-6 mt-4">
             <Image
-              source={require("@/assets/images/icon.png")}
+              source={require("@/assets/images/icon.jpg")}
               style={{ width: 320, height: 350, borderRadius: 100 }}
               contentFit="cover"
             />
