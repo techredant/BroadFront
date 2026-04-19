@@ -1,9 +1,7 @@
-
 import { EmptyState } from "@/app/components/EmptyState";
-import { FullScreenLoader } from "@/app/components/FullScreenLoader";
 import { useAppContext } from "@/contexts/AppProvider";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Channel, Thread } from "stream-chat-expo";
 
@@ -11,7 +9,12 @@ const ThreadScreen = () => {
   const { channel, thread, setThread } = useAppContext();
   const headerHeight = useHeaderHeight();
 
-  if (channel === null) return <FullScreenLoader message="Loading thread..." />;
+  if (channel === null)
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#0000ff" />
+      </View>
+    );
 
   return (
     <SafeAreaView className="flex-1 bg-surface">

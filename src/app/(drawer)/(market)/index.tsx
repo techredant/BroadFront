@@ -1,3 +1,5 @@
+
+
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   View,
@@ -10,7 +12,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
@@ -36,20 +38,14 @@ export default function MarketScreen() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-    const [refreshing, setRefreshing] = useState(false);
-  
-  // Fetch products
+  const [refreshing, setRefreshing] = useState(false);
+
 const fetchProducts = useCallback(async () => {
   try {
-    setLoading(true);
-
     const res = await axios.get<Product[]>(
       "https://cast-api-zeta.vercel.app/api/products",
     );
-
     setProducts(res.data);
-      onRefresh?.();
-
   } catch (err) {
     console.error("❌ Product fetch error:", err);
   } finally {
@@ -58,10 +54,21 @@ const fetchProducts = useCallback(async () => {
   }
 }, []);
 
+useFocusEffect(
+  useCallback(() => {
+    fetchProducts();
+  }, [fetchProducts]),
+);
+
+// useEffect(() => {
+//   fetchProducts(); // 🔥 FIXED
+// }, [fetchProducts]);
+
 const onRefresh = useCallback(() => {
   setRefreshing(true);
   fetchProducts();
 }, [fetchProducts]);
+
 
   // Derive categories
   const categories = useMemo(() => {
@@ -261,7 +268,7 @@ const onRefresh = useCallback(() => {
           justifyContent: "flex-start",
           paddingHorizontal: 12,
         }}
-        refreshControl={
+         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}

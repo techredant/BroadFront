@@ -424,7 +424,7 @@ export function PostCard({
               fontWeight: "600",
             }}
           >
-            Recasted by @{postCard.recastedBy?.nickName}
+            Recasted by {postCard.recastedBy?.nickName}
           </Text>
         </View>
       )}
@@ -459,7 +459,7 @@ export function PostCard({
                 {postCard.user?.firstName}
               </Text>
               <Text style={{ color: theme.subtext, fontSize: 12 }}>
-                @{postCard.user?.nickName}
+                {postCard.user?.nickName}
               </Text>
               <Text
                 style={{
@@ -647,7 +647,7 @@ export function PostCard({
                     color: theme.subtext,
                   }}
                 >
-                  @{postCard?.reciteNickName}
+                  {postCard?.reciteNickName}
                 </Text>
               </View>
             </View>

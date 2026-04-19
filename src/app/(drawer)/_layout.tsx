@@ -81,7 +81,7 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
                 }}
                 numberOfLines={1}
               >
-                @{userDetails?.nickName || "guest"}
+                {userDetails?.nickName || "guest"}
               </Text>
             </>
           )}

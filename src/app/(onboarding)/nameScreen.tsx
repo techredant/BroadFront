@@ -38,7 +38,7 @@ const NamesScreen = () => {
   const { user } = useUser();
   const { getToken } = useAuth();
   const { theme, isDark } = useTheme();
-  const { currentLevel, setCurrentLevel } = useLevel();
+  const { refreshUserDetails } = useLevel();
 
   const {
     firstName = "",
@@ -106,8 +106,8 @@ const NamesScreen = () => {
         newErrors.companyName = "Company name is required";
         valid = false;
       }
-      if (!nickName.trim()) {
-        newErrors.nickName = "Organization name is required";
+      if (!nickName.trim() && !isEditing) {
+        newErrors.nickName = "Nickname is required";
         valid = false;
       }
     }
@@ -140,58 +140,15 @@ const NamesScreen = () => {
     fetchUser();
   }, [user]);
 
-  // Submit handler
-  //  const handleSubmit = async () => {
-  //   if (!validateFields()) return;
-  //   setLoading(true);
-
-  //   try {
-  //     const payload = {
-  //       clerkId: user?.id,
-  //       email: user?.primaryEmailAddress?.emailAddress || "",
-  //       firstName: accountType === "Personal Account" ? firstName : "",
-  //       lastName: accountType === "Personal Account" ? lastName : "",
-  //       companyName: accountType !== "Personal Account" ? companyName : "",
-  //       nickName,
-  //       image,
-  //       accountType,
-  //     };
-
-  //     const res = await axios.post(
-  //       "https://cast-api-zeta.vercel.app/api/users/create-user",
-  //       payload,
-  //         { timeout: 10000 } // 10 seconds
-  //     );
-
-  //     console.log("API response:", res.data);
-
-  //     if (res.data.success) {
-  //   await user?.update({
-  //     unsafeMetadata: {
-  //       ...user?.unsafeMetadata,
-  //       accountType,
-  //       hasCompletedName: true,
-  //     },
-  //   });
-
-  //   router.replace("/(onboarding)/location");
-  // }
-  //   } catch (err: any) {
-  //     console.error(err);
-  //     setErrors((prev) => ({
-  //       ...prev,
-  //       accountType: "Failed to save profile",
-  //     }));
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
   const handleSubmit = async () => {
     // 1️⃣ Validate fields first
     if (!validateFields()) return;
 
     setLoading(true);
+
+    const formattedNickName = nickName.startsWith("@")
+      ? nickName
+      : `@${nickName}`;
 
     try {
       // 2️⃣ Build payload for your backend
@@ -201,7 +158,7 @@ const NamesScreen = () => {
         firstName: accountType === "Personal Account" ? firstName : "",
         lastName: accountType === "Personal Account" ? lastName : "",
         companyName: accountType !== "Personal Account" ? companyName : "",
-        nickName,
+        nickName: formattedNickName,
         image,
         accountType,
       };
@@ -237,20 +194,14 @@ const NamesScreen = () => {
       }
 
       // 5️⃣ Update your LevelContext (or any global context) so drawer re-renders immediately
-      setCurrentLevel((prev: any) => ({
-        ...prev,
-        userDetails: {
-          firstName: accountType === "Personal Account" ? firstName : "",
-          lastName: accountType === "Personal Account" ? lastName : "",
-          nickName,
-          image,
-          accountType,
-          companyName: accountType !== "Personal Account" ? companyName : "",
-        },
-      }));
+      await refreshUserDetails();
 
       // 6️⃣ Navigate to next onboarding step
-      router.replace("/(onboarding)/location");
+      if (isEditing) {
+        router.replace("/(tabs)"); // 🔥 go back to main app
+      } else {
+        router.replace("/(onboarding)/location"); // onboarding flow
+      }
     } catch (err: any) {
       console.error("Error saving profile:", err);
       setErrors((prev) => ({ ...prev, accountType: "Failed to save profile" }));
@@ -369,6 +320,7 @@ const NamesScreen = () => {
                 placeholder="Nickname"
                 value={nickName}
                 onChangeText={setNickName}
+                editable={!isEditing} // 🔥 KEY LINE
                 style={{
                   borderWidth: 1,
                   borderColor: theme.border,
@@ -376,8 +328,9 @@ const NamesScreen = () => {
                   borderRadius: 8,
                   marginBottom: 5,
                   color: theme.text,
+                  backgroundColor: isEditing ? theme.card : theme.background, // subtle disabled look
+                  opacity: isEditing ? 0.6 : 1,
                 }}
-                placeholderTextColor={theme.subtext}
               />
               {errors.nickName && (
                 <Text style={{ color: "red" }}>{errors.nickName}</Text>
@@ -435,8 +388,13 @@ const NamesScreen = () => {
             }}
           >
             <Text style={{ color: "#fff", fontWeight: "bold" }}>
-              {" "}
-              {loading ? "Saving..." : "Save & Continue"}
+              {loading
+                ? isEditing
+                  ? "Updating..."
+                  : "Saving..."
+                : isEditing
+                  ? "Update Profile"
+                  : "Save & Continue"}
             </Text>
           </TouchableOpacity>
         </ScrollView>

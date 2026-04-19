@@ -34,52 +34,52 @@ const MembersScreen = () => {
     useUserContext();
 
   // ---------------- RENDER ITEM ----------------
-  const renderMember = ({ item }: { item: Member }) => {
-    const isCurrentUser = item.clerkId === currentUserId;
+const renderMember = ({ item }: { item: Member }) => {
+  const isCurrentUser = item.clerkId === currentUserId;
 
-    return (
-      <View style={[styles.card, { backgroundColor: theme.card }]}>
-        {/* USER INFO */}
-        <View style={styles.userInfo}>
-          <Image
-            source={{
-              uri: item.image?.trim()
-                ? item.image
-                : `https://api.dicebear.com/7.x/initials/svg?seed=${item.firstName}`,
-            }}
-            style={styles.avatar}
-          />
+  return (
+    <View style={[styles.card, { backgroundColor: theme.card }]}>
+      <View style={styles.userInfo}>
+        <Image
+          source={{
+            uri: item.image?.trim()
+              ? item.image
+              : `https://api.dicebear.com/7.x/initials/svg?seed=${item.firstName}`,
+          }}
+          style={styles.avatar}
+        />
 
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.name, { color: theme.text }]}>
-              {item.firstName} {item.lastName}
-            </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.name, { color: theme.text }]}>
+            {item.firstName} {item.lastName}
+          
+          </Text>
 
-            <Text style={[styles.username, { color: theme.subtext }]}>
-              @{item.nickName || "unknown"}
-            </Text>
-          </View>
+          <Text style={[styles.username, { color: theme.subtext }]}>
+            {item.nickName || "unknown"}
+          </Text>
         </View>
-
-        {/* FOLLOW BUTTON */}
-
-        {loadingUserId === item.clerkId ? (
-          <ActivityIndicator size="small" color={theme.text} />
-        ) : (
-          <TouchableOpacity
-            disabled={loadingUserId === item.clerkId}
-            onPress={() => toggleFollow(item)}
-          >
-            <Text
-              style={item.isFollowing ? styles.unfollowText : styles.followText}
-            >
-              {item.isFollowing ? "Unfollow" : "Follow"}
-            </Text>
-          </TouchableOpacity>
-        )}
       </View>
-    );
-  };
+
+      {/* BUTTON LOGIC */}
+      {isCurrentUser ? (
+        <View style={styles.youChip}>
+          <Text style={styles.youText}>You</Text>
+        </View>
+      ) : loadingUserId === item.clerkId ? (
+        <ActivityIndicator size="small" color={theme.text} />
+      ) : (
+        <TouchableOpacity onPress={() => toggleFollow(item)}>
+          <Text
+            style={item.isFollowing ? styles.unfollowText : styles.followText}
+          >
+            {item.isFollowing ? "Unfollow" : "Follow"}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
 
   // ---------------- UI ----------------
   return (

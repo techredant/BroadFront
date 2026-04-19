@@ -54,22 +54,25 @@ export const UserProvider: React.FC<Props> = ({ children, currentUserId }) => {
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
 
   // ---------------- FETCH ALL USERS ----------------
-  const fetchUsers = useCallback(async () => {
-    try {
-      setLoading(true);
+ const fetchUsers = useCallback(async () => {
+   try {
+     setLoading(true);
 
-      const res = await axios.get(BASE_URL, {
-        params: { clerkId: currentUserId },
-      });
+     const res = await axios.get(BASE_URL, {
+       params: {
+         clerkId: currentUserId,
+         includeSelf: true, // 🔥 important
+       },
+     });
 
-      setMembers(res.data.users || []);
-    } catch (err) {
-      console.error(err);
-      setMembers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUserId]);
+     setMembers(res.data.users || []);
+   } catch (err) {
+     console.error(err);
+     setMembers([]);
+   } finally {
+     setLoading(false);
+   }
+ }, [currentUserId]);
 
   // ---------------- FOLLOW SUGGESTIONS (SMART LOGIC) ----------------
   const fetchSuggestions = useCallback(async () => {

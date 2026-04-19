@@ -12,9 +12,6 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { LevelProvider } from "@/context/LevelContext";
 import { UserOnboardingProvider } from "@/context/UserOnBoardingContext";
 import { UserProvider } from "@/context/FollowContext";
-import { SafeAreaProvider } from "react-native-safe-area-context";
-import ChatWrapper from "./components/ChatWrapper";
-import VideoProvider from "./components/VideoProvider";
 
 export default function RootLayout() {
   return (
@@ -97,13 +94,9 @@ function RootInnerLayout() {
             {isSignedIn ? (
               <UserProvider currentUserId={user!.id}>
                 <MenuProvider>
-                  <ChatWrapper userDetail={user!}>
-                    <VideoProvider>
-                      <AppProvider>
-                        <Stack screenOptions={{ headerShown: false }} />
-                      </AppProvider>
-                    </VideoProvider>
-                  </ChatWrapper>
+                  <AppProvider>
+                    <Stack screenOptions={{ headerShown: false }} />
+                  </AppProvider>
                 </MenuProvider>
               </UserProvider>
             ) : (

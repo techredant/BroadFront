@@ -81,7 +81,11 @@ useEffect(() => {
   fetchPosts();
 }, [currentLevel, fetchPosts]);
 
- 
+   useFocusEffect(
+     useCallback(() => {
+       fetchPosts();
+     }, [fetchPosts]),
+   );
 
 const onRefresh = useCallback(() => {
   setRefreshing(true);

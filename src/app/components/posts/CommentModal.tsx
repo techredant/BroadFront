@@ -73,8 +73,6 @@ export default function CommentModal({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userId,
-            userName: userName || "Anonymous",
-            image: userImage,
             text: tempComment.text,
           }),
         },
@@ -223,7 +221,7 @@ export default function CommentModal({
             >
               {/* User Avatar */}
               <Image
-                source={{ uri: item.image || "https://via.placeholder.com/40" }}
+                source={{ uri: item?.user?.image || "https://via.placeholder.com/40" }}
                 style={{
                   width: 40,
                   height: 40,
@@ -236,13 +234,13 @@ export default function CommentModal({
               <View style={{ flex: 1 }}>
                 {/* Name, Handle & Time */}
                 <View
-                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 4 }}
                 >
                   <Text style={{ fontWeight: "700", color: theme.text }}>
-                    {item.userName}
+                    {item?.user?.firstName}
                   </Text>
                   <Text style={{ color: theme.subtext, fontSize: 12 }}>
-                    @{item.userName?.replace(/\s+/g, "").toLowerCase()}
+                    {item?.user?.nickName?.replace(/\s+/g, "").toLowerCase()}
                   </Text>
                   <Text style={{ color: theme.subtext, fontSize: 12 }}>·</Text>
                   <View

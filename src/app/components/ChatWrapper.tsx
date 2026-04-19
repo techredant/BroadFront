@@ -1,22 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Chat, OverlayProvider, useCreateChatClient } from "stream-chat-expo";
-import { FullScreenLoader } from "./FullScreenLoader";
 import { studyBuddyTheme } from "@/lib/theme";
 import { ActivityIndicator, View } from "react-native";
 
 const API_URL = "https://cast-api-zeta.vercel.app";
 const STREAM_API_KEY = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
 
-// ✅ Token provider (single source of truth)
+// ✅ Token provider
 async function getStreamToken(userDetail: any) {
-  console.log("🔥 REQUESTING TOKEN");
-
   const res = await fetch(`${API_URL}/api/stream/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      userId: userDetail?.id,
-      name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""}`.trim(),
+      userId: userDetail?.clerkId,
+      name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""}`.trim(),
       image: userDetail?.imageUrl,
     }),
   });
@@ -40,46 +37,37 @@ type ChatWrapperProps = {
 };
 
 export const ChatWrapper = ({ userDetail, children }: ChatWrapperProps) => {
-  const [clientReady, setClientReady] = useState(false);
+  const prevUserId = useRef<string | null>(null);
 
-  // ✅ Create client with dependency (IMPORTANT)
   const chatClient = useCreateChatClient(
     {
       apiKey: STREAM_API_KEY,
       userData: {
-        id: userDetail?.id, // only ID (backend controls name/image)
+        id: userDetail?.clerkId,
       },
       tokenOrProvider: async () => {
-        console.log("🔥 FETCHING TOKEN");
         return await getStreamToken(userDetail);
       },
     },
-    [userDetail?.id], // 👈 forces re-init when user changes
+    [userDetail?.clerkId],
   );
 
-  // ✅ Force disconnect old session when user changes
+  // ✅ Disconnect ONLY when user actually changes
   useEffect(() => {
-    if (!chatClient) return;
+    if (!chatClient || !userDetail?.clerkId) return;
 
-    const reset = async () => {
-      console.log("🔌 Disconnecting old user...");
-      await chatClient.disconnectUser();
-    };
-
-    reset();
-  }, [userDetail?.id]);
-
-  // ✅ Ready state
-  useEffect(() => {
-    if (chatClient) {
-      setClientReady(true);
+    if (prevUserId.current && prevUserId.current !== userDetail.clerkId) {
+      console.log("🔌 Switching users, disconnecting old one...");
+      chatClient.disconnectUser();
     }
-  }, [chatClient]);
 
-  if (!chatClient || !clientReady) {
+    prevUserId.current = userDetail.clerkId;
+  }, [userDetail?.clerkId, chatClient]);
+
+  if (!chatClient) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#0000ff" />
+        <ActivityIndicator size="large" />
       </View>
     );
   }

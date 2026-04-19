@@ -9,7 +9,13 @@ import {
   Dimensions,
   RefreshControl,
 } from "react-native";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import axios from "axios";
 import {
   useAnimatedStyle,
@@ -24,6 +30,8 @@ import Video from "react-native-video";
 import { io, Socket } from "socket.io-client";
 import { MediaViewerModal } from "@/app/components/posts/MediaViewModal";
 import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -42,8 +50,7 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-    const [loading, setLoading] = useState(true);
-  
+  const [loading, setLoading] = useState(true);
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -61,8 +68,6 @@ export default function ProfileScreen() {
     m.followers?.includes(userDetails?.clerkId),
   );
   const followingData = members.filter((m) => m.isFollowing);
-
-
 
   const getData = () => {
     if (activeTab === "posts") return mediaPosts;
@@ -91,7 +96,6 @@ export default function ProfileScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
-
     }
   }, [currentLevel, userDetails?.clerkId]);
 
@@ -99,14 +103,11 @@ export default function ProfileScreen() {
     fetchMedia();
   }, [fetchMedia]);
 
-const mediaPosts = useMemo(() => {
-  const result = posts.filter((p) => p.media?.length).flatMap((p) => p.media);
+  const mediaPosts = useMemo(() => {
+    const result = posts.filter((p) => p.media?.length).flatMap((p) => p.media);
 
-  console.log("🖼 mediaPosts computed:", result);
-
-  return result;
-}, [posts]);
-
+    return result;
+  }, [posts]);
 
   /* ---------------- REALTIME SOCKET ---------------- */
   useEffect(() => {
@@ -229,8 +230,8 @@ const mediaPosts = useMemo(() => {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <DrawerMenuButton />
-      {/* HEADER */}
       <View style={styles.header}>
+        {/* Avatar */}
         <Image
           source={{
             uri:
@@ -239,13 +240,42 @@ const mediaPosts = useMemo(() => {
           style={styles.avatar}
         />
 
+        {/* Name + Username */}
         <View style={styles.bio}>
           <Text style={[styles.name, { color: theme.text }]}>
-            {userDetails?.firstName}
+            {userDetails?.firstName} {userDetails?.lastName}
           </Text>
-          <Text style={styles.username}>@{userDetails?.nickName}</Text>
+          <Text style={[styles.username, { color: theme.subtext }]}>
+            {userDetails?.nickName}
+          </Text>
         </View>
 
+        {/* ACTION BUTTONS */}
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: theme.primary }]}
+            onPress={() => router.push("/(onboarding)/nameScreen")}
+          >
+            <Ionicons name="create-outline" size={16} color="#fff" />
+            <Text style={styles.primaryBtnText}>Edit Profile</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.secondaryBtn, { borderColor: theme.border }]}
+            onPress={() => console.log("Verify Account")}
+          >
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={16}
+              color={theme.text}
+            />
+            <Text style={[styles.secondaryBtnText, { color: theme.text }]}>
+              Verify
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* STATS */}
         <View style={styles.stats}>
           {["posts", "followers", "following"].map((tab) => (
             <TouchableOpacity
@@ -253,17 +283,22 @@ const mediaPosts = useMemo(() => {
               onPress={() => setActiveTab(tab as any)}
               style={styles.statItem}
             >
-              <Text style={styles.statNumber}>
+              <Text style={[styles.statNumber, { color: theme.text }]}>
                 {tab === "posts"
                   ? mediaPosts.length
                   : tab === "followers"
                     ? followersData.length
                     : followingData.length}
               </Text>
+
               <Text
                 style={[
                   styles.statLabel,
-                  activeTab === tab && styles.activeLabel,
+                  { color: theme.subtext },
+                  activeTab === tab && {
+                    color: theme.primary,
+                    fontWeight: "600",
+                  },
                 ]}
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -273,7 +308,6 @@ const mediaPosts = useMemo(() => {
         </View>
       </View>
 
-      {/* CONTENT */}
       <FlatList
         data={getData()}
         key={activeTab}
@@ -282,14 +316,6 @@ const mediaPosts = useMemo(() => {
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 140 }}
-              refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                    tintColor={theme.background}
-                    colors={[theme.text]}
-                  />
-                }
       />
 
       {/* MODAL */}
@@ -311,22 +337,89 @@ const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: 40 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-  header: { alignItems: "center", paddingHorizontal: 16 },
-  avatar: { width: 90, height: 90, borderRadius: 45 },
+  header: {
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
 
-  bio: { marginTop: 10, alignItems: "center" },
-  name: { fontWeight: "bold", fontSize: 16 },
-  username: { color: "#666" },
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginTop: 10,
+  },
+
+  bio: {
+    marginTop: 10,
+    alignItems: "center",
+  },
+
+  name: {
+    fontWeight: "700",
+    fontSize: 18,
+  },
+
+  username: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+
+  actionsRow: {
+    flexDirection: "row",
+    marginTop: 14,
+    gap: 10,
+  },
+
+  primaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    gap: 6,
+  },
+
+  primaryBtnText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+
+  secondaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+  },
+
+  secondaryBtnText: {
+    fontWeight: "500",
+  },
 
   stats: {
     flexDirection: "row",
     justifyContent: "space-around",
     width: "100%",
-    marginTop: 12,
+    marginTop: 18,
   },
-  statItem: { alignItems: "center" },
-  statNumber: { fontSize: 18, fontWeight: "bold" },
-  statLabel: { fontSize: 12, color: "#666" },
+
+  statItem: {
+    alignItems: "center",
+  },
+
+  statNumber: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+
+  statLabel: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+
   activeLabel: { color: "#1DA1F2", fontWeight: "bold" },
 
   postImage: {

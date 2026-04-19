@@ -30,6 +30,8 @@ import Video from "react-native-video";
 import { io, Socket } from "socket.io-client";
 import { MediaViewerModal } from "@/app/components/posts/MediaViewModal";
 import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -94,7 +96,6 @@ export default function ProfileScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
-
     }
   }, [currentLevel, userDetails?.clerkId]);
 
@@ -227,53 +228,85 @@ export default function ProfileScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <DrawerMenuButton />
-      {/* HEADER */}
-      <View style={styles.header}>
-        <Image
-          source={{
-            uri:
-              userDetails?.image?.trim() || "https://i.pravatar.cc/150?img=32",
-          }}
-          style={styles.avatar}
-        />
+    <View style={styles.header}>
+      {/* Avatar */}
+      <Image
+        source={{
+          uri: userDetails?.image?.trim() || "https://i.pravatar.cc/150?img=32",
+        }}
+        style={styles.avatar}
+      />
 
-        <View style={styles.bio}>
-          <Text style={[styles.name, { color: theme.text }]}>
-            {userDetails?.firstName}
-          </Text>
-          <Text style={styles.username}>@{userDetails?.nickName}</Text>
-        </View>
-
-        <View style={styles.stats}>
-          {["posts", "followers", "following"].map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              onPress={() => setActiveTab(tab as any)}
-              style={styles.statItem}
-            >
-              <Text style={styles.statNumber}>
-                {tab === "posts"
-                  ? mediaPosts.length
-                  : tab === "followers"
-                    ? followersData.length
-                    : followingData.length}
-              </Text>
-              <Text
-                style={[
-                  styles.statLabel,
-                  activeTab === tab && styles.activeLabel,
-                ]}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+      {/* Name + Username */}
+      <View style={styles.bio}>
+        <Text style={[styles.name, { color: theme.text }]}>
+          {userDetails?.firstName} {userDetails?.lastName}
+        </Text>
+        <Text style={[styles.username, { color: theme.subtext }]}>
+          {userDetails?.nickName}
+        </Text>
       </View>
 
-      {/* CONTENT */}
+      {/* ACTION BUTTONS */}
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={[styles.primaryBtn, { backgroundColor: theme.primary }]}
+          onPress={() => router.push("/(onboarding)/nameScreen")}
+        >
+          <Ionicons name="create-outline" size={16} color="#fff" />
+          <Text style={styles.primaryBtnText}>Edit Profile</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.secondaryBtn, { borderColor: theme.border }]}
+          onPress={() => console.log("Verify Account")}
+        >
+          <Ionicons
+            name="shield-checkmark-outline"
+            size={16}
+            color={theme.text}
+          />
+          <Text style={[styles.secondaryBtnText, { color: theme.text }]}>
+            Verify
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* STATS */}
+      <View style={styles.stats}>
+        {["posts", "followers", "following"].map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            onPress={() => setActiveTab(tab as any)}
+            style={styles.statItem}
+          >
+            <Text style={[styles.statNumber, { color: theme.text }]}>
+              {tab === "posts"
+                ? mediaPosts.length
+                : tab === "followers"
+                  ? followersData.length
+                  : followingData.length}
+            </Text>
+
+            <Text
+              style={[
+                styles.statLabel,
+                { color: theme.subtext },
+                activeTab === tab && {
+                  color: theme.primary,
+                  fontWeight: "600",
+                },
+              ]}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+       </View>
+
       <FlatList
         data={getData()}
         key={activeTab}
@@ -282,14 +315,6 @@ export default function ProfileScreen() {
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 140 }}
-               refreshControl={
-                          <RefreshControl
-                            refreshing={refreshing}
-                            onRefresh={onRefresh}
-                            tintColor={theme.background}
-                            colors={[theme.text]}
-                          />
-                        }
       />
 
       {/* MODAL */}
@@ -302,7 +327,7 @@ export default function ProfileScreen() {
         pinchGesture={pinchGesture}
         pinchStyle={pinchStyle}
       />
-    </View>
+ </View>
   );
 }
 
@@ -311,22 +336,89 @@ const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: 40 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-  header: { alignItems: "center", paddingHorizontal: 16 },
-  avatar: { width: 90, height: 90, borderRadius: 45 },
+  header: {
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
 
-  bio: { marginTop: 10, alignItems: "center" },
-  name: { fontWeight: "bold", fontSize: 16 },
-  username: { color: "#666" },
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginTop: 10,
+  },
+
+  bio: {
+    marginTop: 10,
+    alignItems: "center",
+  },
+
+  name: {
+    fontWeight: "700",
+    fontSize: 18,
+  },
+
+  username: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+
+  actionsRow: {
+    flexDirection: "row",
+    marginTop: 14,
+    gap: 10,
+  },
+
+  primaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    gap: 6,
+  },
+
+  primaryBtnText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+
+  secondaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+  },
+
+  secondaryBtnText: {
+    fontWeight: "500",
+  },
 
   stats: {
     flexDirection: "row",
     justifyContent: "space-around",
     width: "100%",
-    marginTop: 12,
+    marginTop: 18,
   },
-  statItem: { alignItems: "center" },
-  statNumber: { fontSize: 18, fontWeight: "bold" },
-  statLabel: { fontSize: 12, color: "#666" },
+
+  statItem: {
+    alignItems: "center",
+  },
+
+  statNumber: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+
+  statLabel: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+
   activeLabel: { color: "#1DA1F2", fontWeight: "bold" },
 
   postImage: {

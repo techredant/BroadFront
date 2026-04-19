@@ -1,6 +1,4 @@
-
 import { EmptyState } from "@/app/components/EmptyState";
-import { FullScreenLoader } from "@/app/components/FullScreenLoader";
 import { useAppContext } from "@/contexts/AppProvider";
 import { COLORS } from "@/lib/theme";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,7 +6,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { Image } from "expo-image";
 import { useNavigation, useRouter } from "expo-router";
 import { useLayoutEffect } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Channel,
@@ -98,7 +96,12 @@ const ChannelScreen = () => {
     });
   }, [navigation, displayName, avatarUrl, channel?.cid, channel?.id, router]);
 
-  if (!channel) return <FullScreenLoader message="Loading  room..." />;
+  if (!channel)
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#0000ff" />
+      </View>
+    );
 
   return (
     <SafeAreaView className=" bg-border" edges={["bottom"]}>

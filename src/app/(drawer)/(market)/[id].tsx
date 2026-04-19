@@ -95,7 +95,7 @@ export default function ProductDetail() {
           backgroundColor: theme.background,
         }}
       >
-        <ActivityIndicator size="large" color={theme.primary} />
+        <ActivityIndicator size="small" color={theme.primary} />
       </SafeAreaView>
     );
   }
@@ -133,7 +133,8 @@ export default function ProductDetail() {
       setChannel(channel); // 🔥 THIS IS WHAT YOU'RE MISSING
 
       await channel.sendMessage({
-        text: `${product.title}\nPrice: KES ${product.price.toLocaleString("en-KE")}`,
+        text: `${product.title}\nPrice: KES ${product.price.toLocaleString("en-KE")}
+        View product: https://yourapp.com/product/${product._id}`,
         attachments: [
           {
             type: "image",
@@ -147,12 +148,6 @@ export default function ProductDetail() {
       console.error("❌ Failed to start chat:", err);
     }
   };
-  // const { handleStartChat } = useStartChat({
-  //   client,
-  //   userId,
-  //   setChannel,
-  //   setCreating,
-  // });
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
@@ -171,7 +166,7 @@ export default function ProductDetail() {
         }}
       >
         <TouchableOpacity
-          onPress={() => router.push("/")}
+          onPress={() => router.push("/(drawer)/(market)")}
           style={{ position: "absolute", left: 16 }}
         >
           <Ionicons name="arrow-back" size={28} color={theme.subtext} />
