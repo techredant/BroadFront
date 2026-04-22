@@ -22,17 +22,27 @@ const ChatsScreen = () => {
 
   const firstName = userDetails?.firstName || "there";
 
-  const channelRenderFilterFn = (channels: Channel[]) => {
-    if (!search.trim()) return channels;
+const channelRenderFilterFn = (channels: Channel[]) => {
+  if (!search.trim()) return channels;
 
-    const q = search.toLowerCase();
+  const q = search.toLowerCase();
 
-    return channels.filter((channel) => {
-      const name = (channel.data?.name as string | undefined)?.toLowerCase() ?? "";
-      const cid = channel.cid.toLowerCase();
-      return name.includes(q) || cid.includes(q);
+  return channels.filter((channel) => {
+    const members = Object.values(channel.state.members);
+
+    // exclude current user
+    const otherMembers = members.filter(
+      (m) => m.user?.id !== userDetails?.clerkId,
+    );
+
+    return otherMembers.some((m) => {
+      const name = (m.user?.name || "").toLowerCase();
+      const id = (m.user?.id || "").toLowerCase();
+
+      return name.includes(q) || id.includes(q);
     });
-  };
+  });
+};
 
   return (
     <SafeAreaView className="flex-1 bg-background">

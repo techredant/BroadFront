@@ -49,7 +49,6 @@ export default function StreamTabsLayout() {
             ),
           }}
         />
-
         {/* Explore tab */}
         <Tabs.Screen
           name="explore"
@@ -60,7 +59,6 @@ export default function StreamTabsLayout() {
             ),
           }}
         />
-
         {/* Profile tab */}
         <Tabs.Screen
           name="profile"

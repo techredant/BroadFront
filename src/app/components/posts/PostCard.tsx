@@ -402,7 +402,8 @@ export function PostCard({
   };
 
   const isOwner = userDetails?.clerkId === postCard.userId;
-  const { members, currentUserId, toggleFollow } = useUserContext();
+ 
+
   return (
     <>
       {/* RECAST BANNER */}
@@ -1127,14 +1128,3 @@ export function PostCard({
   );
 }
 
-const styles = StyleSheet.create({
-  followText: {
-    color: "blue",
-    fontWeight: "bold",
-  },
-
-  unfollowText: {
-    color: "red",
-    fontWeight: "bold",
-  },
-});

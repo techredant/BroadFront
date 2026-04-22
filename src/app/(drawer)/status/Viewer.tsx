@@ -35,7 +35,7 @@ export default function StatusViewer() {
   const [currentStatusIndex, setCurrentStatusIndex] = useState(0);
 
   const currentUser = grouped[currentUserIndex] as any;
-  const currentStatus = currentUser.statuses[currentStatusIndex];
+  const currentStatus = currentUser?.statuses[currentStatusIndex];
 
   // ⏱ auto advance
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function StatusViewer() {
   }, [currentStatusIndex, currentUserIndex]);
 
   function nextStatus() {
-    if (currentStatusIndex < currentUser.statuses.length - 1) {
+    if (currentStatusIndex < currentUser?.statuses?.length - 1) {
       setCurrentStatusIndex((i) => i + 1);
     } else if (currentUserIndex < grouped.length - 1) {
       setCurrentUserIndex((i) => i + 1);
@@ -60,7 +60,7 @@ export default function StatusViewer() {
     } else if (currentUserIndex > 0) {
       const prevUser = grouped[currentUserIndex - 1] as any;
       setCurrentUserIndex((i) => i - 1);
-      setCurrentStatusIndex(prevUser.statuses.length - 1);
+      setCurrentStatusIndex(prevUser?.statuses.length - 1);
     }
   }
 
@@ -68,7 +68,7 @@ export default function StatusViewer() {
     <View style={{ flex: 1, backgroundColor: "#000" }}>
       {/* Progress bars */}
       <View style={{ flexDirection: "row", padding: 8, gap: 4 }}>
-        {currentUser.statuses.map((_: any, i: number) => (
+        {currentUser?.statuses.map((_: any, i: number) => (
           <View
             key={i}
             style={{
@@ -83,32 +83,32 @@ export default function StatusViewer() {
 
       {/* Content */}
       <View style={{ flex: 1, justifyContent: "center" }}>
-        {currentStatus.content.type === "image" && (
+        {currentStatus?.content.type === "image" && (
           <Image
-            source={{ uri: currentStatus.content.url }}
+            source={{ uri: currentStatus?.content.url }}
             style={{ width: "100%", height: "100%" }}
             resizeMode="cover"
           />
         )}
 
-        {currentStatus.content.type === "video" && (
+        {currentStatus?.content.type === "video" && (
           <Video
-            source={{ uri: currentStatus.content.url }}
+            source={{ uri: currentStatus?.content.url }}
             style={{ width: "100%", height: "100%" }}
           />
         )}
 
-        {currentStatus.content.type === "text" && (
+        {currentStatus?.content.type === "text" && (
           <View
             style={{
               flex: 1,
               justifyContent: "center",
               alignItems: "center",
-              backgroundColor: currentStatus.content.background,
+              backgroundColor: currentStatus?.content.background,
             }}
           >
             <Text style={{ color: "#fff", fontSize: 22, padding: 24 }}>
-              {currentStatus.content.text}
+              {currentStatus?.content.text}
             </Text>
           </View>
         )}

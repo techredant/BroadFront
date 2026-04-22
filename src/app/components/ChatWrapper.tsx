@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Chat, OverlayProvider, useCreateChatClient } from "stream-chat-expo";
 import { studyBuddyTheme } from "@/lib/theme";
 import { ActivityIndicator, View } from "react-native";
+import { useTheme } from "@/context/ThemeContext";
 
 const API_URL = "https://cast-api-zeta.vercel.app";
 const STREAM_API_KEY = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
@@ -38,12 +39,15 @@ type ChatWrapperProps = {
 
 export const ChatWrapper = ({ userDetail, children }: ChatWrapperProps) => {
   const prevUserId = useRef<string | null>(null);
-
+  
+const { theme } = useTheme()
   const chatClient = useCreateChatClient(
     {
       apiKey: STREAM_API_KEY,
       userData: {
         id: userDetail?.clerkId,
+        name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""}`.trim(),
+        image: userDetail?.imageUrl,
       },
       tokenOrProvider: async () => {
         return await getStreamToken(userDetail);
@@ -66,8 +70,8 @@ export const ChatWrapper = ({ userDetail, children }: ChatWrapperProps) => {
 
   if (!chatClient) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: theme.background }}>
+        <ActivityIndicator size={"small"} color={theme.text}/>
       </View>
     );
   }

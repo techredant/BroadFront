@@ -2,7 +2,7 @@
   "expo": {
     "name": "Broadcast",
     "slug": "broadcast",
-    "version": "2.1.31",
+    "version": "2.1.33",
     "orientation": "portrait",
     "icon": "./assets/images/icon.jpg",
     "scheme": "broadcast",
@@ -34,10 +34,12 @@
         "android.permission.INTERNET",
         "android.permission.SYSTEM_ALERT_WINDOW"
       ],
-      "package": "com.ant_apps.BroadCast"
+      "package": "com.ant_apps.BroadCast",
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
       "expo-router",
+      "expo-notifications",
       [
         "expo-image-picker",
         {
@@ -86,8 +88,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "9929f51f-a057-443d-95cc-661788d4f118"
+        "projectId": "e693fdcd-e810-4cf4-ae07-e5218d8032c1"
       }
-    }
+    },
+    "owner": "redant-technologies"
   }
 }

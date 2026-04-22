@@ -7,7 +7,6 @@ import {
   Image,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
   StatusBar,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -155,6 +154,7 @@ export default function InputScreen() {
   /* =======================
        POST HANDLER
     ======================= */
+    
   const handlePost = async (
     postType: "normal" | "recasted" | "recited" = "normal",
     originalPostId?: string,
@@ -166,7 +166,6 @@ export default function InputScreen() {
     //   return setPostError("Please add a caption or media before posting.");
 
     setLoading(true);
-
     try {
       // Upload media
       const uploadedUrls: string[] = [];
@@ -205,6 +204,7 @@ export default function InputScreen() {
         type: postType,
         contentType: uploadedUrls?.length ? "media" : "text", // ✅ ADD THIS
         originalPostId: originalPostId || null,
+
       };
 
       const res = await axios.post(

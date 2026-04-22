@@ -5,8 +5,11 @@ import {
 import { AndroidImportance } from "@notifee/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { tokenProvider } from "./tokenProvider";
+import { useUser } from "@clerk/clerk-expo";
+import { useLevel } from "@/context/LevelContext";
 
 export function setPushConfig() {
+  const { userDetails } = useLevel();
   StreamVideoRN.setPushConfig({
     // pass true to inform the SDK that this is an expo app
     isExpo: true,
@@ -54,7 +57,11 @@ export function setPushConfig() {
       //if (!userId) return undefined;
       // an example promise to fetch token from your server
       // const tokenProvider = () => yourServer.getTokenForUser(userId).then((auth) => auth.token);
-      const user = { id: "77a38478-66aa-41d5-bee4-cee75785a189" };
+      const user = {
+        id: userDetails?.clerkId,
+        name: `${userDetails?.firstName ?? ""} ${userDetails?.lastName ?? ""} ${userDetails?.nickName ?? ""}`.trim(),
+        image: userDetails?.imageUrl,
+      };
       return new StreamVideoClient({
         apiKey: process.env.EXPO_PUBLIC_STREAM_API_KEY!, // pass your stream api key
         user,

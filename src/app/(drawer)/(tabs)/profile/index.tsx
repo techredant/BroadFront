@@ -47,6 +47,8 @@ export default function ProfileScreen() {
   const { theme } = useTheme();
 
   const [posts, setPosts] = useState<any[]>([]);
+  const [followers, setFollowers] = useState<any[]>([]);
+
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -63,17 +65,69 @@ export default function ProfileScreen() {
     setModalVisible(true);
   };
 
-  /* ---------------- FOLLOW DATA ---------------- */
-  const followersData = members.filter((m) =>
-    m.followers?.includes(userDetails?.clerkId),
-  );
   const followingData = members.filter((m) => m.isFollowing);
 
   const getData = () => {
     if (activeTab === "posts") return mediaPosts;
-    if (activeTab === "followers") return followersData;
+    if (activeTab === "followers") return followers;
     if (activeTab === "following") return followingData;
     return [];
+  };
+
+  /* ---------------- FETCH POSTS ---------------- */
+  // Fetch Followers
+  useEffect(() => {
+    const fetchFollowers = async () => {
+      try {
+        const res = await axios.get(
+          `${BASE_URL}/api/users/${userDetails.clerkId}`,
+        );
+
+        const followerIds: string[] = res.data.followers || [];
+
+        // 🔥 Fetch full user objects
+        const users = await Promise.all(
+          followerIds.map((id) => axios.get(`${BASE_URL}/api/users/${id}`)),
+        );
+
+        const formatted = users.map((u) => ({
+          ...u.data,
+          isFollowing: followers.some((m) => m.clerkId === u.data.clerkId),
+        }));
+
+        setFollowers(formatted);
+      } catch (err) {
+        console.error("❌ Error fetching followers:", err);
+      }
+    };
+
+    if (userDetails?.clerkId) {
+      fetchFollowers();
+    }
+  }, [userDetails?.clerkId]);
+
+  const handleFollowToggle = async (user: any) => {
+    // 🔥 Optimistic update (instant UI change)
+    setFollowers((prev) =>
+      prev.map((f) =>
+        f.clerkId === user.clerkId ? { ...f, isFollowing: !f.isFollowing } : f,
+      ),
+    );
+
+    try {
+      await toggleFollow(user);
+    } catch (err) {
+      console.error("❌ Failed:", err);
+
+      // ❌ rollback if API fails
+      setFollowers((prev) =>
+        prev.map((f) =>
+          f.clerkId === user.clerkId
+            ? { ...f, isFollowing: !f.isFollowing }
+            : f,
+        ),
+      );
+    }
   };
 
   /* ---------------- FETCH POSTS ---------------- */
@@ -162,7 +216,7 @@ export default function ProfileScreen() {
     fetchMedia();
   };
 
-  if (isLoadingUser) {
+  if (isLoadingUser || loading) {
     return (
       <View style={styles.center}>
         <Text>Loading profile...</Text>
@@ -196,116 +250,142 @@ export default function ProfileScreen() {
       <View style={[styles.userRow, { backgroundColor: theme.background }]}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Image source={{ uri: item?.image }} style={styles.userAvatar} />
-          <Text style={styles.userName}>
-            {item.firstName
-              ? `${item.firstName} ${item.lastName}`
-              : item.companyName}
-          </Text>
+          <View>
+            <Text style={styles.userName}>
+              {item.firstName
+                ? `${item.firstName} ${item.lastName}`
+                : item.companyName}
+            </Text>
+            <Text>{item.nickName}</Text>
+          </View>
         </View>
-
-        <TouchableOpacity
-          onPress={() => toggleFollow(item)}
-          style={[
-            styles.followButton,
-            {
-              backgroundColor: item.isFollowing ? "#fff" : "#1DA1F2",
-              borderWidth: item.isFollowing ? 1 : 0,
-              borderColor: "#1DA1F2",
-            },
-          ]}
-        >
-          <Text
-            style={{
-              color: item.isFollowing ? "#1DA1F2" : "#fff",
-              fontWeight: "bold",
-            }}
+        {followers ? (
+          <TouchableOpacity
+            onPress={() => handleFollowToggle(item)}
+            style={[
+              styles.followButton,
+              {
+                backgroundColor: item.isFollowing ? "transparent" : "#1DA1F2",
+                borderWidth: 1,
+                borderColor: "#1DA1F2",
+              },
+            ]}
           >
-            {item.isFollowing ? "Unfollow" : "Follow"}
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={{
+                color: item.isFollowing ? "#1DA1F2" : "#fff",
+                fontWeight: "bold",
+              }}
+            >
+              {item.isFollowing ? "Unfollow" : "Follow"}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={() => toggleFollow(item)}
+            style={[
+              styles.followButton,
+              {
+                backgroundColor: item.isFollowing ? "transparent" : "#1DA1F2",
+                borderWidth: 1,
+                borderColor: "#1DA1F2",
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: item.isFollowing ? "#1DA1F2" : "#fff",
+                fontWeight: "bold",
+              }}
+            >
+              {item.isFollowing ? "unFollow" : "Follow"}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
 
   return (
-     <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <DrawerMenuButton />
-    <View style={styles.header}>
-      {/* Avatar */}
-      <Image
-        source={{
-          uri: userDetails?.image?.trim() || "https://i.pravatar.cc/150?img=32",
-        }}
-        style={styles.avatar}
-      />
+      <View style={styles.header}>
+        {/* Avatar */}
+        <Image
+          source={{
+            uri:
+              userDetails?.image?.trim() || "https://i.pravatar.cc/150?img=32",
+          }}
+          style={styles.avatar}
+        />
 
-      {/* Name + Username */}
-      <View style={styles.bio}>
-        <Text style={[styles.name, { color: theme.text }]}>
-          {userDetails?.firstName} {userDetails?.lastName}
-        </Text>
-        <Text style={[styles.username, { color: theme.subtext }]}>
-          {userDetails?.nickName}
-        </Text>
-      </View>
-
-      {/* ACTION BUTTONS */}
-      <View style={styles.actionsRow}>
-        <TouchableOpacity
-          style={[styles.primaryBtn, { backgroundColor: theme.primary }]}
-          onPress={() => router.push("/(onboarding)/nameScreen")}
-        >
-          <Ionicons name="create-outline" size={16} color="#fff" />
-          <Text style={styles.primaryBtnText}>Edit Profile</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.secondaryBtn, { borderColor: theme.border }]}
-          onPress={() => console.log("Verify Account")}
-        >
-          <Ionicons
-            name="shield-checkmark-outline"
-            size={16}
-            color={theme.text}
-          />
-          <Text style={[styles.secondaryBtnText, { color: theme.text }]}>
-            Verify
+        {/* Name + Username */}
+        <View style={styles.bio}>
+          <Text style={[styles.name, { color: theme.text }]}>
+            {userDetails?.firstName} {userDetails?.lastName}
           </Text>
-        </TouchableOpacity>
-      </View>
+          <Text style={[styles.username, { color: theme.subtext }]}>
+            {userDetails?.nickName}
+          </Text>
+        </View>
 
-      {/* STATS */}
-      <View style={styles.stats}>
-        {["posts", "followers", "following"].map((tab) => (
+        {/* ACTION BUTTONS */}
+        <View style={styles.actionsRow}>
           <TouchableOpacity
-            key={tab}
-            onPress={() => setActiveTab(tab as any)}
-            style={styles.statItem}
+            style={[styles.primaryBtn, { backgroundColor: theme.primary }]}
+            onPress={() => router.push("/(onboarding)/nameScreen")}
           >
-            <Text style={[styles.statNumber, { color: theme.text }]}>
-              {tab === "posts"
-                ? mediaPosts.length
-                : tab === "followers"
-                  ? followersData.length
-                  : followingData.length}
-            </Text>
+            <Ionicons name="create-outline" size={16} color="#fff" />
+            <Text style={styles.primaryBtnText}>Edit Profile</Text>
+          </TouchableOpacity>
 
-            <Text
-              style={[
-                styles.statLabel,
-                { color: theme.subtext },
-                activeTab === tab && {
-                  color: theme.primary,
-                  fontWeight: "600",
-                },
-              ]}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          <TouchableOpacity
+            style={[styles.secondaryBtn, { borderColor: theme.border }]}
+            onPress={() => console.log("Verify Account")}
+          >
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={16}
+              color={theme.text}
+            />
+            <Text style={[styles.secondaryBtnText, { color: theme.text }]}>
+              Verify
             </Text>
           </TouchableOpacity>
-        ))}
+        </View>
+
+        {/* STATS */}
+        <View style={styles.stats}>
+          {["posts", "followers", "following"].map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              onPress={() => setActiveTab(tab as any)}
+              style={styles.statItem}
+            >
+              <Text style={[styles.statNumber, { color: theme.text }]}>
+                {tab === "posts"
+                  ? mediaPosts.length
+                  : tab === "followers"
+                    ? followers.length
+                    : followingData.length}
+              </Text>
+
+              <Text
+                style={[
+                  styles.statLabel,
+                  { color: theme.subtext },
+                  activeTab === tab && {
+                    color: theme.primary,
+                    fontWeight: "600",
+                  },
+                ]}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
-       </View>
 
       <FlatList
         data={getData()}
@@ -315,6 +395,14 @@ export default function ProfileScreen() {
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 140 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.background}
+            colors={[theme.text]}
+          />
+        }
       />
 
       {/* MODAL */}
@@ -327,7 +415,7 @@ export default function ProfileScreen() {
         pinchGesture={pinchGesture}
         pinchStyle={pinchStyle}
       />
- </View>
+    </View>
   );
 }
 

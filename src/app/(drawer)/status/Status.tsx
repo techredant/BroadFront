@@ -26,7 +26,7 @@ export function Status({ statuses }: { statuses: Status[] }) {
         };
       }
 
-      acc[key].statuses.push(status);
+      acc[key]?.statuses.push(status);
       return acc;
     }, {}),
   );

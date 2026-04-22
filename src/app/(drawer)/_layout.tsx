@@ -145,6 +145,16 @@ export default function DrawerLayout() {
       />
 
       <Drawer.Screen
+        name="trend"
+        options={{
+          drawerLabel: "Trends",
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="flame-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
         name="(stream)"
         options={{
           drawerLabel: "Chat",
@@ -157,6 +167,17 @@ export default function DrawerLayout() {
           ),
         }}
       />
+
+      <Drawer.Screen
+        name="status"
+        options={{
+          drawerLabel: "Status",
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="time-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
       <Drawer.Screen
         name="(market)"
         options={{

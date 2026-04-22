@@ -1,7 +1,7 @@
 {
   "name": "broadcast",
   "main": "expo-router/entry",
-  "version": "2.1.31",
+  "version": "2.1.33",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -13,7 +13,7 @@
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.23",
     "@config-plugins/react-native-webrtc": "^13.0.0",
-    "@expo/config-plugins": "^55.0.8",
+    "@expo/config-plugins": "~54.0.4",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/netinfo": "11.4.1",
@@ -41,6 +41,7 @@
     "expo-image-picker": "~17.0.10",
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.11",
+    "expo-notifications": "~0.32.16",
     "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
     "expo-splash-screen": "~31.0.13",

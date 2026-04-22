@@ -12,6 +12,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { LevelProvider } from "@/context/LevelContext";
 import { UserOnboardingProvider } from "@/context/UserOnBoardingContext";
 import { UserProvider } from "@/context/FollowContext";
+import { NotificationProvider } from "@/context/notification";
 
 export default function RootLayout() {
   return (
@@ -80,10 +81,12 @@ function RootInnerLayout() {
   if (!isLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#0000ff" />
+        <ActivityIndicator size="small" color="#0000ff" />
       </View>
     );
   }
+
+  
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -94,9 +97,11 @@ function RootInnerLayout() {
             {isSignedIn ? (
               <UserProvider currentUserId={user!.id}>
                 <MenuProvider>
-                  <AppProvider>
-                    <Stack screenOptions={{ headerShown: false }} />
-                  </AppProvider>
+                  <NotificationProvider>
+                    <AppProvider>
+                      <Stack screenOptions={{ headerShown: false }} />
+                    </AppProvider>
+                  </NotificationProvider>
                 </MenuProvider>
               </UserProvider>
             ) : (

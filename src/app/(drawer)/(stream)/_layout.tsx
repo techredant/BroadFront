@@ -9,7 +9,7 @@ export default function stream_layout() {
   const { userDetails } = useLevel();
   return (
     <ChatWrapper userDetail={userDetails!}>
-      <VideoProvider>
+      <VideoProvider userDetail={userDetails!}>
         <Stack screenOptions={{ headerShown: false }} />
       </VideoProvider>
     </ChatWrapper>

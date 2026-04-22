@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import axios from "axios";
 import io, { Socket } from "socket.io-client";
-import { Status } from "@/app/status/Status";
+import { Status } from "@/app/(drawer)/status/Status";
 import { useFocusEffect } from "expo-router";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { LoaderKitView } from "react-native-loader-kit";
@@ -115,6 +115,7 @@ const onRefresh = useCallback(() => {
       setPosts((prev) =>
         prev.map((p) => (p._id === updatedPost._id ? updatedPost : p)),
       );
+      
     });
 
     return () => {

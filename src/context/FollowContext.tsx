@@ -104,11 +104,34 @@ const toggleFollow = async (user: User) => {
   const action = user.isFollowing ? "unfollow" : "follow";
 
   // 🔥 OPTIMISTIC UPDATE
-  setMembers((prev) =>
-    prev.map((u) =>
-      u.clerkId === user.clerkId ? { ...u, isFollowing: !u.isFollowing } : u,
-    ),
-  );
+setMembers((prev) =>
+  prev.map((u) => {
+    if (u.clerkId === user.clerkId) {
+      // toggle following state for current user
+      return { ...u, isFollowing: !u.isFollowing };
+    }
+
+    if (u.clerkId === currentUserId) {
+      // update current user's following list
+      const updatedFollowing = user.isFollowing
+        ? u.following?.filter((id) => id !== user.clerkId)
+        : [...(u.following || []), user.clerkId];
+
+      return { ...u, following: updatedFollowing };
+    }
+
+    // 👇 THIS is the missing piece for followers
+    if (u.clerkId === user.clerkId) {
+      const updatedFollowers = user.isFollowing
+        ? u.followers.filter((id) => id !== currentUserId)
+        : [...u.followers, currentUserId];
+
+      return { ...u, followers: updatedFollowers };
+    }
+
+    return u;
+  }),
+);
 
   // optional: update suggestions too
   setSuggestions((prev) =>
@@ -124,6 +147,9 @@ const toggleFollow = async (user: User) => {
       `${BASE_URL}/${currentUserId}/follow-action/${user.clerkId}?action=${action}`,
     );
 
+  
+
+    
     // ❌ NO refetch anymore
   } catch (err) {
     console.error(err);

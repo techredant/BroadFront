@@ -21,6 +21,7 @@ import { useRouter } from "expo-router";
 import { useTheme } from "@/context/ThemeContext";
 import { useUserOnboarding } from "@/context/UserOnBoardingContext";
 import { useLevel } from "@/context/LevelContext";
+import { registerForPushNotificationsAsync } from "@/utils/notification";
 
 const accountOptions = [
   "Personal Account",
@@ -77,6 +78,7 @@ const NamesScreen = () => {
     }
   };
 
+
   // Validate form fields
   const validateFields = () => {
     const newErrors = {
@@ -115,6 +117,7 @@ const NamesScreen = () => {
     setErrors(newErrors);
     return valid;
   };
+
 
   // Fetch existing user (for editing)
   useEffect(() => {
@@ -169,6 +172,9 @@ const NamesScreen = () => {
         payload,
         { timeout: 10000 }, // prevent hanging
       );
+
+      
+
 
       if (!res.data?.success) {
         setErrors((prev) => ({
@@ -261,7 +267,9 @@ const NamesScreen = () => {
               paddingHorizontal: 12,
               paddingVertical: 10,
               marginBottom: 10,
+              opacity: isEditing ? 0.6 : 1,
             }}
+            disable={isEditing} // 🔥 THIS IS THE REAL FIX
             data={accountOptions.map((item) => ({
               label: item,
               value: item,

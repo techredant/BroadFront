@@ -18,6 +18,7 @@ export default function LocationSelection() {
   const [selectedWard, setSelectedWard] = useState(null);
   const [loading, setLoading] = useState(false);
 
+
   // Derived data
   const constituencies = useMemo(() => {
     if (!selectedCounty) return [];
@@ -54,6 +55,7 @@ export default function LocationSelection() {
           onboardingComplete: true,
         },
       });
+
 
       router.replace("/(drawer)/(tabs)");
     } catch (err) {

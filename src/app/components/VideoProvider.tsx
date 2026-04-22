@@ -1,98 +1,141 @@
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "@/lib/theme";
 import { useUser } from "@clerk/clerk-expo";
 import type { Call } from "@stream-io/video-react-native-sdk";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
+const API_URL = "https://cast-api-zeta.vercel.app";
+const STREAM_API_KEY = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
+
+// 🔐 Token provider
+async function getStreamToken(userDetail: any) {
+  const res = await fetch(`${API_URL}/api/stream/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: userDetail?.clerkId,
+      name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""}`.trim(),
+      image: userDetail?.imageUrl,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Token fetch failed: ${res.status}`);
+  }
+
+  const data = await res.json();
+
+  if (!data.token) {
+    throw new Error("No token returned from backend");
+  }
+
+  return data.token;
+}
+
+// SDK safe import (Expo Go protection)
 let StreamVideo: any = null;
 let StreamVideoClient: any = null;
 let useCalls: any = null;
 let StreamCall: any = null;
 let RingingCallContent: any = null;
 
-// we require it inside try-catch so the app keeps working when the SDK isn’t there.
-// i.e. in Expo Go this is not available - so instead of crashing, we just don't show the video features.
 try {
   const sdk = require("@stream-io/video-react-native-sdk");
-  StreamVideo = sdk.StreamVideo;
   StreamVideo = sdk.StreamVideo;
   StreamVideoClient = sdk.StreamVideoClient;
   useCalls = sdk.useCalls;
   StreamCall = sdk.StreamCall;
   RingingCallContent = sdk.RingingCallContent;
-} catch (error) {
-  console.log("Error while importing @stream-io/video-react-native-sdk", error);
-  // native module not available (e.g. Expo Go) — video will be disabled
+} catch (e) {
+  console.log("Video SDK not available");
 }
-const API_URL = "https://cast-api-zeta.vercel.app";
 
-// double bang operator
 const sdkAvailable = !!StreamVideoClient && !!StreamVideo;
-const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
 
-/* listens for incoming ringing calls globally and shows the ringing UI. only mounted when useCalls is available. */
+type VideoWrapperProps = {
+  userDetail: any;
+  children: React.ReactNode;
+};
+
+// 🔔 Incoming calls UI
 function RingingCalls() {
-  const calls = useCalls().filter((c: Call) => c.ringing);
-  const ringingCalls = calls[0];
+  if (!useCalls) return null;
 
-  if (!ringingCalls) return null;
+  const calls = useCalls().filter((c: Call) => c.ringing);
+  const ringingCall = calls?.[0];
+
+  if (!ringingCall) return null;
 
   return (
-    <StreamCall call={ringingCalls}>
-      <SafeAreaView style={StyleSheet.absoluteFill}>
+    <StreamCall call={ringingCall}>
+      <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
         <RingingCallContent />
       </SafeAreaView>
     </StreamCall>
   );
 }
 
-const VideoProvider = ({ children }: { children: React.ReactNode }) => {
-  const [videoClient, setVideoClient] = useState<any>(null);
+const VideoProvider = ({ userDetail, children }: VideoWrapperProps) => {
   const { user, isLoaded } = useUser();
 
-  useEffect(() => {
-    if (!sdkAvailable || !isLoaded || !user) return;
+  const prevUserId = useRef<string | null>(null);
+  const [videoClient, setVideoClient] = useState<any>(null);
 
-    const tokenProvider = async () => {
-      const response = await fetch(`${API_URL}/api/stream/token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
+  useEffect(() => {
+    if (!sdkAvailable || !isLoaded || !user || !userDetail) return;
+
+    const initClient = async () => {
+      const client = StreamVideoClient.getOrCreateInstance({
+        apiKey: STREAM_API_KEY,
+
+        user: {
+          id: userDetail.clerkId,
+          name: `${userDetail.firstName ?? ""} ${userDetail.lastName ?? ""} ${userDetail.nickName ?? ""}`.trim(),
+          image: userDetail.imageUrl,
+        },
+
+        tokenProvider: async () => {
+          return await getStreamToken(userDetail);
+        },
       });
-      const data = await response.json();
-      return data.token;
+
+      setVideoClient(client);
     };
 
-    const client = StreamVideoClient.getOrCreateInstance({
-      apiKey,
-      user: {
-        id: user.id,
-        name: user.fullName ?? user.username ?? "Guest",
-        image: user.imageUrl,
-      },
-      tokenProvider,
-    });
+    initClient();
 
-    setVideoClient(client);
-
-    // cleanup aka better performance
     return () => {
-      client.disconnectUser();
+      if (videoClient) {
+        videoClient.disconnectUser();
+      }
       setVideoClient(null);
     };
-  }, [isLoaded, user]);
+  }, [userDetail?.clerkId, isLoaded, user]);
 
-  // SDK not available (Expo Go) — pass through
+  // 🔁 user switching guard (same pattern as ChatWrapper)
+  useEffect(() => {
+    if (!videoClient || !userDetail?.clerkId) return;
+
+    if (prevUserId.current && prevUserId.current !== userDetail.clerkId) {
+      console.log("🔌 Switching users, disconnecting video client...");
+      videoClient.disconnectUser();
+    }
+
+    prevUserId.current = userDetail.clerkId;
+  }, [userDetail?.clerkId, videoClient]);
+
+  // SDK fallback
   if (!sdkAvailable) return <>{children}</>;
 
-  // not authenticated — pass through (auth screens)
+  // auth loading fallback
   if (!isLoaded || !user) return <>{children}</>;
 
+  // loading client UI
   if (!videoClient) {
     return (
-      <View className="flex-1 justify-center items-center bg-background">
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="small" color={COLORS.primary} />
       </View>
     );
   }
