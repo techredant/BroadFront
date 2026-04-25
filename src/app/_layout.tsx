@@ -11,8 +11,8 @@ import { useEffect } from "react";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { LevelProvider } from "@/context/LevelContext";
 import { UserOnboardingProvider } from "@/context/UserOnBoardingContext";
-import { UserProvider } from "@/context/FollowContext";
 import { NotificationProvider } from "@/context/notification";
+import { FollowProvider } from "@/context/FollowContext";
 
 export default function RootLayout() {
   return (
@@ -95,7 +95,7 @@ function RootInnerLayout() {
           <UserOnboardingProvider>
             {/* Wrap specific providers only if user exists to prevent crashes */}
             {isSignedIn ? (
-              <UserProvider currentUserId={user!.id}>
+              <FollowProvider>
                 <MenuProvider>
                   <NotificationProvider>
                     <AppProvider>
@@ -103,7 +103,7 @@ function RootInnerLayout() {
                     </AppProvider>
                   </NotificationProvider>
                 </MenuProvider>
-              </UserProvider>
+              </FollowProvider>
             ) : (
               // Auth stack (doesn't need Stream/Chat contexts)
               <Stack screenOptions={{ headerShown: false }} />

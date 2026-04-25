@@ -15,7 +15,7 @@ async function getStreamToken(userDetail: any) {
     body: JSON.stringify({
       userId: userDetail?.clerkId,
       name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""}`.trim(),
-      image: userDetail?.imageUrl,
+      image: userDetail?.image,
     }),
   });
 
@@ -47,7 +47,7 @@ const { theme } = useTheme()
       userData: {
         id: userDetail?.clerkId,
         name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""}`.trim(),
-        image: userDetail?.imageUrl,
+        image: userDetail?.image,
       },
       tokenOrProvider: async () => {
         return await getStreamToken(userDetail);

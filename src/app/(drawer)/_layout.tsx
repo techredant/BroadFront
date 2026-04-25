@@ -169,7 +169,7 @@ export default function DrawerLayout() {
       />
 
       <Drawer.Screen
-        name="status"
+        name="(status)"
         options={{
           drawerLabel: "Status",
           drawerIcon: ({ color, size }) => (

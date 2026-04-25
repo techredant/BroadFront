@@ -2,7 +2,6 @@ import { COLORS } from "@/lib/theme";
 import { Ionicons } from "@expo/vector-icons";
 import {
   Call,
-  CallContent,
   CallingState,
   IncomingCall,
   OutgoingCall,
@@ -10,6 +9,7 @@ import {
   useCall,
   useCallStateHooks,
   useStreamVideoClient,
+  CallParticipantsList,
 } from "@stream-io/video-react-native-sdk";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -76,7 +76,7 @@ const CallScreen = () => {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={["bottom"]}>
+    <SafeAreaView className="flex-1 bg-background">
       <StreamCall call={call}>
         <CallUI />
       </StreamCall>
@@ -87,46 +87,86 @@ const CallScreen = () => {
 function CallUI() {
   const call = useCall();
   const router = useRouter();
-  const { useCallCallingState } = useCallStateHooks();
-  const callingState = useCallCallingState();
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
 
   const isCallCreatedByMe = call?.isCreatedByMe ?? false;
+  const {
+    useCallCallingState,
+    useParticipants,
+    useMicrophoneState,
+    useCameraState,
+  } = useCallStateHooks();
+
+  const callingState = useCallCallingState();
+  const participants = useParticipants();
+
+  const ControlButton = ({
+    icon,
+    onPress,
+    danger,
+  }: {
+    icon: any;
+    onPress: () => void;
+    danger?: boolean;
+  }) => {
+    return (
+      <Pressable
+        onPress={onPress}
+        className={`w-14 h-14 rounded-full items-center justify-center ${
+          danger ? "bg-red-600" : "bg-white/20"
+        }`}
+      >
+        <Ionicons name={icon} size={24} color={danger ? "white" : "white"} />
+      </Pressable>
+    );
+  };
 
   useEffect(() => {
     if (callingState === CallingState.LEFT) router.back();
-  }, [callingState, router, call]);
+  }, [callingState, router]);
 
-  // show ringing UI for RINGING, JOINING, and IDLE states
+  // 🔥 DO NOT WRAP IN SafeAreaView
   if (
     [CallingState.RINGING, CallingState.JOINING, CallingState.IDLE].includes(
       callingState,
     )
   ) {
-    return (
-      <SafeAreaView className="flex-1 bg-background">
-        {isCallCreatedByMe ? <OutgoingCall /> : <IncomingCall />}
-      </SafeAreaView>
-    );
+    return isCallCreatedByMe ? <OutgoingCall /> : <IncomingCall />;
   }
 
+const mic = useMicrophoneState();
+const cam = useCameraState();
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={["bottom", "top"]}>
-      <CallContent
-        // layout="spotlight"
-        onHangupCallHandler={async () => {
-          await call?.endCall();
-        }}
-        // styles={{
-        //   participantView: {
-        //     borderWidth: 0,
-        //     borderColor: "transparent",
-        //   },
-        // }}
-      />
-    </SafeAreaView>
+    <View className="flex-1 bg-black">
+      {/* 🎥 Participants (REQUIRED for your version) */}
+      <CallParticipantsList participants={participants} />
+
+      {/* 🎛 Bottom controls */}
+      <View className="absolute bottom-10 left-0 right-0 flex-row justify-center gap-6">
+        <ControlButton
+          icon={mic?.isMute ? "mic-off-outline" : "mic-outline"}
+          onPress={() => call?.microphone.toggle()}
+        />
+
+        <ControlButton
+          icon={cam?.isEnabled ? "videocam-outline" : "videocam-off-outline"}
+          onPress={() => call?.camera.toggle()}
+        />
+
+        <ControlButton
+          icon="camera-reverse-outline"
+          onPress={() => call?.camera.flip()}
+        />
+
+        <ControlButton
+          icon="call-outline"
+          danger
+          onPress={() => call?.endCall()}
+        />
+      </View>
+    </View>
   );
 }
-
 export default CallScreen;
 
 function ErrorCallUI({ error }: { error: string }) {

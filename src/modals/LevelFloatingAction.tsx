@@ -38,7 +38,7 @@ export function FloatingLevelButton() {
 
     // 🔥 SPECIAL ROUTES
     if (type === "ai") {
-      router.push("/");
+      router.push("/(ai)/aiindex");
       return;
     }
 

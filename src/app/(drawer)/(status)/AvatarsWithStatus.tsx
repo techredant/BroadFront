@@ -20,7 +20,7 @@ export function AvatarWithStatus({
 
   return (
     <Pressable
-      onPress={onPress || (() => router.push("/status/StatusInput"))}
+      onPress={onPress || (() => router.push("/StatusInput"))}
       hitSlop={10}
       style={{ alignItems: "center", width: size + 20, marginTop: 10 }}
     >

@@ -24,7 +24,6 @@ import {
 } from "react-native-reanimated";
 import { Gesture } from "react-native-gesture-handler";
 import { useLevel } from "@/context/LevelContext";
-import { useUserContext } from "@/context/FollowContext";
 import { useTheme } from "@/context/ThemeContext";
 import Video from "react-native-video";
 import { io, Socket } from "socket.io-client";
@@ -32,6 +31,7 @@ import { MediaViewerModal } from "@/app/components/posts/MediaViewModal";
 import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useFollowContext } from "@/context/FollowContext";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -42,13 +42,17 @@ const POST_SIZE =
   (SCREEN_WIDTH - POST_MARGIN * (NUM_COLUMNS * 2)) / NUM_COLUMNS;
 
 export default function ProfileScreen() {
-  const { members, toggleFollow } = useUserContext();
+  const {
+    handleFollow,
+    following,
+    followersCount,
+    followingCount,
+    followerUsers,
+    followingUsers,
+  } = useFollowContext();
   const { userDetails, isLoadingUser, currentLevel } = useLevel();
   const { theme } = useTheme();
-
   const [posts, setPosts] = useState<any[]>([]);
-  const [followers, setFollowers] = useState<any[]>([]);
-
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -65,69 +69,11 @@ export default function ProfileScreen() {
     setModalVisible(true);
   };
 
-  const followingData = members.filter((m) => m.isFollowing);
-
   const getData = () => {
     if (activeTab === "posts") return mediaPosts;
-    if (activeTab === "followers") return followers;
-    if (activeTab === "following") return followingData;
+    if (activeTab === "followers") return followerUsers;
+    if (activeTab === "following") return followingUsers;
     return [];
-  };
-
-  /* ---------------- FETCH POSTS ---------------- */
-  // Fetch Followers
-  useEffect(() => {
-    const fetchFollowers = async () => {
-      try {
-        const res = await axios.get(
-          `${BASE_URL}/api/users/${userDetails.clerkId}`,
-        );
-
-        const followerIds: string[] = res.data.followers || [];
-
-        // 🔥 Fetch full user objects
-        const users = await Promise.all(
-          followerIds.map((id) => axios.get(`${BASE_URL}/api/users/${id}`)),
-        );
-
-        const formatted = users.map((u) => ({
-          ...u.data,
-          isFollowing: followers.some((m) => m.clerkId === u.data.clerkId),
-        }));
-
-        setFollowers(formatted);
-      } catch (err) {
-        console.error("❌ Error fetching followers:", err);
-      }
-    };
-
-    if (userDetails?.clerkId) {
-      fetchFollowers();
-    }
-  }, [userDetails?.clerkId]);
-
-  const handleFollowToggle = async (user: any) => {
-    // 🔥 Optimistic update (instant UI change)
-    setFollowers((prev) =>
-      prev.map((f) =>
-        f.clerkId === user.clerkId ? { ...f, isFollowing: !f.isFollowing } : f,
-      ),
-    );
-
-    try {
-      await toggleFollow(user);
-    } catch (err) {
-      console.error("❌ Failed:", err);
-
-      // ❌ rollback if API fails
-      setFollowers((prev) =>
-        prev.map((f) =>
-          f.clerkId === user.clerkId
-            ? { ...f, isFollowing: !f.isFollowing }
-            : f,
-        ),
-      );
-    }
   };
 
   /* ---------------- FETCH POSTS ---------------- */
@@ -226,6 +172,8 @@ export default function ProfileScreen() {
 
   /* ---------------- RENDER ---------------- */
   const renderItem = ({ item, index }: any) => {
+    const isFollowing = following.includes(item.clerkId);
+
     if (activeTab === "posts") {
       const isVideo = item.endsWith(".mp4") || item.endsWith(".mov");
 
@@ -259,49 +207,27 @@ export default function ProfileScreen() {
             <Text>{item.nickName}</Text>
           </View>
         </View>
-        {followers ? (
-          <TouchableOpacity
-            onPress={() => handleFollowToggle(item)}
-            style={[
-              styles.followButton,
-              {
-                backgroundColor: item.isFollowing ? "transparent" : "#1DA1F2",
-                borderWidth: 1,
-                borderColor: "#1DA1F2",
-              },
-            ]}
+
+        <TouchableOpacity
+          onPress={() => handleFollow(item.clerkId)}
+          style={[
+            styles.followButton,
+            {
+              backgroundColor: isFollowing ? "transparent" : "#1DA1F2",
+              borderWidth: 1,
+              borderColor: "#1DA1F2",
+            },
+          ]}
+        >
+          <Text
+            style={{
+              color: isFollowing ? "#1DA1F2" : "#fff",
+              fontWeight: "bold",
+            }}
           >
-            <Text
-              style={{
-                color: item.isFollowing ? "#1DA1F2" : "#fff",
-                fontWeight: "bold",
-              }}
-            >
-              {item.isFollowing ? "Unfollow" : "Follow"}
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={() => toggleFollow(item)}
-            style={[
-              styles.followButton,
-              {
-                backgroundColor: item.isFollowing ? "transparent" : "#1DA1F2",
-                borderWidth: 1,
-                borderColor: "#1DA1F2",
-              },
-            ]}
-          >
-            <Text
-              style={{
-                color: item.isFollowing ? "#1DA1F2" : "#fff",
-                fontWeight: "bold",
-              }}
-            >
-              {item.isFollowing ? "unFollow" : "Follow"}
-            </Text>
-          </TouchableOpacity>
-        )}
+            {isFollowing ? "Unfollow" : "Follow"}
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -366,8 +292,8 @@ export default function ProfileScreen() {
                 {tab === "posts"
                   ? mediaPosts.length
                   : tab === "followers"
-                    ? followers.length
-                    : followingData.length}
+                    ? followersCount
+                    : followingCount}
               </Text>
 
               <Text

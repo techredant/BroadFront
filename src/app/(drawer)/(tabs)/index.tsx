@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import axios from "axios";
 import io, { Socket } from "socket.io-client";
-import { Status } from "@/app/(drawer)/status/Status";
+import { Status } from "@/app/(drawer)/(status)/Status";
 import { useFocusEffect } from "expo-router";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { LoaderKitView } from "react-native-loader-kit";
@@ -40,7 +40,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
-
+  const [statuses, setStatuses] = useState<any[]>([]);
   const socketRef = useRef<Socket | null>(null);
 
   // ---------------- FlatList viewability ----------------
@@ -73,24 +73,45 @@ export default function HomeScreen() {
     }
   }, [currentLevel]);
 
-useEffect(() => {
-  if (!currentLevel?.type || !currentLevel?.value) return;
+  useEffect(() => {
+    if (!currentLevel?.type || !currentLevel?.value) return;
 
-  setPosts([]);
-  setLoading(true);
-  fetchPosts();
-}, [currentLevel, fetchPosts]);
+    setPosts([]);
+    setLoading(true);
+    fetchPosts();
+  }, [currentLevel, fetchPosts]);
 
-   useFocusEffect(
-     useCallback(() => {
-       fetchPosts();
-     }, [fetchPosts]),
-   );
+  useFocusEffect(
+    useCallback(() => {
+      fetchPosts();
+    }, [fetchPosts]),
+  );
 
-const onRefresh = useCallback(() => {
-  setRefreshing(true);
-  fetchPosts();
-}, [fetchPosts]);
+  const fetchStatuses = async () => {
+    const res = await axios.get(`${BASE_URL}/api/status`);
+    setStatuses(res.data);
+  };
+
+  useEffect(() => {
+    fetchStatuses(); // initial load
+
+    const interval = setInterval(() => {
+      fetchStatuses();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchStatuses();
+    }, []),
+  );
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchPosts();
+  }, [fetchPosts]);
 
   // ---------------- Socket setup ----------------
   useEffect(() => {
@@ -115,7 +136,6 @@ const onRefresh = useCallback(() => {
       setPosts((prev) =>
         prev.map((p) => (p._id === updatedPost._id ? updatedPost : p)),
       );
-      
     });
 
     return () => {
@@ -165,7 +185,7 @@ const onRefresh = useCallback(() => {
             socket={socketRef.current}
             allPosts={posts}
             onRefresh={onRefresh}
-            onUpdatePost={(updatedPost: { _id: any; }) => {
+            onUpdatePost={(updatedPost: { _id: any }) => {
               setPosts((prev) =>
                 prev.map((p) => (p._id === updatedPost._id ? updatedPost : p)),
               );
@@ -189,7 +209,7 @@ const onRefresh = useCallback(() => {
                 {levelType && levelType !== "home" ? ` ${levelType}` : ""}
               </Text>
             </View>
-            <Status statuses={SAMPLE_STATUSES} />
+            <Status statuses={statuses} />
           </>
         }
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 120 }}

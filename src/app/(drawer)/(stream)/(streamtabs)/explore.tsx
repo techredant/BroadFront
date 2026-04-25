@@ -2,7 +2,7 @@
 import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
 import ExploreUserCard from "@/app/components/ExploreUserCard";
 import ListEmptyComponent from "@/app/components/ListEmptyComponent";
-import { useUserContext } from "@/context/FollowContext";
+import { useFollowContext } from "@/context/FollowContext";
 import { useAppContext } from "@/contexts/AppProvider";
 import useStartChat from "@/hooks/useStartChat";
 import useStreamUsers from "@/hooks/useStreamUsers";
@@ -15,7 +15,6 @@ import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "r
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useChatContext } from "stream-chat-expo";
 
-const BASE_URL = "https://cast-api-zeta.vercel.app";
 
 const ExploreScreen = () => {
   const { setChannel } = useAppContext();
@@ -28,12 +27,14 @@ const ExploreScreen = () => {
   const [activeTab, setActiveTab] = useState<"followers" | "following">(
     "followers",
   );
-
-  const [ loadingFollower, setLoadingFollower ] = useState(true);
-
-  const { members, loading } = useUserContext();
-    const [followers, setFollowers] = useState<any[]>([]);
-  
+  const {
+    handleFollow,
+    following,
+    followersCount,
+    followingCount,
+    followerUsers,
+    followingUsers,
+  } = useFollowContext();
 
   const { handleStartChat } = useStartChat({
     client,
@@ -42,44 +43,8 @@ const ExploreScreen = () => {
     setCreating,
   });
 
-
-  useEffect(() => {
-    const fetchFollowers = async () => {
-      try {
-        const res = await axios.get(
-          `${BASE_URL}/api/users/${user?.id}`,
-        );
-  
-        const followerIds: string[] = res.data.followers || [];
-  
-        // 🔥 Fetch full user objects
-        const users = await Promise.all(
-          followerIds.map((id) => axios.get(`${BASE_URL}/api/users/${id}`)),
-        );
-  
-        const formatted = users.map((u) => ({
-          ...u.data,
-          isFollowing: followers.some((m) => m.clerkId === u.data.clerkId),
-        }));
-  
-        setFollowers(formatted);
-      } catch (err) {
-        console.error("❌ Error fetching followers:", err);
-      } finally{
-        setLoadingFollower(false)
-      }
-    };
-  
-    if (user?.id) {
-      fetchFollowers();
-    }
-  }, [user?.id]);
-
   // ✅ Get correct base data
-  const baseData =
-    activeTab === "followers"
-      ? followers
-      : members.filter((m) => m.isFollowing);
+  const baseData = activeTab === "followers" ? followerUsers : followingUsers;
 
   // ✅ Apply search on correct dataset
   const filteredUsers = baseData.filter((u) => {
@@ -99,7 +64,6 @@ const ExploreScreen = () => {
       onStartChat={handleStartChat}
     />
   );
-
 
   return (
     <SafeAreaView className="flex-1 bg-background">
@@ -167,12 +131,7 @@ const ExploreScreen = () => {
         )}
       </View>
 
-      {/* LIST */}
-      {loading || loadingFollower ? (
-        <View className="flex-1 justify-center items-center">
-          <ActivityIndicator size="large" color={COLORS.primary} />
-        </View>
-      ) : (
+ 
         <FlatList
           data={filteredUsers}
           keyExtractor={(item) => item.clerkId}
@@ -189,7 +148,7 @@ const ExploreScreen = () => {
             )
           }
         />
-      )}
+      
     </SafeAreaView>
   );
 };

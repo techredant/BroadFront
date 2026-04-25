@@ -10,9 +10,9 @@ export default function MarketLayout() {
 
   return (
     <ChatWrapper userDetail={userDetails!}>
-      <VideoProvider>
+      {/* <VideoProvider> */}
         <Stack screenOptions={{ headerShown: false }} />
-      </VideoProvider>
+      {/* </VideoProvider> */}
     </ChatWrapper>
   );
 }

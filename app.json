@@ -2,7 +2,7 @@
   "expo": {
     "name": "Broadcast",
     "slug": "broadcast",
-    "version": "2.1.33",
+    "version": "2.1.36",
     "orientation": "portrait",
     "icon": "./assets/images/icon.jpg",
     "scheme": "broadcast",

@@ -1,13 +1,22 @@
-import React, {
+import { useUser } from "@clerk/clerk-expo";
+import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
-  useCallback,
 } from "react";
+import useSWR from "swr";
+import React from "react";
 import axios from "axios";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app/api/users";
+
+/** =========================
+ * Types
+ * ========================= */
+type FollowItem = string;
 
 interface User {
   id: string;
@@ -17,187 +26,152 @@ interface User {
   nickName: string;
   image: string;
   followers: string[];
-  following?: string[];
-  isFollowing?: boolean;
+  following: string[];
 }
 
-interface FollowContextType {
-  currentUserId: string;
+type FollowContextType = {
+  following: string[];
+  followers: string[];
   members: User[];
-  suggestions: User[];
+  followerUsers: User[];
+  followingUsers: User[];
+  followersCount: number;
+  followingCount: number;
+  handleFollow: (targetClerkId: string) => Promise<void>;
   loading: boolean;
-  suggestionsLoading: boolean;
-  fetchUsers: () => Promise<void>;
-  fetchSuggestions: () => Promise<void>;
-  toggleFollow: (user: User) => Promise<void>;
-  loadingUserId: string | null;
-}
-
-const FollowContext = createContext<FollowContextType | undefined>(undefined);
-
-export const useUserContext = () => {
-  const ctx = useContext(FollowContext);
-  if (!ctx) throw new Error("useUserContext must be used within UserProvider");
-  return ctx;
+  error: any;
 };
 
-interface Props {
-  children: React.ReactNode;
-  currentUserId: string;
-}
+/** =========================
+ * Context
+ * ========================= */
+const FollowCtx = createContext<FollowContextType | null>(null);
 
-export const UserProvider: React.FC<Props> = ({ children, currentUserId }) => {
+/** =========================
+ * Provider
+ * ========================= */
+export const FollowProvider = ({ children }: { children: React.ReactNode }) => {
+  const { user } = useUser();
+
+  const fetcher = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed to fetch follow data");
+    return res.json();
+  };
+
+  /** FOLLOW STATE (SWR) */
+  const url = user?.id ? `${BASE_URL}/${user.id}/follow-state` : null;
+
+  const { data, error, mutate } = useSWR(url, fetcher);
+
+  const following: string[] = data?.following ?? [];
+  const followers: string[] = data?.followers ?? [];
+
+  const followersCount = followers.length;
+  const followingCount = following.length;
+
+  /** MEMBERS STATE */
   const [members, setMembers] = useState<User[]>([]);
-  const [suggestions, setSuggestions] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-  const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
 
-  // ---------------- FETCH ALL USERS ----------------
- const fetchUsers = useCallback(async () => {
-   try {
-     setLoading(true);
+const followingUsers = useMemo(() => {
+  return members.filter((m) => following.includes(m.clerkId));
+}, [members, following]);
 
-     const res = await axios.get(BASE_URL, {
-       params: {
-         clerkId: currentUserId,
-         includeSelf: true, // 🔥 important
-       },
-     });
+const followerUsers = useMemo(() => {
+  return members.filter((m) => followers.includes(m.clerkId));
+}, [members, followers]);
 
-     setMembers(res.data.users || []);
-   } catch (err) {
-     console.error(err);
-     setMembers([]);
-   } finally {
-     setLoading(false);
-   }
- }, [currentUserId]);
-
-  // ---------------- FOLLOW SUGGESTIONS (SMART LOGIC) ----------------
-  const fetchSuggestions = useCallback(async () => {
+  const fetchUsers = useCallback(async () => {
     try {
-      setSuggestionsLoading(true);
+      setLoading(true);
 
       const res = await axios.get(BASE_URL, {
-        params: { clerkId: currentUserId },
+        params: {
+          clerkId: user?.id,
+          includeSelf: true,
+        },
       });
 
-      const users = res.data.users || [];
-
-      const filtered = users
-        .filter((u: any) => u.clerkId !== currentUserId)
-        .filter((u: any) => !u.isFollowing)
-        .slice(0, 10);
-
-      setSuggestions(filtered);
+      setMembers(res.data.users || []);
     } catch (err) {
       console.error(err);
-      setSuggestions([]);
+      setMembers([]);
     } finally {
-      setSuggestionsLoading(false);
+      setLoading(false);
     }
-  }, [currentUserId]);
+  }, [user?.id]);
 
-  // ---------------- FOLLOW / UNFOLLOW ----------------
-const toggleFollow = async (user: User) => {
-  const action = user.isFollowing ? "unfollow" : "follow";
+  /** FOLLOW / UNFOLLOW */
+const handleFollow = async (targetClerkId: string) => {
+  if (!user?.id) return;
 
-  // 🔥 OPTIMISTIC UPDATE
-setMembers((prev) =>
-  prev.map((u) => {
-    if (u.clerkId === user.clerkId) {
-      // toggle following state for current user
-      return { ...u, isFollowing: !u.isFollowing };
-    }
+  const isFollowing = following.includes(targetClerkId);
+  const action = isFollowing ? "unfollow" : "follow";
 
-    if (u.clerkId === currentUserId) {
-      // update current user's following list
-      const updatedFollowing = user.isFollowing
-        ? u.following?.filter((id) => id !== user.clerkId)
-        : [...(u.following || []), user.clerkId];
+  const optimisticFollowing = isFollowing
+    ? following.filter((id) => id !== targetClerkId)
+    : [...following, targetClerkId];
 
-      return { ...u, following: updatedFollowing };
-    }
-
-    // 👇 THIS is the missing piece for followers
-    if (u.clerkId === user.clerkId) {
-      const updatedFollowers = user.isFollowing
-        ? u.followers.filter((id) => id !== currentUserId)
-        : [...u.followers, currentUserId];
-
-      return { ...u, followers: updatedFollowers };
-    }
-
-    return u;
-  }),
-);
-
-  // optional: update suggestions too
-  setSuggestions((prev) =>
-    prev.map((u) =>
-      u.clerkId === user.clerkId ? { ...u, isFollowing: !u.isFollowing } : u,
-    ),
+  // ✅ instant UI update
+  mutate(
+    {
+      ...data,
+      following: optimisticFollowing,
+    },
+    false,
   );
 
   try {
-    setLoadingUserId(user.clerkId);
-
-    await axios.post(
-      `${BASE_URL}/${currentUserId}/follow-action/${user.clerkId}?action=${action}`,
+    await fetch(
+      `${BASE_URL}/${user.id}/follow-action/${targetClerkId}?action=${action}`,
+      { method: "POST" },
     );
 
-  
-
-    
-    // ❌ NO refetch anymore
+    // ✅ sync with backend AFTER success
+    mutate();
   } catch (err) {
     console.error(err);
 
-    // 🔁 REVERT if API fails
-    setMembers((prev) =>
-      prev.map((u) =>
-        u.clerkId === user.clerkId
-          ? { ...u, isFollowing: user.isFollowing }
-          : u,
-      ),
-    );
-
-    setSuggestions((prev) =>
-      prev.map((u) =>
-        u.clerkId === user.clerkId
-          ? { ...u, isFollowing: user.isFollowing }
-          : u,
-      ),
-    );
-  } finally {
-    setLoadingUserId(null);
+    // ❌ revert on failure
+    mutate();
   }
 };
 
-  // ---------------- INITIAL LOAD ----------------
   useEffect(() => {
-    if (!currentUserId) return;
-
+    if (!user?.id) return;
     fetchUsers();
-    fetchSuggestions();
-  }, [currentUserId, fetchUsers, fetchSuggestions]);
+  }, [user?.id, fetchUsers]);
 
   return (
-    <FollowContext.Provider
+    <FollowCtx.Provider
       value={{
-        currentUserId,
-        members,
-        suggestions,
+        following,
+        followers,
+        followersCount,
+        followingCount,
+        followingUsers,
+        followerUsers,
+        handleFollow,
         loading,
-        suggestionsLoading,
-        fetchUsers,
-        fetchSuggestions,
-        toggleFollow,
-        loadingUserId,
+        error,
+        members,
       }}
     >
       {children}
-    </FollowContext.Provider>
+    </FollowCtx.Provider>
   );
+};
+
+/** =========================
+ * Hook
+ * ========================= */
+export const useFollowContext = () => {
+  const context = useContext(FollowCtx);
+
+  if (!context) {
+    throw new Error("useFollowContext must be used within FollowProvider");
+  }
+
+  return context;
 };

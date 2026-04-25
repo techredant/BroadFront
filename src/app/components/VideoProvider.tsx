@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "@/lib/theme";
 import { useUser } from "@clerk/clerk-expo";
 import type { Call } from "@stream-io/video-react-native-sdk";
@@ -16,7 +15,7 @@ async function getStreamToken(userDetail: any) {
     body: JSON.stringify({
       userId: userDetail?.clerkId,
       name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""}`.trim(),
-      image: userDetail?.imageUrl,
+      image: userDetail?.image,
     }),
   });
 
@@ -60,8 +59,6 @@ type VideoWrapperProps = {
 
 // 🔔 Incoming calls UI
 function RingingCalls() {
-  if (!useCalls) return null;
-
   const calls = useCalls().filter((c: Call) => c.ringing);
   const ringingCall = calls?.[0];
 
@@ -69,9 +66,7 @@ function RingingCalls() {
 
   return (
     <StreamCall call={ringingCall}>
-      <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
-        <RingingCallContent />
-      </SafeAreaView>
+      <RingingCallContent />
     </StreamCall>
   );
 }
@@ -90,9 +85,9 @@ const VideoProvider = ({ userDetail, children }: VideoWrapperProps) => {
         apiKey: STREAM_API_KEY,
 
         user: {
-          id: userDetail.clerkId,
-          name: `${userDetail.firstName ?? ""} ${userDetail.lastName ?? ""} ${userDetail.nickName ?? ""}`.trim(),
-          image: userDetail.imageUrl,
+          id: userDetail?.clerkId,
+          name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""}`.trim(),
+          image: userDetail?.image,
         },
 
         tokenProvider: async () => {
@@ -135,7 +130,7 @@ const VideoProvider = ({ userDetail, children }: VideoWrapperProps) => {
   if (!videoClient) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="small" color={COLORS.primary} />
+        <ActivityIndicator size="small" color={COLORS.text} />
       </View>
     );
   }
