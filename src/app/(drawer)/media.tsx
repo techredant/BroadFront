@@ -1,4 +1,3 @@
-// media.tsx
 import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
@@ -8,7 +7,6 @@ import {
   Pressable,
   StyleSheet,
   Dimensions,
-  ActivityIndicator,
   RefreshControl,
 } from "react-native";
 import axios from "axios";
@@ -28,20 +26,21 @@ import { MediaViewerModal } from "../components/posts/MediaViewModal";
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const POST_MARGIN = 2;
-const NUM_COLUMNS = 3;
-const POST_SIZE =
-  (SCREEN_WIDTH - POST_MARGIN * (NUM_COLUMNS * 2)) / NUM_COLUMNS;
 
 export default function MediaScreen() {
   const { currentLevel } = useLevel();
+  const { theme } = useTheme();
+
   const [mediaPosts, setMediaPosts] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const { theme, isDark } = useTheme();
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
-  // -------------------- Media Modal --------------------
+  const [selectedTab, setSelectedTab] = useState<"images" | "videos">("images");
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  // -------------------- Modal --------------------
   const openMedia = (index: number) => {
     setSelectedIndex(index);
     setModalVisible(true);
@@ -55,27 +54,25 @@ export default function MediaScreen() {
     .onEnd(() => {
       pinchScale.value = withSpring(1);
     });
+
   const pinchStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pinchScale.value }],
   }));
 
-  // ------
-
-  // Fetch media posts based on currentLevel
+  // -------------------- Fetch --------------------
   const fetchMedia = useCallback(async () => {
     try {
       setLoading(true);
-      const url = `${BASE_URL}/api/posts`;
-      const res = await axios.get(url, {
+
+      const res = await axios.get(`${BASE_URL}/api/posts`, {
         params: {
           levelType: currentLevel?.type,
           levelValue: currentLevel?.value,
         },
       });
 
-      // Flatten media from posts
       const allMedia = res.data
-        .filter((post: any) => post.media && post.media.length > 0)
+        .filter((post: any) => post.media?.length > 0)
         .flatMap((post: any) => post.media);
 
       setMediaPosts(allMedia);
@@ -84,7 +81,6 @@ export default function MediaScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
-
     }
   }, [currentLevel]);
 
@@ -97,123 +93,174 @@ export default function MediaScreen() {
     fetchMedia();
   };
 
-  const renderItem = ({ item, index }: { item: string; index: number }) => {
-    const isVideo = item.endsWith(".mp4") || item.endsWith(".mov");
+  // -------------------- Helpers --------------------
+  const isVideoFile = (uri: string) => /\.(mp4|mov|webm)$/i.test(uri);
+
+  const images = mediaPosts.filter((m) => !isVideoFile(m));
+  const videos = mediaPosts.filter((m) => isVideoFile(m));
+
+  const displayedMedia =
+    selectedTab === "images"
+      ? images
+      : selectedTab === "videos"
+        ? videos
+        : mediaPosts;
+
+  // 🔥 Dynamic layout
+  const numColumns = selectedTab === "videos" ? 2 : 3;
+
+  const ITEM_SIZE =
+    (SCREEN_WIDTH - POST_MARGIN * (numColumns * 2)) / numColumns;
+
+  // -------------------- Render --------------------
+  const renderItem = ({ item, index }: any) => {
+    const isVideo = isVideoFile(item);
 
     return (
       <Pressable onPress={() => openMedia(index)}>
         {isVideo ? (
           <Video
             source={{ uri: item }}
-            style={styles.postImage}
+            style={{
+              width: ITEM_SIZE,
+              height: ITEM_SIZE * 1.4,
+              margin: POST_MARGIN,
+              borderRadius: 10,
+            }}
             resizeMode="cover"
-            repeat
+            controls
             paused={false}
             muted
+            repeat
           />
         ) : (
-          <Image source={{ uri: item }} style={styles.postImage} />
+          <Image
+            source={{ uri: item }}
+            style={{
+              width: ITEM_SIZE,
+              height: ITEM_SIZE,
+              margin: POST_MARGIN,
+              borderRadius: 10,
+            }}
+            resizeMode="cover"
+          />
         )}
       </Pressable>
     );
   };
 
+  // -------------------- UI --------------------
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
+      <DrawerMenuButton />
 
- return (
-   <View style={{ flex: 1, backgroundColor: theme.background }}>
-     <DrawerMenuButton />
-     <View style={[styles.headerContainer, { backgroundColor: theme.card }]}>
-       <View style={styles.headerTopRow}>
-         <View />
+      {/* Header */}
+      <View style={[styles.headerContainer, { backgroundColor: theme.card }]}>
+        <View style={styles.headerTopRow}>
+          <View />
 
-         <View>
-           <Text style={[styles.headerTitle, { color: theme.text }]}>
-             Media
-           </Text>
-           <Text style={styles.headerSubtitle}>
-             {currentLevel?.value?.charAt(0).toUpperCase() +
-               currentLevel?.value?.slice(1)}
-           </Text>
-         </View>
+          <View>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>
+              Media
+            </Text>
+            <Text style={styles.headerSubtitle}>
+              {currentLevel?.value?.charAt(0).toUpperCase() +
+                currentLevel?.value?.slice(1)}
+            </Text>
+          </View>
 
-         <View style={styles.countBadge}>
-           <Text style={styles.countText}>{mediaPosts.length}</Text>
-         </View>
-       </View>
+          <View style={styles.countBadge}>
+            <Text style={styles.countText}>{displayedMedia.length}</Text>
+          </View>
+        </View>
 
-     </View>
-     <FlatList
-       style={{ flex: 1 }} // ✅ IMPORTANT
-       data={mediaPosts}
-       keyExtractor={(item, index) => index.toString()}
-       renderItem={renderItem}
-       numColumns={NUM_COLUMNS}
-       contentContainerStyle={{
-         paddingBottom: 50,
-         backgroundColor: theme.background,
-       }}
-       showsVerticalScrollIndicator={false}
-       refreshControl={
-         <RefreshControl
-           refreshing={refreshing}
-           onRefresh={onRefresh}
-           tintColor={theme.background}
-           colors={[theme.text]}
-         />
-       }
-       ListEmptyComponent={
-         <View style={{ alignItems: "center" }}>
-           {loading ? (
-             <>
-               <LoaderKitView
-                 style={{ width: 50, height: 50 }}
-                 name="BallScaleRippleMultiple"
-                 animationSpeedMultiplier={1.0}
-                 color={theme.text}
-               />
-               <Text style={{ marginTop: 16, color: theme.text }}>
-                 Loading {currentLevel?.value} posts...
-               </Text>
-             </>
-           ) : (
-             <Text style={{ color: theme.subtext }}>
-               No posts for this level yet
-             </Text>
-           )}
-         </View>
-       }
-     />
+        {/* Tabs */}
+        <View style={styles.tabs}>
+          {[
+            { key: "images", label: `Images (${images.length})` },
+            { key: "videos", label: `Videos (${videos.length})` },
+          ].map((tab) => {
+            const active = selectedTab === tab.key;
 
-     <MediaViewerModal
-       modalVisible={modalVisible}
-       setModalVisible={setModalVisible}
-       mediaList={mediaPosts}
-       selectedIndex={selectedIndex}
-       post={null}
-       pinchGesture={pinchGesture}
-       pinchStyle={pinchStyle}
-     />
-   </View>
- );
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => setSelectedTab(tab.key as any)}
+                style={[
+                  styles.tabButton,
+                  {
+                    backgroundColor: active ? theme.text : theme.card,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: active ? theme.background : theme.text,
+                    fontWeight: "600",
+                  }}
+                >
+                  {tab.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Grid */}
+      <FlatList
+        data={displayedMedia}
+        keyExtractor={(_, i) => i.toString()}
+        renderItem={renderItem}
+        numColumns={numColumns}
+        key={numColumns} // 🔥 important for layout switch
+        contentContainerStyle={{
+          paddingBottom: 50,
+          backgroundColor: theme.background,
+        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.background}
+            colors={[theme.text]}
+          />
+        }
+        ListEmptyComponent={
+          <View style={{ alignItems: "center", marginTop: 40 }}>
+            {loading ? (
+              <LoaderKitView
+                style={{ width: 50, height: 50 }}
+                name="BallScaleRippleMultiple"
+                color={theme.text}
+              />
+            ) : (
+              <Text style={{ color: theme.subtext }}>No media found</Text>
+            )}
+          </View>
+        }
+      />
+
+      {/* Modal */}
+      <MediaViewerModal
+        modalVisible={modalVisible}
+        setModalVisible={setModalVisible}
+        mediaList={displayedMedia}
+        selectedIndex={selectedIndex}
+        post={null}
+        pinchGesture={pinchGesture}
+        pinchStyle={pinchStyle}
+      />
+    </View>
+  );
 }
 
+// -------------------- Styles --------------------
 const styles = StyleSheet.create({
-  postImage: {
-    width: POST_SIZE,
-    height: POST_SIZE,
-    margin: POST_MARGIN,
-    borderRadius: 8,
-  },
-  loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   headerContainer: {
     paddingHorizontal: 16,
-    paddingTop: 30, // space for DrawerMenuButton
+    paddingTop: 30,
     paddingBottom: 16,
-    backgroundColor: "#fff",
   },
 
   headerTopRow: {
@@ -225,7 +272,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#111",
   },
 
   headerSubtitle: {
@@ -246,5 +292,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
+  tabs: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 12,
+  },
 
+  tabButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    marginHorizontal: 5,
+  },
 });

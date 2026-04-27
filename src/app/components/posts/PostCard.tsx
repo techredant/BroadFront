@@ -49,13 +49,11 @@ import {
   MenuOption,
   MenuTrigger,
 } from "react-native-popup-menu";
-import { SafeAreaView } from "react-native-safe-area-context";
 import Video from "react-native-video";
 import { ReciteModal } from "./ReciteModal";
 import CommentModal from "./CommentModal";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
-import { useUserContext } from "@/context/FollowContext";
 
 interface Member {
   id: string;
@@ -142,10 +140,10 @@ export function PostCard({
   const [reciteVisible, setReciteVisible] = useState(false);
   // const [loadingRecite, setLoadingRecite] = useState(false);
 
-  const openMedia = (index: number) => {
-    setSelectedIndex(index);
-    setModalVisible(true);
-  };
+const openMedia = (index: number) => {
+  setSelectedIndex(index);
+  setModalVisible(true);
+};
 
   const [isMuted, setIsMuted] = useState(true); // default muted
 
@@ -348,7 +346,6 @@ export function PostCard({
       userId: userDetails.clerkId,
       originalPostId: postCard._id, // required for backend to copy
       caption: postCard.caption || "",
-      media: postCard.media || [],
       quote: text || null,
       levelType: postCard.levelType,
       levelValue: postCard.levelValue,
@@ -407,7 +404,7 @@ export function PostCard({
   return (
     <>
       {/* RECAST BANNER */}
-      {postCard.recastedBy && (
+      {postCard.type == "recast" && (
         <View
           style={{
             flexDirection: "row",
@@ -425,7 +422,8 @@ export function PostCard({
               fontWeight: "600",
             }}
           >
-            Recasted by {postCard.recastedBy?.nickName}
+            Recasted by {postCard?.user.nickName}{" "}from{" "}
+            {postCard?.reciteNickName}  
           </Text>
         </View>
       )}
@@ -470,7 +468,7 @@ export function PostCard({
                   color: theme.subtext,
                 }}
               >
-                {postCard.levelValue === "Home"
+                {postCard?.levelValue.toLowerCase() === "home"
                   ? ""
                   : `#${postCard.levelValue} ${postCard.levelType}`}
               </Text>
@@ -665,9 +663,8 @@ export function PostCard({
                 const containerHeight = isSingle ? 280 : reciteItemSize;
 
                 const isVideo =
-                  uri?.toLowerCase().endsWith(".mp4") ||
-                  uri?.toLowerCase().endsWith(".mov");
-
+                  uri?.toLowerCase().includes(".mp4") ||
+                  uri?.toLowerCase().includes(".mov");
                 return (
                   <Pressable
                     key={`${uri}-${idx}`}
@@ -690,8 +687,8 @@ export function PostCard({
                           resizeMode="cover"
                           paused={!isVisible}
                           muted={isMuted}
+                          repeat
                           controls
-                          pointerEvents="none"
                         />
 
                         <TouchableOpacity
@@ -765,74 +762,68 @@ export function PostCard({
               const isLast = idx === 3 && remaining > 0;
 
               const isSingle = mediaCount === 1;
-              const isTwo = mediaCount === 4;
 
-              const widthStyle = isSingle
-                ? width - 3
-                : isTwo
-                  ? width - 3
-                  : itemSize;
+              const containerWidth = isSingle ? width : width / 2;
+              const containerHeight = isSingle ? width * 0.75 : width / 2;
 
-              const heightStyle = isSingle ? 420 : isTwo ? 500 : itemSize;
-
-              const isVideo = uri.endsWith(".mp4") || uri.endsWith(".mov");
+              const isVideo = uri.includes(".mp4") || uri.includes(".mov");
 
               return (
                 <Pressable
                   key={uri}
                   onPress={() => openMedia(idx)}
                   style={{
-                    width: widthStyle,
-                    height: heightStyle,
-                    margin: 2,
-                    borderRadius: 12,
-                    overflow: "hidden",
-                    position: "relative",
-                    backgroundColor: "#000",
+                    width: containerWidth,
+                    height: containerHeight,
+                    padding: 2,
                   }}
                 >
-                  {isVideo ? (
-                    <>
-                      <Video
+                  <View
+                    style={{
+                      flex: 1,
+                      borderRadius: 12,
+                      overflow: "hidden",
+                      backgroundColor: "#000",
+                    }}
+                  >
+                    {isVideo ? (
+                      <>
+                        <Video
+                          source={{ uri }}
+                          style={{ width: "100%", height: "100%" }}
+                          resizeMode="cover"
+                          paused={!isVisible}
+                          muted={isMuted}
+                          repeat
+                          controls
+                        />
+
+                        <TouchableOpacity
+                          style={{
+                            position: "absolute",
+                            top: 10,
+                            right: 10,
+                            backgroundColor: "rgba(0,0,0,0.4)",
+                            borderRadius: 20,
+                            padding: 6,
+                          }}
+                          onPress={() => setIsMuted((prev) => !prev)}
+                        >
+                          <Ionicons
+                            name={isMuted ? "volume-mute" : "volume-high"}
+                            size={20}
+                            color="#fff"
+                          />
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <Image
                         source={{ uri }}
                         style={{ width: "100%", height: "100%" }}
                         resizeMode="cover"
-                        paused={!isVisible}
-                        muted={isMuted}
-                        controls
-                        pointerEvents="none" // ✅ allows touches to go through
                       />
-                      {/* Transparent overlay to catch press */}
-                      <TouchableOpacity
-                        style={{
-                          position: "absolute",
-                          top: 10,
-                          right: 10,
-                          backgroundColor: "rgba(0,0,0,0.4)",
-                          borderRadius: 20,
-                          padding: 6,
-                        }}
-                        onPress={() => setIsMuted((prev) => !prev)}
-                      >
-                        <Ionicons
-                          name={isMuted ? "volume-mute" : "volume-high"}
-                          size={20}
-                          color="#fff"
-                        />
-                      </TouchableOpacity>
-                      <View
-                        style={{
-                          ...StyleSheet.absoluteFillObject,
-                        }}
-                      />
-                    </>
-                  ) : (
-                    <Image
-                      source={{ uri }}
-                      style={{ width: "100%", height: "100%" }}
-                    />
-                  )}
-
+                    )}
+                  </View>
                   {isLast && (
                     <View
                       style={{
@@ -840,6 +831,8 @@ export function PostCard({
                         backgroundColor: "rgba(0,0,0,0.55)",
                         justifyContent: "center",
                         alignItems: "center",
+                        borderRadius: 12,
+                        overflow: "hidden",
                       }}
                     >
                       <Text

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,9 @@ import { useLocalSearchParams, router } from "expo-router";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
+import { PostCard } from "@/app/components/posts/PostCard";
+import { useIsFocused } from "@react-navigation/native";
+import { Socket } from "socket.io-client";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -22,6 +25,7 @@ type Post = {
   user?: {
     firstName?: string;
     nickName?: string;
+    lastName?: string;
     image?: string;
     _id?: string;
   };
@@ -34,6 +38,16 @@ export default function TrendFeed() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const isFocused = useIsFocused();
+  const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+
+   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+      if (viewableItems.length > 0) {
+        setVisiblePostId(viewableItems[0].item._id);
+      }
+    }).current;
+  const viewabilityConfig = { itemVisiblePercentThreshold: 80 };
 
   const cleanKeyword = String(keyword || title)
     .replace("#", "")
@@ -76,53 +90,26 @@ export default function TrendFeed() {
     fetchPosts();
   };
 
-  const renderItem = ({ item }: { item: Post }) => (
-    <View
-      style={{
-        padding: 12,
-        borderBottomWidth: 0.5,
-        borderColor: "#ddd",
-      }}
-    >
-      {/* USER HEADER */}
-      <Pressable
-        onPress={() => router.push(`/profileId/${item.user?._id}`)}
-        style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-      >
-        <Image
-          source={{ uri: item.user?.image }}
-          style={{ width: 35, height: 35, borderRadius: 18 }}
-        />
-
-        <View>
-          <Text style={{ fontWeight: "700", color: theme.text }}>
-            {item.user?.firstName}
-          </Text>
-          <Text style={{ fontSize: 12, color: theme.subtext }}>
-            {item.user?.nickName}
-          </Text>
-        </View>
-      </Pressable>
-
-      {/* POST CONTENT */}
-      <Text style={{ marginTop: 10, color: theme.text }}>
-        {item.caption || item.content}
-      </Text>
-    </View>
-  );
-
   // ✅ loading state (clean UI)
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: theme.background,
+        }}
+      >
         <ActivityIndicator size={"small"} color={theme.text} />
-        <Text>Loading trend...</Text>
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, paddingTop: 50 }}>
+    <View
+      style={{ flex: 1, paddingTop: 20, backgroundColor: theme.background }}
+    >
       {/* HEADER */}
       <View
         style={{
@@ -131,16 +118,17 @@ export default function TrendFeed() {
           paddingHorizontal: 12,
         }}
       >
-        <Pressable onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={22} color={theme.text} />
+        <Pressable onPress={() => router.back()} style={{ padding: 20 }}>
+          <Ionicons name="arrow-back" size={30} color={theme.text} />
         </Pressable>
 
         <Text
           style={{
             fontSize: 20,
             fontWeight: "700",
-            marginLeft: 10,
+            marginLeft: 30,
             color: theme.text,
+            marginBottom: 10,
           }}
         >
           {title}
@@ -151,7 +139,25 @@ export default function TrendFeed() {
       <FlatList
         data={posts}
         keyExtractor={(item) => item._id}
-        renderItem={renderItem}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        renderItem={({ item }) => (
+          <PostCard
+            post={item}
+            isVisible={visiblePostId === item._id && isFocused}
+            socket={socketRef.current}
+            allPosts={posts}
+            onRefresh={onRefresh}
+            onUpdatePost={(updatedPost: { _id: any }) => {
+              setPosts((prev) =>
+                prev.map((p) => (p._id === updatedPost._id ? updatedPost : p)),
+              );
+            }}
+            onDeletePost={(postId: any) =>
+              setPosts((prev) => prev.filter((p) => p._id !== postId))
+            }
+          />
+        )}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -159,6 +165,7 @@ export default function TrendFeed() {
             tintColor={theme.text}
           />
         }
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 120 }}
         ListEmptyComponent={
           <Text style={{ textAlign: "center", marginTop: 20 }}>
             No posts found for this trend

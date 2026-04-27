@@ -69,7 +69,7 @@ export default function TabsLayout() {
   const { user } = useUser();
 
   const profileImage =
-    userDetails?.image && userDetails.image.trim() !== ""
+    userDetails?.image && userDetails?.image.trim() !== ""
       ? userDetails.image
       : user?.imageUrl || "";
 
@@ -97,7 +97,7 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen
-          name="trends/index"
+          name="trends"
           options={{
             tabBarLabel: "Trends",
             tabBarIcon: ({ color, size }) => (

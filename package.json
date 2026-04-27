@@ -1,7 +1,7 @@
 {
   "name": "broadcast",
   "main": "expo-router/entry",
-  "version": "2.1.36",
+  "version": "2.1.45",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -21,8 +21,7 @@
     "@react-navigation/drawer": "^7.5.0",
     "@react-navigation/elements": "^2.8.1",
     "@react-navigation/native": "^7.1.8",
-    "@shopify/react-native-skia": "^2.6.2",
-    "@stream-io/chat-react-native-ai": "^0.1.4",
+    "@shopify/react-native-skia": "2.2.12",
     "@stream-io/react-native-webrtc": "^137.1.2",
     "@stream-io/video-react-native-sdk": "^1.29.4",
     "axios": "^1.13.6",
@@ -31,7 +30,7 @@
     "expo-asset": "~12.0.12",
     "expo-audio": "~1.1.1",
     "expo-auth-session": "^7.0.10",
-    "expo-blur": "^55.0.14",
+    "expo-blur": "~15.0.8",
     "expo-build-properties": "~1.0.10",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",

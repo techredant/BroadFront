@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  ActivityIndicator,
+} from "react-native";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { DrawerMenuButton } from "../../../components/Button/DrawerMenuButton";
@@ -111,21 +118,27 @@ export default function TrendsScreen() {
     fetchTrends(); // ✅ FIXED (was fetchPosts ❌)
   };
 
-    // ✅ loading state (clean UI)
-    if (loading) {
-      return (
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator size={"small"} color={theme.text}/>
-          <Text>Loading trends...</Text>
-        </View>
-      );
-    }
+  // ✅ loading state (clean UI)
+  if (loading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: theme.background,
+        }}
+      >
+        <ActivityIndicator size={"small"} color={theme.text} />
+      </View>
+    );
+  }
   const renderTrend = ({ item, index }: { item: Trend; index: number }) => (
     <Pressable
       style={[styles.trendItem, { borderBottomColor: theme.border }]}
       onPress={() => {
         router.push({
-          pathname: "/(drawer)/trend/[title]",
+          pathname: "/trends/[title]",
           params: {
             title: item.title,
             keyword: item.keyword,

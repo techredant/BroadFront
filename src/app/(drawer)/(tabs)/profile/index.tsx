@@ -8,6 +8,7 @@ import {
   Pressable,
   Dimensions,
   RefreshControl,
+  ActivityIndicator,
 } from "react-native";
 import React, {
   useCallback,
@@ -32,7 +33,6 @@ import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useFollowContext } from "@/context/FollowContext";
-
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -70,15 +70,12 @@ export default function ProfileScreen() {
     setModalVisible(true);
   };
 
-
-
   const getData = () => {
     if (activeTab === "posts") return mediaPosts;
     if (activeTab === "followers") return followerUsers;
     if (activeTab === "following") return followingUsers;
     return [];
   };
-
 
   /* ---------------- FETCH POSTS ---------------- */
   // Fetch media posts based on currentLevel
@@ -168,15 +165,15 @@ export default function ProfileScreen() {
 
   if (isLoadingUser || loading) {
     return (
-      <View style={styles.center}>
-        <Text>Loading profile...</Text>
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size={"small"} color={theme.text} />
       </View>
     );
   }
 
   /* ---------------- RENDER ---------------- */
   const renderItem = ({ item, index }: any) => {
-        const isFollowing = following.includes(item.clerkId);
+    const isFollowing = following.includes(item.clerkId);
 
     if (activeTab === "posts") {
       const isVideo = item.endsWith(".mp4") || item.endsWith(".mov");
@@ -203,12 +200,14 @@ export default function ProfileScreen() {
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Image source={{ uri: item?.image }} style={styles.userAvatar} />
           <View>
-            <Text style={styles.userName}>
+            <Text style={[styles.userName, { color: theme.text }]} numberOfLines={1}>
               {item.firstName
                 ? `${item.firstName} ${item.lastName}`
                 : item.companyName}
             </Text>
-            <Text>{item.nickName}</Text>
+            <Text style={[styles.userName, { color: theme.subtext }]} numberOfLines={1}>
+              {item.nickName}
+            </Text>
           </View>
         </View>
 
@@ -243,8 +242,7 @@ export default function ProfileScreen() {
         {/* Avatar */}
         <Image
           source={{
-            uri:
-              userDetails?.image?.trim() || "https://i.pravatar.cc/150?img=32",
+            uri: userDetails?.image,
           }}
           style={styles.avatar}
         />

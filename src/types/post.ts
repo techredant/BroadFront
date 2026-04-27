@@ -7,7 +7,7 @@ export type Post = {
     avatar?: string;
   };
   text: string;
-  image?: string;
+  image?: String;
   likes: number;
   comments: number;
   reposts: number;

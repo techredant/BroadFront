@@ -99,12 +99,12 @@ const ChannelScreen = () => {
   if (!channel)
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#0000ff" />
+        <ActivityIndicator size="small" color="#0000ff" />
       </View>
     );
 
   return (
-    <SafeAreaView className=" bg-border" edges={["bottom"]}>
+    <SafeAreaView className=" bg-border">
       <Channel
         channel={channel}
         keyboardVerticalOffset={headerHeight}

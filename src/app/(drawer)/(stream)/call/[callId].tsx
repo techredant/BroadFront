@@ -9,7 +9,7 @@ import {
   useCall,
   useCallStateHooks,
   useStreamVideoClient,
-  CallParticipantsList,
+  CallContent,
 } from "@stream-io/video-react-native-sdk";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -87,18 +87,17 @@ const CallScreen = () => {
 function CallUI() {
   const call = useCall();
   const router = useRouter();
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
 
-  const isCallCreatedByMe = call?.isCreatedByMe ?? false;
-  const {
-    useCallCallingState,
-    useParticipants,
-    useMicrophoneState,
-    useCameraState,
-  } = useCallStateHooks();
+  const { useCallCallingState, useMicrophoneState, useCameraState } =
+    useCallStateHooks();
 
   const callingState = useCallCallingState();
-  const participants = useParticipants();
+  const mic = useMicrophoneState();
+  const cam = useCameraState();
+
+  useEffect(() => {
+    if (callingState === CallingState.LEFT) router.back();
+  }, [callingState]);
 
   const ControlButton = ({
     icon,
@@ -121,28 +120,25 @@ function CallUI() {
     );
   };
 
-  useEffect(() => {
-    if (callingState === CallingState.LEFT) router.back();
-  }, [callingState, router]);
-
-  // 🔥 DO NOT WRAP IN SafeAreaView
-  if (
-    [CallingState.RINGING, CallingState.JOINING, CallingState.IDLE].includes(
-      callingState,
-    )
-  ) {
-    return isCallCreatedByMe ? <OutgoingCall /> : <IncomingCall />;
-  }
-
-const mic = useMicrophoneState();
-const cam = useCameraState();
+  // controls
   return (
-    <View className="flex-1 bg-black">
-      {/* 🎥 Participants (REQUIRED for your version) */}
-      <CallParticipantsList participants={participants} />
+    <View style={{ flex: 1, backgroundColor: "black" }}>
+      {/* ONLY ONCE */}
+      <CallContent />
 
-      {/* 🎛 Bottom controls */}
-      <View className="absolute bottom-10 left-0 right-0 flex-row justify-center gap-6">
+      {/* YOUR UI */}
+      <View
+        style={{
+          position: "absolute",
+          right: 16,
+          top: "35%",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 16,
+          zIndex: 9999,
+          elevation: 9999,
+        }}
+      >
         <ControlButton
           icon={mic?.isMute ? "mic-off-outline" : "mic-outline"}
           onPress={() => call?.microphone.toggle()}

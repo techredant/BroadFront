@@ -3,7 +3,6 @@ import { useAuth, useUser } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { Alert, Pressable, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 const MENU_ITEMS = [
   { icon: "notifications-outline", label: "Notifications", color: COLORS.primary },
@@ -17,7 +16,7 @@ const ProfileScreen = () => {
   const { user } = useUser();
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
+    <View className="flex-1 bg-background">
       {/* HEADER */}
       <View className="px-5 py-3">
         <Text className="text-2xl font-bold text-foreground">Profile</Text>
@@ -99,7 +98,7 @@ const ProfileScreen = () => {
         <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
         <Text className="text-base font-semibold text-danger">Sign Out</Text>
       </Pressable>
-    </SafeAreaView>
+    </View>
   );
 };
 

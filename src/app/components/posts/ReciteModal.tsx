@@ -14,7 +14,6 @@ import {
   Image,
   TouchableOpacity,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import Video from "react-native-video";
 import { MediaViewerModal } from "./MediaViewModal";
@@ -92,7 +91,7 @@ export function ReciteModal({
         presentationStyle="pageSheet"
         onRequestClose={() => setQuoteVisible(false)}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
+        <View style={{ flex: 1, backgroundColor: theme.background }}>
           {/* HEADER */}
           <View style={styles.header}>
             <Pressable onPress={() => setQuoteVisible(false)}>
@@ -267,7 +266,7 @@ export function ReciteModal({
               </View>
             </ScrollView>
           </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {/* MEDIA MODAL */}

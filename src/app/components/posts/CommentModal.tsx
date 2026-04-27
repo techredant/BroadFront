@@ -14,11 +14,11 @@ import {
   Animated,
 } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "@clerk/clerk-expo";
 import axios from "axios";
 import moment from "moment";
 import { useTheme } from "@/context/ThemeContext";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface CommentModalProps {
   visible: boolean;

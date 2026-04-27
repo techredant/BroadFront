@@ -138,8 +138,7 @@ export default function DrawerLayout() {
         }}
         listeners={{
           drawerItemPress: (e) => {
-            // Run your logic BEFORE navigation
-            setCurrentLevel({ type: "home", value: "home" });
+           router.replace("/(tabs)")
           },
         }}
       />
@@ -171,6 +170,18 @@ export default function DrawerLayout() {
       <Drawer.Screen
         name="(status)"
         options={{
+          drawerItemStyle: { display: "none" },
+          drawerLabel: "Status",
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="time-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="status"
+        options={{
+          // drawerItemStyle: { display: "none" },
           drawerLabel: "Status",
           drawerIcon: ({ color, size }) => (
             <Ionicons name="time-outline" size={size} color={color} />
@@ -187,17 +198,6 @@ export default function DrawerLayout() {
           ),
         }}
       />
-
-      <Drawer.Screen
-        name="trends"
-        options={{
-          drawerLabel: "Trends",
-          drawerIcon: ({ color, size }) => (
-            <Ionicons name="trending-up-outline" size={size} color={color} />
-          ),
-        }}
-      />
-
       <Drawer.Screen
         name="members"
         options={{

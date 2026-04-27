@@ -2,6 +2,8 @@ import { FlatList, View, StyleSheet } from "react-native";
 import { CreateStatus } from "./CreateStatus";
 import { useTheme } from "@/context/ThemeContext";
 import { StatusItem } from "./StatusItem";
+import { Feather, Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 
 interface Status {
   _id: string;

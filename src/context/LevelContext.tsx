@@ -129,6 +129,8 @@ export const LevelProvider = ({ children }: { children: React.ReactNode }) => {
     refreshUserDetails();
   }, [user]);
 
+  
+
   /* ---------------- LOAD POSTS WHEN LEVEL CHANGES ---------------- */
 
   useEffect(() => {

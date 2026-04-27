@@ -12,7 +12,6 @@ import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useChatContext } from "stream-chat-expo";
 
 
@@ -66,7 +65,7 @@ const ExploreScreen = () => {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
+    <View className="flex-1 bg-background">
       <DrawerMenuButton />
 
       {/* HEADER */}
@@ -149,7 +148,7 @@ const ExploreScreen = () => {
           }
         />
       
-    </SafeAreaView>
+    </View>
   );
 };
 

@@ -7,54 +7,37 @@ import {
   StyleSheet,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useRef, useState } from "react";
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
-import { useTheme } from "@/context/ThemeContext";
 import Video from "react-native-video";
-
-interface StatusItemProps {
-  currentUserId?: string; // 👈 IMPORTANT for viewed logic
-  userStatus: {
-    userId: string;
-    caption: string;
-    backgroundColor: string;
-    statuses: {
-      backgroundColor: string;
-      caption: ReactNode;
-      media: any;
-      id: string;
-      viewed: boolean;
-      views?: string[]; // 👈 add this (backend array of userIds)
-      createdAt?: string;
-    }[];
-  };
-  onOpen?: (userId: string) => void;
-}
+import { useTheme } from "@/context/ThemeContext";
 
 /* =========================
-   STORY RING
+   STORY RING WITH PROGRESS
 ========================= */
 function StoryRing({
   size = 68,
   strokeWidth = 3,
   statuses = [],
   currentUserId,
+  forceViewed,
+  activeIndex = -1,
+  progress = 0,
 }: any) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
-  const total = statuses.length;
+  const total = Math.max(statuses.length, 1);
+  const gap = 4;
 
-  const segment = circumference / Math.max(total, 1);
-  const gap = 2;
+  const segment = circumference / total;
 
   return (
     <Svg width={size} height={size} style={{ position: "absolute" }}>
       <Defs>
         <LinearGradient id="blueGrad" x1="0" y1="0" x2="1" y2="1">
           <Stop offset="0%" stopColor="#60A5FA" />
-          <Stop offset="50%" stopColor="#2563EB" />
-          <Stop offset="100%" stopColor="#1D4ED8" />
+          <Stop offset="100%" stopColor="#2563EB" />
         </LinearGradient>
       </Defs>
 
@@ -70,7 +53,12 @@ function StoryRing({
 
       {/* segments */}
       {statuses.map((s: any, i: number) => {
-        const isViewed = currentUserId && s.views?.includes(currentUserId);
+        const viewed =
+          forceViewed || (currentUserId && s.views?.includes(currentUserId));
+
+        const isActive = i === activeIndex;
+
+        const dashLength = segment - gap;
 
         return (
           <Circle
@@ -78,12 +66,14 @@ function StoryRing({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke={isViewed ? "green" : "url(#blueGrad)"}
+            stroke={viewed ? "#9CA3AF" : "url(#blueGrad)"}
             strokeWidth={strokeWidth}
             fill="none"
-            strokeDasharray={`${segment - gap} ${circumference}`}
-            strokeDashoffset={-i * segment}
             strokeLinecap="round"
+            opacity={1}
+            strokeDasharray={`${dashLength} ${circumference}`}
+            strokeDashoffset={-i * segment}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
           />
         );
       })}
@@ -94,40 +84,46 @@ function StoryRing({
 /* =========================
    MAIN COMPONENT
 ========================= */
-export function StatusItem({ userStatus, onOpen }: StatusItemProps) {
+export function StatusItem({
+  userStatus,
+  onOpen,
+  currentUserId,
+  activeIndex,
+  progress,
+}: any) {
   const router = useRouter();
   const scale = useRef(new Animated.Value(1)).current;
 
-  const latestStatus = userStatus.statuses
-    ?.slice()
-    .sort(
-      (a: any, b: any) =>
-        new Date(b.createdAt || 0).getTime() -
-        new Date(a.createdAt || 0).getTime(),
-    )[0];
+  const [localViewed, setLocalViewed] = useState(false);
+
+  const latestStatus = userStatus.statuses?.[0];
 
   const hasMedia = latestStatus?.media?.length > 0;
   const firstMedia = latestStatus?.media?.[0];
-
-  const hasUnviewed = userStatus.statuses.some((s) => !s.viewed);
+  const {theme} = useTheme()
 
   const handlePress = () => {
+    setLocalViewed(true); // 👈 instant grey
     onOpen?.(userStatus.userId);
-    router.push(`/Viewer?user=${userStatus.userId}`);
+    router.push(`/(status)/Viewer?user=${userStatus.userId}`);
   };
+
+ 
+  
 
   return (
     <Pressable onPress={handlePress} style={styles.container}>
       <Animated.View style={{ transform: [{ scale }] }}>
         <View style={styles.wrapper}>
           <StoryRing
-            size={68}
-            strokeWidth={3}
             statuses={userStatus.statuses}
-            currentUserId={userStatus.userId}
+            currentUserId={currentUserId}
+            forceViewed={localViewed}
+            activeIndex={activeIndex}
+            progress={progress}
           />
 
-          {/* MEDIA OR TEXT */}
+          {/* MEDIA */}
           {latestStatus ? (
             hasMedia ? (
               firstMedia?.includes(".mp4") ? (
@@ -157,6 +153,20 @@ export function StatusItem({ userStatus, onOpen }: StatusItemProps) {
             )
           ) : null}
         </View>
+        {/* 👇 USER NAME */}
+        <Text
+          style={{
+            marginTop: 6,
+            fontSize: 12,
+            fontWeight: "500",
+            textAlign: "center",
+            width: 70,
+            color:theme.text
+          }}
+          numberOfLines={1}
+        >
+          {latestStatus?.firstName}
+        </Text>
       </Animated.View>
     </Pressable>
   );
@@ -170,6 +180,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     width: 70,
   },
+
 
   wrapper: {
     width: 68,

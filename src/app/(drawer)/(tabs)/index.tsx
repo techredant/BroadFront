@@ -13,6 +13,8 @@ import {
   StatusBar,
   RefreshControl,
   FlatList,
+  Image,
+  Animated,
 } from "react-native";
 import axios from "axios";
 import io, { Socket } from "socket.io-client";
@@ -38,10 +40,36 @@ export default function HomeScreen() {
 
   const [posts, setPosts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<any[]>([]);
   const socketRef = useRef<Socket | null>(null);
+  const listRef = useRef<FlatList>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const scrollTopOpacity = useRef(new Animated.Value(0)).current;
+  const levelBtnOpacity = useRef(new Animated.Value(1)).current; // starts visible
+
+  const handleScroll = (event: any) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+
+    const shouldShow = offsetY > 400;
+
+    setShowScrollTop(shouldShow);
+
+    // 🔥 Fade Top Button
+    Animated.timing(scrollTopOpacity, {
+      toValue: shouldShow ? 1 : 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+
+    // 🔥 Fade FloatingLevelButton (opposite behavior)
+    Animated.timing(levelBtnOpacity, {
+      toValue: shouldShow ? 0 : 1,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  };
 
   // ---------------- FlatList viewability ----------------
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
@@ -110,6 +138,8 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
+
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
     fetchPosts();
   }, [fetchPosts]);
 
@@ -173,6 +203,8 @@ export default function HomeScreen() {
       <DrawerMenuButton />
       {/* Posts List */}
       <FlatList
+        ref={listRef}
+        onScroll={handleScroll}
         data={posts}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
@@ -197,18 +229,42 @@ export default function HomeScreen() {
         )}
         ListHeaderComponent={
           <>
+            <View />
+
             <View
-              className="px-4 py-2 justify-center items-center mt-8"
-              style={{ backgroundColor: theme.background }}
+              className="px-4 py-2 mt-8"
+              style={{
+                backgroundColor: theme.background,
+                justifyContent: "center",
+              }}
             >
+              {/* Centered Text */}
               <Text
                 className="font-bold text-2xl"
-                style={{ color: theme.text, fontSize: 18, marginTop: 14 }}
+                style={{
+                  color: theme.text,
+                  fontSize: 18,
+                  textAlign: "center",
+                  position: "absolute",
+                  alignSelf: "center",
+                }}
               >
                 {formattedLevel}
                 {levelType && levelType !== "home" ? ` ${levelType}` : ""}
               </Text>
+
+              {/* Right Image */}
+              <Image
+                source={require("../../../../assets/images/icon.jpg")}
+                style={{
+                  height: 50,
+                  width: 50,
+                  borderRadius: 50,
+                  alignSelf: "flex-end",
+                }}
+              />
             </View>
+
             <Status statuses={statuses} />
           </>
         }
@@ -222,7 +278,7 @@ export default function HomeScreen() {
           />
         }
         ListEmptyComponent={
-          loading ? (
+          loading || posts.length === 0 ? (
             <View
               style={{
                 flex: 1,
@@ -231,28 +287,54 @@ export default function HomeScreen() {
                 backgroundColor: theme.background,
               }}
             >
-              <LoaderKitView
-                style={{ width: 50, height: 50 }}
-                name="BallScaleRippleMultiple"
-                color={theme.text}
-              />
-              <Text style={{ marginTop: 10, color: theme.text }}>
-                Switching to {currentLevel?.value}...
-              </Text>
+              {loading ? (
+                <>
+                  <LoaderKitView
+                    style={{ width: 50, height: 50 }}
+                    name="BallScaleRippleMultiple"
+                    color={theme.text}
+                  />
+                </>
+              ) : (
+                <Text style={{ color: theme.subtext }}>No posts yet</Text>
+              )}
             </View>
-          ) : (
-            <View
-              style={{
-                flex: 1,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: theme.subtext }}>No posts yet</Text>
-            </View>
-          )
+          ) : null
         }
       />
+      <Animated.View
+        pointerEvents={showScrollTop ? "auto" : "none"}
+        style={{
+          position: "absolute",
+          bottom: 100,
+          right: 20,
+          opacity: scrollTopOpacity,
+          transform: [
+            {
+              translateY: scrollTopOpacity.interpolate({
+                inputRange: [0, 1],
+                outputRange: [20, 0], // slight slide up effect
+              }),
+            },
+          ],
+        }}
+      >
+        <Pressable
+          onPress={() =>
+            listRef.current?.scrollToOffset({ offset: 0, animated: true })
+          }
+          style={{
+            backgroundColor: "#1F2937",
+            padding: 12,
+            borderRadius: 30,
+            elevation: 5,
+          }}
+        >
+          <Text style={{ color: theme.text, fontWeight: "bold" }}>
+            ↑ Top
+          </Text>
+        </Pressable>
+      </Animated.View>
 
       <FloatingLevelButton />
     </View>

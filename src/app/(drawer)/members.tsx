@@ -31,20 +31,18 @@ const MembersScreen = () => {
         <View style={styles.userInfo}>
           <Image
             source={{
-              uri: item.image?.trim()
-                ? item.image
-                : `https://api.dicebear.com/7.x/initials/svg?seed=${item.firstName}`,
+              uri: item?.image,
             }}
             style={styles.avatar}
           />
 
           <View style={{ flex: 1 }}>
             <Text style={[styles.name, { color: theme.text }]}>
-              {item.firstName} {item.lastName}
+              {item?.firstName} {item?.lastName}
             </Text>
 
             <Text style={[styles.username, { color: theme.subtext }]}>
-              {item.nickName || "unknown"}
+              {item?.nickName || "unknown"}
             </Text>
           </View>
         </View>

@@ -339,6 +339,7 @@ const NamesScreen = () => {
                   backgroundColor: isEditing ? theme.card : theme.background, // subtle disabled look
                   opacity: isEditing ? 0.6 : 1,
                 }}
+                placeholderTextColor={theme.subtext}
               />
               {errors.nickName && (
                 <Text style={{ color: "red" }}>{errors.nickName}</Text>

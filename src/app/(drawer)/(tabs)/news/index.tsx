@@ -190,19 +190,13 @@ export default function NewsScreen() {
         }
         ListEmptyComponent={
           <View style={{ alignItems: "center", marginTop: 60 }}>
-            {loading || isLoadingUser ? (
-              <>
+            {loading || isLoadingUser ? ( 
                 <LoaderKitView
                   style={{ width: 50, height: 50 }}
                   name="BallScaleRippleMultiple"
                   animationSpeedMultiplier={1}
                   color={theme.text}
                 />
-
-                <Text style={{ marginTop: 16, color: theme.text }}>
-                  Loading {currentLevel?.value} news...
-                </Text>
-              </>
             ) : (
               <Text style={{ color: theme.subtext }}>
                 No news for this level yet
@@ -212,7 +206,7 @@ export default function NewsScreen() {
         }
       />
 
-      <FloatingLevelButton />
+      {/* <FloatingLevelButton /> */}
     </View>
   );
 }
