@@ -5,6 +5,7 @@ import {
   Pressable,
   Animated,
   StyleSheet,
+  TouchableOpacity,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { ReactNode, useRef, useState } from "react";
@@ -54,7 +55,10 @@ function StoryRing({
       {/* segments */}
       {statuses.map((s: any, i: number) => {
         const viewed =
-          forceViewed || (currentUserId && s.views?.includes(currentUserId));
+          forceViewed ||
+          s.views?.some(
+            (v: any) => v.userId?.toString() === currentUserId?.toString(),
+          );
 
         const isActive = i === activeIndex;
 
@@ -100,16 +104,13 @@ export function StatusItem({
 
   const hasMedia = latestStatus?.media?.length > 0;
   const firstMedia = latestStatus?.media?.[0];
-  const {theme} = useTheme()
+  const { theme } = useTheme();
 
   const handlePress = () => {
     setLocalViewed(true); // 👈 instant grey
     onOpen?.(userStatus.userId);
     router.push(`/(status)/Viewer?user=${userStatus.userId}`);
   };
-
- 
-  
 
   return (
     <Pressable onPress={handlePress} style={styles.container}>
@@ -124,34 +125,50 @@ export function StatusItem({
           />
 
           {/* MEDIA */}
-          {latestStatus ? (
-            hasMedia ? (
-              firstMedia?.includes(".mp4") ? (
-                <Video
-                  source={{ uri: firstMedia }}
-                  style={styles.media}
-                  resizeMode="cover"
-                  muted
-                  repeat
-                />
+          <View style={styles.mediaWrapper}>
+            {latestStatus ? (
+              hasMedia ? (
+                firstMedia?.includes(".mp4") ? (
+                  <>
+                    <Video
+                      source={{ uri: firstMedia }}
+                      style={styles.media}
+                      resizeMode="cover"
+                      muted
+                      repeat
+                    />
+                    <TouchableOpacity
+                      style={{
+                        ...StyleSheet.absoluteFillObject,
+                        backgroundColor: "rgba(0,0,0,0.0)",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                      }}
+                      onPress={handlePress}
+                    ></TouchableOpacity>
+                  </>
+                ) : (
+                  <Image source={{ uri: firstMedia }} style={styles.media} />
+                )
               ) : (
-                <Image source={{ uri: firstMedia }} style={styles.media} />
+                <View
+                  style={[
+                    styles.textBackground,
+                    {
+                      backgroundColor:
+                        latestStatus.backgroundColor || "#1e293b",
+                    },
+                  ]}
+                >
+                  <Text style={styles.textOnly} numberOfLines={2}>
+                    {latestStatus.caption}
+                  </Text>
+                </View>
               )
-            ) : (
-              <View
-                style={[
-                  styles.textBackground,
-                  {
-                    backgroundColor: latestStatus.backgroundColor || "#1e293b",
-                  },
-                ]}
-              >
-                <Text style={styles.textOnly} numberOfLines={2}>
-                  {latestStatus.caption}
-                </Text>
-              </View>
-            )
-          ) : null}
+            ) : null}
+          </View>
         </View>
         {/* 👇 USER NAME */}
         <Text
@@ -161,7 +178,7 @@ export function StatusItem({
             fontWeight: "500",
             textAlign: "center",
             width: 70,
-            color:theme.text
+            color: theme.text,
           }}
           numberOfLines={1}
         >
@@ -181,7 +198,6 @@ const styles = StyleSheet.create({
     width: 70,
   },
 
-
   wrapper: {
     width: 68,
     height: 68,
@@ -194,7 +210,6 @@ const styles = StyleSheet.create({
   media: {
     width: 58,
     height: 58,
-    borderRadius: 29,
     position: "absolute",
   },
 
@@ -204,6 +219,14 @@ const styles = StyleSheet.create({
     borderRadius: 29,
     justifyContent: "center",
     alignItems: "center",
+    position: "absolute",
+  },
+
+  mediaWrapper: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    overflow: "hidden", // 🔥 THIS is what makes video round
     position: "absolute",
   },
 

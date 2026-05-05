@@ -33,6 +33,9 @@ import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useFollowContext } from "@/context/FollowContext";
+import { EditProfileModal } from "@/app/components/posts/EditProfileModal";
+import { PostCard } from "@/app/components/posts/PostCard";
+import { useIsFocused } from "@react-navigation/native";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -58,6 +61,12 @@ export default function ProfileScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+    const [modalProfileVisible, setModalProfileVisible] = useState(false);
+      const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
+    
+      const isFocused = useIsFocused();
+    
+
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -71,7 +80,7 @@ export default function ProfileScreen() {
   };
 
   const getData = () => {
-    if (activeTab === "posts") return mediaPosts;
+    if (activeTab === "posts") return posts;
     if (activeTab === "followers") return followerUsers;
     if (activeTab === "following") return followingUsers;
     return [];
@@ -104,11 +113,6 @@ export default function ProfileScreen() {
     fetchMedia();
   }, [fetchMedia]);
 
-  const mediaPosts = useMemo(() => {
-    const result = posts.filter((p) => p.media?.length).flatMap((p) => p.media);
-
-    return result;
-  }, [posts]);
 
   /* ---------------- REALTIME SOCKET ---------------- */
   useEffect(() => {
@@ -145,6 +149,7 @@ export default function ProfileScreen() {
 
   /* ---------------- PINCH ---------------- */
   const pinchScale = useSharedValue(1);
+  
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
@@ -175,37 +180,50 @@ export default function ProfileScreen() {
   const renderItem = ({ item, index }: any) => {
     const isFollowing = following.includes(item.clerkId);
 
-    if (activeTab === "posts") {
-      const isVideo = item.endsWith(".mp4") || item.endsWith(".mov");
+if (activeTab === "posts") {
+  return (
+       <PostCard
+            post={item}
+            isVisible={visiblePostId === item._id && isFocused}
+            socket={socketRef.current}
+            allPosts={posts}
+            onRefresh={onRefresh}
+            onUpdatePost={(updatedPost: { _id: any }) => {
+              setPosts((prev) =>
+                prev.map((p) => (p._id === updatedPost._id ? updatedPost : p)),
+              );
+            }}
+            onDeletePost={(postId: any) =>
+              setPosts((prev) => prev.filter((p) => p._id !== postId))
+            }
+          />
+  );
+}
 
-      return (
-        <Pressable onPress={() => openMedia(index)}>
-          {isVideo ? (
-            <Video
-              source={{ uri: item }}
-              style={styles.postImage}
-              resizeMode="cover"
-              repeat
-              muted
-            />
-          ) : (
-            <Image source={{ uri: item }} style={styles.postImage} />
-          )}
-        </Pressable>
-      );
-    }
 
+    
     return (
-      <View style={[styles.userRow, { backgroundColor: theme.background }]}>
+      <View
+        style={[
+          styles.userRow,
+          { backgroundColor: theme.background, borderColor: theme.border },
+        ]}
+      >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Image source={{ uri: item?.image }} style={styles.userAvatar} />
-          <View>
-            <Text style={[styles.userName, { color: theme.text }]} numberOfLines={1}>
+          <View style={{ marginLeft: 10 }}>
+            <Text
+              style={[styles.userName, { color: theme.text }]}
+              numberOfLines={1}
+            >
               {item.firstName
-                ? `${item.firstName} ${item.lastName}`
-                : item.companyName}
+                ? `${item.firstName} ${item.lastName} `
+                : `${item.companyName}`}
             </Text>
-            <Text style={[styles.userName, { color: theme.subtext }]} numberOfLines={1}>
+            <Text
+              style={[styles.userName, { color: theme.subtext }]}
+              numberOfLines={1}
+            >
               {item.nickName}
             </Text>
           </View>
@@ -250,7 +268,8 @@ export default function ProfileScreen() {
         {/* Name + Username */}
         <View style={styles.bio}>
           <Text style={[styles.name, { color: theme.text }]}>
-            {userDetails?.firstName} {userDetails?.lastName}
+            {userDetails?.firstName} {userDetails?.lastName}{" "}
+            {userDetails?.companyName}
           </Text>
           <Text style={[styles.username, { color: theme.subtext }]}>
             {userDetails?.nickName}
@@ -261,7 +280,7 @@ export default function ProfileScreen() {
         <View style={styles.actionsRow}>
           <TouchableOpacity
             style={[styles.primaryBtn, { backgroundColor: theme.primary }]}
-            onPress={() => router.push("/(onboarding)/nameScreen")}
+            onPress={() => setModalProfileVisible(true)}
           >
             <Ionicons name="create-outline" size={16} color="#fff" />
             <Text style={styles.primaryBtnText}>Edit Profile</Text>
@@ -292,7 +311,7 @@ export default function ProfileScreen() {
             >
               <Text style={[styles.statNumber, { color: theme.text }]}>
                 {tab === "posts"
-                  ? mediaPosts.length
+                  ? posts.length
                   : tab === "followers"
                     ? followersCount
                     : followingCount}
@@ -318,10 +337,14 @@ export default function ProfileScreen() {
       <FlatList
         data={getData()}
         key={activeTab}
-        numColumns={activeTab === "posts" ? 3 : 1}
+        numColumns={activeTab === "posts" ? 1 : 1}
         keyExtractor={(_, i) => i.toString()}
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
+        windowSize={5}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        removeClippedSubviews
         contentContainerStyle={{ paddingBottom: 140 }}
         refreshControl={
           <RefreshControl
@@ -333,15 +356,10 @@ export default function ProfileScreen() {
         }
       />
 
-      {/* MODAL */}
-      <MediaViewerModal
-        modalVisible={modalVisible}
-        setModalVisible={setModalVisible}
-        mediaList={mediaPosts}
-        selectedIndex={selectedIndex}
-        post={posts.find((p) => p.media?.includes(mediaPosts[selectedIndex]))}
-        pinchGesture={pinchGesture}
-        pinchStyle={pinchStyle}
+      <EditProfileModal
+        visible={modalProfileVisible}
+        onClose={() => setModalProfileVisible(false)}
+        userDetails={userDetails}
       />
     </View>
   );
@@ -418,7 +436,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     width: "100%",
-    marginTop: 18,
+    marginTop: 5,
   },
 
   statItem: {
@@ -448,7 +466,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     padding: 12,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: "#eee",
   },
   userAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12 },

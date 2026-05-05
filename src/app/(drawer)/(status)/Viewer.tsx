@@ -12,12 +12,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Video from "react-native-video";
 import { Image } from "react-native";
 import axios from "axios";
-import { Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import { useTheme } from "@/context/ThemeContext";
+import {
+  Menu,
+  MenuOption,
+  MenuOptions,
+  MenuTrigger,
+} from "react-native-popup-menu";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
-const DURATION = 5000;
-
 const { width, height } = Dimensions.get("window");
 
 export default function Viewer() {
@@ -25,28 +30,18 @@ export default function Viewer() {
 
   const [statuses, setStatuses] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
- 
   const [paused, setPaused] = useState(false);
+  const [videoLoading, setVideoLoading] = useState(true);
+  const [duration, setDuration] = useState(5000);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const progress = useRef(new Animated.Value(0)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
-  const progressValue = useRef(0);
 
   const userId = Array.isArray(user) ? user[0] : user;
   const current = statuses[currentIndex];
-
-  useFocusEffect(
-    useCallback(() => {
-      // Screen is focused
-      setPaused(false);
-
-      return () => {
-        // Screen is unfocused (user left)
-        setPaused(true);
-        animationRef.current?.stop();
-      };
-    }, []),
-  );
+  const isVideo = current?.media?.[0]?.includes(".mp4");
+  const { theme } = useTheme();
 
   /* =========================
      FETCH STATUSES
@@ -64,57 +59,66 @@ export default function Viewer() {
   }, [userId]);
 
   /* =========================
-     MARK AS VIEWED
+     RESET ON INDEX CHANGE
   ========================= */
   useEffect(() => {
-    if (!current?._id || !userId) return;
-
-    axios.put(`${BASE_URL}/api/status/${current._id}/view`, {
-      userId: String(userId),
-    });
+    setVideoLoading(true);
+    setDuration(5000);
+    progress.setValue(0);
+    animationRef.current?.stop();
   }, [currentIndex]);
 
   /* =========================
-     AUTO PROGRESS (WITH PAUSE)
+     FAILSAFE (prevents freeze)
   ========================= */
   useEffect(() => {
-    if (!statuses.length) return;
-    if (paused) return;
+    const t = setTimeout(() => {
+      setVideoLoading(false);
+    }, 3000);
 
-    progress.setValue(progressValue.current);
+    return () => clearTimeout(t);
+  }, [currentIndex]);
+
+  /* =========================
+     PROGRESS (PAUSES WITH MENU)
+  ========================= */
+  useEffect(() => {
+    if (!statuses.length || paused || videoLoading || menuOpen) return;
+
+    progress.setValue(0);
 
     const anim = Animated.timing(progress, {
       toValue: 1,
-      duration: DURATION * (1 - progressValue.current),
+      duration: duration,
       useNativeDriver: false,
     });
 
     animationRef.current = anim;
 
-    progress.addListener(({ value }) => {
-      progressValue.current = value;
-    });
-
     anim.start(({ finished }) => {
-      if (finished) {
-        progressValue.current = 0;
-        handleNext();
-      }
+      if (finished) handleNext();
     });
 
-    return () => {
-      progress.removeAllListeners();
-      anim.stop();
-    };
-  }, [currentIndex, statuses,  paused]);
+    return () => anim.stop();
+  }, [currentIndex, duration, paused, videoLoading, menuOpen]);
+
+  /* =========================
+     VIDEO / IMAGE LOAD
+  ========================= */
+  const handleVideoLoad = (meta: any) => {
+    setVideoLoading(false);
+    setDuration(meta.duration * 1000);
+  };
+
+  const handleImageLoad = () => {
+    setVideoLoading(false);
+    setDuration(5000);
+  };
 
   /* =========================
      CONTROLS
   ========================= */
   const handleNext = () => {
-    progressValue.current = 0;
-    progress.setValue(0);
-
     if (currentIndex < statuses.length - 1) {
       setCurrentIndex((p) => p + 1);
     } else {
@@ -123,54 +127,46 @@ export default function Viewer() {
   };
 
   const handlePrev = () => {
-    progressValue.current = 0;
-    progress.setValue(0);
-
     if (currentIndex > 0) {
       setCurrentIndex((p) => p - 1);
     }
   };
 
   const handlePause = () => {
-    setPaused(true);
-    animationRef.current?.stop();
+    if (!menuOpen) {
+      setPaused(true);
+      animationRef.current?.stop();
+    }
   };
 
   const handleResume = () => {
-    setPaused(false);
+    if (!menuOpen) {
+      setPaused(false);
+    }
   };
 
-  const isVideo = current?.media?.[0]?.endsWith(".mp4");
-
-  useEffect(() => {
-    if (!current) {
-      animationRef.current?.stop();
-      progressValue.current = 0;
-      progress.setValue(0);
-    }
-  }, [current]);
-
- if (!current) {
-   return (
-     <View style={styles.loader}>
-       <ActivityIndicator size="large" color="#fff" />
-     </View>
-   );
- }
-
-
+  /* =========================
+     LOADING SCREEN
+  ========================= */
+  if (!current) {
+    return (
+      <View style={[styles.loader, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.text} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      {/* BACK BUTTON */}
+      {/* BACK */}
       <Pressable
-        style={styles.backBtn}
+        style={[styles.backBtn, { backgroundColor: theme.card, borderRadius: 50, padding: 10 }]}
         onPress={() => router.replace("/(drawer)/(tabs)")}
       >
-        <Ionicons name="arrow-back" size={26} color="#fff" />
+        <Ionicons name="arrow-back" size={26} color={theme.text} />
       </Pressable>
 
-      {/* PROGRESS BARS */}
+      {/* PROGRESS */}
       <View style={styles.progressContainer}>
         {statuses.map((_, i) => (
           <View key={i} style={styles.progressBar}>
@@ -194,8 +190,65 @@ export default function Viewer() {
         ))}
       </View>
 
+      {/* MENU */}
+      <View style={styles.menuWrapper}>
+        <Menu
+          onOpen={() => {
+            setMenuOpen(true);
+            setPaused(true);
+          }}
+          onClose={() => {
+            setMenuOpen(false);
+            setPaused(false);
+          }}
+        >
+          <MenuTrigger>
+           
+            <View style={{ backgroundColor: theme.card, borderRadius: 50, padding: 10}}>
+              <Feather name="more-vertical" size={22} color={theme.text} />
+            </View>
+          </MenuTrigger>
+
+          <MenuOptions
+            customStyles={{
+              optionsContainer: {
+                borderRadius: 12,
+                paddingVertical: 6,
+                width: 180,
+                backgroundColor: "#fff",
+              },
+            }}
+          >
+            <MenuOption onSelect={() => alert("Save")}>
+              <View style={styles.menuItem}>
+                <Feather name="bookmark" size={16} />
+                <Text>Save</Text>
+              </View>
+            </MenuOption>
+
+            <MenuOption onSelect={() => alert("Share")}>
+              <View style={styles.menuItem}>
+                <Feather name="share-2" size={16} />
+                <Text>Share</Text>
+              </View>
+            </MenuOption>
+
+            <MenuOption onSelect={() => alert("Report")}>
+              <View style={styles.menuItem}>
+                <Feather name="flag" size={16} color="red" />
+                <Text style={{ color: "red" }}>Report</Text>
+              </View>
+            </MenuOption>
+          </MenuOptions>
+        </Menu>
+      </View>
+
       {/* CONTENT */}
-      <View style={styles.container}>
+      <Pressable
+        style={styles.container}
+        onLongPress={handlePause}
+        onPressOut={handleResume}
+      >
         {/* MEDIA */}
         {current.media?.length > 0 &&
           (isVideo ? (
@@ -203,38 +256,50 @@ export default function Viewer() {
               source={{ uri: current.media[0] }}
               style={styles.media}
               resizeMode="contain"
-              paused={paused}
+              paused={paused || menuOpen}
+              onLoad={handleVideoLoad}
+              onLoadStart={() => setVideoLoading(true)}
             />
           ) : (
             <Image
               source={{ uri: current.media[0] }}
               style={styles.media}
               resizeMode="contain"
+              onLoadStart={() => setVideoLoading(true)}
+              onLoadEnd={handleImageLoad}
             />
           ))}
 
+        {/* LOADER */}
+        {videoLoading && (
+          <ActivityIndicator size="large" color="#fff" style={styles.loader} />
+        )}
+
         {/* TEXT */}
-        {current.caption ? (
-          <View style={styles.textContainer}>
+        {current.caption && (
+          <View
+            style={[
+              styles.textContainer,
+              {
+                justifyContent:
+                  current.media?.length > 0 ? "flex-end" : "center",
+                paddingBottom: current.media?.length > 0 ? 80 : 0,
+                backgroundColor:
+                  current.media?.length > 0
+                    ? "transparent"
+                    : current.backgroundColor,
+              },
+            ]}
+          >
             <Text style={styles.text}>{current.caption}</Text>
           </View>
-        ) : null}
-      </View>
+        )}
+      </Pressable>
 
-      {/* TOUCH CONTROLS */}
+      {/* TOUCH NAV */}
       <View style={styles.touchRow}>
-        <Pressable
-          style={styles.left}
-          onPress={handlePrev}
-          onLongPress={handlePause}
-          onPressOut={handleResume}
-        />
-        <Pressable
-          style={styles.right}
-          onPress={handleNext}
-          onLongPress={handlePause}
-          onPressOut={handleResume}
-        />
+        <Pressable style={styles.left} onPress={handlePrev} />
+        <Pressable style={styles.right} onPress={handleNext} />
       </View>
     </View>
   );
@@ -251,7 +316,7 @@ const styles = StyleSheet.create({
 
   backBtn: {
     position: "absolute",
-    top: 50,
+    top: 60,
     left: 15,
     zIndex: 100,
   },
@@ -263,8 +328,9 @@ const styles = StyleSheet.create({
   },
 
   textContainer: {
-    flex: 1,
-    justifyContent: "center",
+    position: "absolute",
+    width: "100%",
+    height: "100%",
     alignItems: "center",
   },
 
@@ -272,6 +338,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 28,
     textAlign: "center",
+    paddingHorizontal: 20,
   },
 
   progressContainer: {
@@ -296,14 +363,9 @@ const styles = StyleSheet.create({
   },
 
   loader: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 20,
   },
 
   touchRow: {
@@ -311,8 +373,24 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     flexDirection: "row",
+  
   },
 
   left: { flex: 1 },
   right: { flex: 1 },
+
+  menuWrapper: {
+    position: "absolute",
+    top: 60,
+    right: 15,
+    zIndex: 200,
+    borderRadius: 50
+  },
+
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+  },
 });

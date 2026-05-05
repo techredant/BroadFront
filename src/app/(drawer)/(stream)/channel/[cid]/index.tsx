@@ -1,6 +1,6 @@
 import { EmptyState } from "@/app/components/EmptyState";
+import { useTheme } from "@/context/ThemeContext";
 import { useAppContext } from "@/contexts/AppProvider";
-import { COLORS } from "@/lib/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Image } from "expo-image";
@@ -45,15 +45,15 @@ const ChannelScreen = () => {
     navigation.setOptions({
       headerShown: true,
       headerStyle: {
-        backgroundColor: COLORS.surface,
+        backgroundColor: theme.background,
       },
-      headerTintColor: COLORS.text,
+      headerTintColor: theme.text,
       headerLeft: () => (
         <TouchableOpacity
           onPress={() => router.back()}
-          className="ml-2 flex-row items-center"
+          className="ml-2 flex-row items-center p-2"
         >
-          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+          <Ionicons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
       ),
       headerTitle: () => (
@@ -71,14 +71,22 @@ const ChannelScreen = () => {
           ) : (
             <View
               className="mr-2.5 h-8 w-8 items-center justify-center rounded-full"
-              style={{ backgroundColor: COLORS.primary }}
+              style={{ backgroundColor: theme.background }}
             >
-              <Text className="text-base font-semibold text-foreground">
+              <Text
+                className="text-base font-semibold text-foreground"
+                style={{ color: theme.text }}
+              >
                 {displayName.charAt(0).toUpperCase()}
               </Text>
             </View>
           )}
-          <Text className="font-semibold text-foreground">{displayName}</Text>
+          <Text
+            className="font-semibold text-foreground"
+            style={{ color: theme.text }}
+          >
+            {displayName}
+          </Text>
         </View>
       ),
       headerRight: () => (
@@ -90,7 +98,7 @@ const ChannelScreen = () => {
             });
           }}
         >
-          <Ionicons name="videocam-outline" size={24} color={COLORS.primary} />
+          <Ionicons name="videocam-outline" size={24} color={theme?.primary} />
         </TouchableOpacity>
       ),
     });
@@ -103,8 +111,10 @@ const ChannelScreen = () => {
       </View>
     );
 
+      const { theme,  isDark } = useTheme();
+
   return (
-    <SafeAreaView className=" bg-border">
+    <SafeAreaView className=" " style={{ backgroundColor: theme.background}}>
       <Channel
         channel={channel}
         keyboardVerticalOffset={headerHeight}

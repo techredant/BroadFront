@@ -45,7 +45,7 @@ export default function StatusScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, { flex: 1, backgroundColor: theme.background}]}>
         <ActivityIndicator />
       </View>
     );
@@ -62,7 +62,7 @@ export default function StatusScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.card }]}>
         <DrawerMenuButton />
-      <Text style={{ textAlign: "center", marginTop: 20, fontWeight: "bold", fontSize: 20 }}>{groupedStatuses.length} status</Text>
+      <Text style={{ textAlign: "center", marginTop: 20, fontWeight: "bold", fontSize: 20, color: theme.text }}>{groupedStatuses.length} status</Text>
       <FlatList
         data={groupedStatuses}
         keyExtractor={(item: any) => item.userId}

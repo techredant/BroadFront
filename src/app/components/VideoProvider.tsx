@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { COLORS } from "@/lib/theme";
 import { useUser } from "@clerk/clerk-expo";
 import type { Call } from "@stream-io/video-react-native-sdk";
+import { useTheme } from "@/context/ThemeContext";
 
 const API_URL = "https://cast-api-zeta.vercel.app";
 const STREAM_API_KEY = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
@@ -14,7 +14,7 @@ async function getStreamToken(userDetail: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       userId: userDetail?.clerkId,
-      name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""}`.trim(),
+      name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""} ${userDetail?.companyName ?? ""}`.trim(),
       image: userDetail?.image,
     }),
   });
@@ -73,6 +73,7 @@ function RingingCalls() {
 
 const VideoProvider = ({ userDetail, children }: VideoWrapperProps) => {
   const { user, isLoaded } = useUser();
+  const { theme } =useTheme()
 
   const prevUserId = useRef<string | null>(null);
   const [videoClient, setVideoClient] = useState<any>(null);
@@ -86,7 +87,7 @@ const VideoProvider = ({ userDetail, children }: VideoWrapperProps) => {
 
         user: {
           id: userDetail?.clerkId,
-          name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""}`.trim(),
+          name: `${userDetail?.firstName ?? ""} ${userDetail?.lastName ?? ""} ${userDetail?.nickName ?? ""} ${userDetail?.companyName ?? ""}`.trim(),
           image: userDetail?.image,
         },
 
@@ -130,7 +131,7 @@ const VideoProvider = ({ userDetail, children }: VideoWrapperProps) => {
   if (!videoClient) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="small" color={COLORS.text} />
+        <ActivityIndicator size="small" color={theme.text} />
       </View>
     );
   }

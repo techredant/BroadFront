@@ -152,7 +152,7 @@ const SettingsScreen = () => {
           <Row
             label="Edit Profile"
             icon={<Feather name="user" size={20} color={theme.text} />}
-            // onPress={() => router.push("/(auth)/nameScreen")}
+            onPress={() => router.push("/(onboarding)/nameScreen")}
           />
 
           <Row
@@ -179,13 +179,13 @@ const SettingsScreen = () => {
                 color={theme.text}
               />
             }
-            // onPress={() => router.push("/drawerPages/Notifications")}
+            onPress={() => router.push("/(drawerPages)/Notifications")}
           />
 
           <Row
             label="Privacy"
             icon={<Feather name="shield" size={20} color={theme.text} />}
-            // onPress={() => router.push("/drawerPages/Privacy")}
+            onPress={() => router.push("/(drawerPages)/Privacy")}
           />
         </Section>
 
@@ -200,7 +200,7 @@ const SettingsScreen = () => {
           <Row
             label="About"
             icon={<Feather name="info" size={20} color={theme.text} />}
-            // onPress={() => router.push("/drawerPages/About")}
+            onPress={() => router.push("/(drawerPages)/About")}
           />
         </Section>
 

@@ -8,7 +8,7 @@ export function CreateStatus() {
 
   return (
     <AvatarWithStatus
-      imageUrl={userDetails?.image || user?.imageUrl }
+      imageUrl={userDetails?.image}
       hasStatus={userDetails?.hasActiveStatus}
     />
   );

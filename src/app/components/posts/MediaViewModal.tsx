@@ -7,13 +7,17 @@ import {
   Dimensions,
   StyleSheet,
   StatusBar,
-  Text,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import Animated, { runOnJS } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import Video from "react-native-video";
+import LoaderKitView from "react-native-loader-kit";
+import { useTheme } from "@/context/ThemeContext";
 
 const { width } = Dimensions.get("window");
 
@@ -32,12 +36,21 @@ export function MediaViewerModal({
   setModalVisible,
   mediaList,
   selectedIndex,
-  post,
   pinchGesture,
   pinchStyle,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { theme } = useTheme();
+
+  const flatListRef = React.useRef<FlatList>(null);
+
   const [currentIndex, setCurrentIndex] = React.useState(selectedIndex);
+  const [loadingVideoIndex, setLoadingVideoIndex] = React.useState<
+    number | null
+  >(null);
+  const [isVideoReady, setIsVideoReady] = React.useState<{
+    [key: number]: boolean;
+  }>({});
   const [isZooming, setIsZooming] = React.useState(false);
 
   const onViewRef = React.useRef(({ viewableItems }: any) => {
@@ -46,29 +59,41 @@ export function MediaViewerModal({
     }
   });
 
-  React.useEffect(() => {
-    setCurrentIndex(selectedIndex);
-  }, [selectedIndex]);
-
-const enhancedPinchGesture = pinchGesture
-  .runOnJS(true) // 👈 FIX
-  .onStart(() => {
-    setIsZooming(true);
-  })
-  .onEnd(() => {
-    setIsZooming(false);
-  });
-
   const viewConfigRef = React.useRef({
     itemVisiblePercentThreshold: 80,
   });
 
+  const enhancedPinchGesture = pinchGesture
+    .runOnJS(true)
+    .onStart(() => setIsZooming(true))
+    .onEnd(() => setIsZooming(false));
+
+  React.useEffect(() => {
+    setCurrentIndex(selectedIndex);
+  }, [selectedIndex]);
+
+  // ✅ Correct initial scroll
+  React.useEffect(() => {
+    if (modalVisible && flatListRef.current) {
+      requestAnimationFrame(() => {
+        flatListRef.current?.scrollToIndex({
+          index: selectedIndex,
+          animated: false,
+        });
+      });
+    }
+  }, [modalVisible, selectedIndex]);
+
+  const isVideo = (item: string) =>
+    item.toLowerCase().includes(".mp4") ||
+    item.toLowerCase().includes(".mov") ||
+    item.toLowerCase().includes(".webm");
+
   return (
     <Modal
       visible={modalVisible}
-      animationType="fade"
+      animationType="slide"
       transparent={false}
-      // statusBarTranslucent
       onRequestClose={() => setModalVisible(false)}
     >
       <StatusBar translucent backgroundColor="transparent" />
@@ -77,64 +102,90 @@ const enhancedPinchGesture = pinchGesture
         {/* Close Button */}
         <Pressable
           onPress={() => setModalVisible(false)}
-          style={[styles.closeBtn, { top: insets.top + 10 }]}
+          style={styles.closeBtn}
         >
-          <Feather name="x" size={20} color="#fff" />
+          <Feather name="x" size={28} color="white" />
         </Pressable>
 
         <FlatList
+          ref={flatListRef}
           horizontal
           pagingEnabled
           data={mediaList}
           initialScrollIndex={selectedIndex}
           showsHorizontalScrollIndicator={false}
-          onViewableItemsChanged={onViewRef.current}
-          viewabilityConfig={viewConfigRef.current}
+          keyExtractor={(item, index) => item + index}
           getItemLayout={(_, index) => ({
             length: width,
             offset: width * index,
             index,
           })}
+          onViewableItemsChanged={onViewRef.current}
+          viewabilityConfig={viewConfigRef.current}
           scrollEnabled={!isZooming}
-          keyExtractor={(item, index) => item + index}
           renderItem={({ item, index }) => {
-            const isVideo = post?.videos?.includes(item);
-            const isActive = index === currentIndex;
+            const video = isVideo(item);
+            const active = index === currentIndex;
 
             return (
               <SafeAreaView style={styles.mediaContainer}>
-                <GestureDetector gesture={enhancedPinchGesture}>
-                  {isVideo ? (
+                {video ? (
+                  <View style={styles.videoWrapper}>
+                    {loadingVideoIndex === index && (
+                      <View style={styles.loader}>
+                        <LoaderKitView
+                          style={{ width: 50, height: 50 }}
+                          name="BallScaleRippleMultiple"
+                          color="white"
+                        />
+                      </View>
+                    )}
+
                     <Video
                       source={{ uri: item }}
                       style={styles.media}
                       resizeMode="contain"
-                      paused={!isActive} // 🔥 KEY FIX
+                      paused={!active}
                       repeat
+                      controls={isVideoReady[index] === true}
+                      onLoadStart={() => {
+                        setLoadingVideoIndex(index);
+                        setIsVideoReady((p) => ({ ...p, [index]: false }));
+                      }}
+                      onLoad={() => {
+                        setLoadingVideoIndex(null);
+                        setIsVideoReady((p) => ({ ...p, [index]: true }));
+                      }}
+                      onBuffer={({ isBuffering }) => {
+                        setLoadingVideoIndex(isBuffering ? index : null);
+                      }}
                     />
-                  ) : (
+                  </View>
+                ) : (
+                  <GestureDetector gesture={enhancedPinchGesture}>
                     <Animated.Image
                       source={{ uri: item }}
                       style={[styles.media, pinchStyle]}
                       resizeMode="contain"
                     />
-                  )}
-                </GestureDetector>
+                  </GestureDetector>
+                )}
               </SafeAreaView>
             );
           }}
         />
+
+        {/* DOTS */}
         {mediaList.length > 1 && (
-          <View
-            style={[
-              styles.dotsContainer,
-              { bottom: insets.bottom + 20 }, // 👈 perfect spacing
-            ]}
-          >
+          <View style={[styles.dotsContainer, { bottom: insets.bottom + 20 }]}>
             {mediaList.map((_, i) => (
               <View
                 key={i}
-                style={[styles.dot, i === currentIndex && styles.activeDot]}
+                style={[
+                  styles.dot,
+                  i === currentIndex && styles.activeDot,
+                  { backgroundColor: "white" },
+                ]}
               />
             ))}
           </View>
@@ -153,10 +204,35 @@ const styles = StyleSheet.create({
   closeBtn: {
     position: "absolute",
     right: 20,
+    top: 30,
     zIndex: 20,
+    backgroundColor: "rgba(0,0,0,0.35)",
     padding: 8,
-    backgroundColor: "gray",
-    borderRadius: 50,
+    borderRadius: 999,
+  },
+
+  mediaContainer: {
+    width,
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  media: {
+    width: "100%",
+    height: "100%",
+  },
+
+  videoWrapper: {
+    width,
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  loader: {
+    position: "absolute",
+    zIndex: 10,
   },
 
   dotsContainer: {
@@ -170,24 +246,11 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.4)",
   },
 
   activeDot: {
-    backgroundColor: "#fff",
     width: 8,
     height: 8,
-  },
-
-  mediaContainer: {
-    width,
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  media: {
-    width: "100%",
-    height: "100%",
+    backgroundColor: "white",
   },
 });

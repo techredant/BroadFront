@@ -26,6 +26,7 @@ type Post = {
     firstName?: string;
     nickName?: string;
     lastName?: string;
+    companyName?: string;
     image?: string;
     _id?: string;
   };

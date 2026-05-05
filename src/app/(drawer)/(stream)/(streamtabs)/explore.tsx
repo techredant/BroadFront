@@ -3,15 +3,14 @@ import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
 import ExploreUserCard from "@/app/components/ExploreUserCard";
 import ListEmptyComponent from "@/app/components/ListEmptyComponent";
 import { useFollowContext } from "@/context/FollowContext";
+import { useTheme } from "@/context/ThemeContext";
 import { useAppContext } from "@/contexts/AppProvider";
 import useStartChat from "@/hooks/useStartChat";
-import useStreamUsers from "@/hooks/useStreamUsers";
-import { COLORS } from "@/lib/theme";
 import { useUser } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import axios from "axios";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { useState } from "react";
+import { FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useChatContext } from "stream-chat-expo";
 
 
@@ -20,6 +19,7 @@ const ExploreScreen = () => {
   const { user } = useUser();
   const { client } = useChatContext();
   const userId = user?.id ?? "";
+  const { theme } =useTheme()
 
   const [creating, setCreating] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -27,10 +27,6 @@ const ExploreScreen = () => {
     "followers",
   );
   const {
-    handleFollow,
-    following,
-    followersCount,
-    followingCount,
     followerUsers,
     followingUsers,
   } = useFollowContext();
@@ -50,12 +46,13 @@ const ExploreScreen = () => {
     if (!search.trim()) return true;
 
     const q = search.toLowerCase();
-    const name = `${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase();
+    const name =
+      `${u.firstName ?? ""} ${u.lastName ?? ""} ${u.companyName ?? ""}`.toLowerCase();
     const nick = (u.nickName ?? "").toLowerCase();
 
     return name.includes(q) || nick.includes(q);
   });
-
+console.log(filteredUsers);
   const renderUserItem = ({ item }: any) => (
     <ExploreUserCard
       item={item}
@@ -65,31 +62,64 @@ const ExploreScreen = () => {
   );
 
   return (
-    <View className="flex-1 bg-background">
+    <SafeAreaView
+      className="flex-1 bg-background"
+      style={{ backgroundColor: theme.background }}
+    >
       <DrawerMenuButton />
 
       {/* HEADER */}
-      <View className="px-5 pt-3 pb-1">
-        <Text className="text-[28px] font-bold text-center text-foreground">
+      <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
+        <Text
+          style={{
+            fontSize: 28,
+            fontWeight: "700",
+            textAlign: "center",
+            color: theme.text,
+          }}
+        >
           Connections
         </Text>
-        <Text className="text-sm text-center text-foreground-muted mt-1">
+
+        <Text
+          style={{
+            fontSize: 13,
+            textAlign: "center",
+            marginTop: 4,
+            color: theme.subtext,
+          }}
+        >
           Followers & Following
         </Text>
       </View>
 
       {/* 🔥 TAB BUTTONS */}
-      <View className="flex-row mx-5 mt-4 bg-surface rounded-[14px] border border-border overflow-hidden">
+      <View
+        style={{
+          flexDirection: "row",
+          marginHorizontal: 20,
+          marginTop: 16,
+          borderRadius: 14,
+          overflow: "hidden",
+          borderColor: theme.border,
+          backgroundColor: theme.card,
+        }}
+      >
         <Pressable
           onPress={() => setActiveTab("followers")}
-          className={`flex-1 py-3 items-center ${
-            activeTab === "followers" ? "bg-primary" : ""
-          }`}
+          style={{
+            flex: 1,
+            paddingVertical: 12,
+            alignItems: "center",
+            backgroundColor:
+              activeTab === "followers" ? theme.primary : "transparent",
+          }}
         >
           <Text
-            className={`font-semibold ${
-              activeTab === "followers" ? "text-white" : "text-foreground"
-            }`}
+            style={{
+              fontWeight: "600",
+              color: activeTab === "followers" ? "#fff" : theme.text,
+            }}
           >
             Followers
           </Text>
@@ -97,14 +127,19 @@ const ExploreScreen = () => {
 
         <Pressable
           onPress={() => setActiveTab("following")}
-          className={`flex-1 py-3 items-center ${
-            activeTab === "following" ? "bg-primary" : ""
-          }`}
+          style={{
+            flex: 1,
+            paddingVertical: 12,
+            alignItems: "center",
+            backgroundColor:
+              activeTab === "following" ? theme.primary : "transparent",
+          }}
         >
           <Text
-            className={`font-semibold ${
-              activeTab === "following" ? "text-white" : "text-foreground"
-            }`}
+            style={{
+              fontWeight: "600",
+              color: activeTab === "following" ? "#fff" : theme.text,
+            }}
           >
             Following
           </Text>
@@ -112,43 +147,64 @@ const ExploreScreen = () => {
       </View>
 
       {/* SEARCH */}
-      <View className="flex-row items-center bg-surface mx-5 my-4 px-3.5 rounded-[14px] gap-2.5 border border-border">
-        <Ionicons name="search" size={18} color={COLORS.textMuted} />
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginHorizontal: 20,
+          marginVertical: 14,
+          paddingHorizontal: 12,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: theme.border,
+          backgroundColor: theme.card,
+        }}
+      >
+        <Ionicons name="search" size={18} color={theme.subtext} />
 
         <TextInput
-          className="flex-1 text-[15px] text-foreground"
           placeholder="Search people..."
-          placeholderTextColor={COLORS.textMuted}
+          placeholderTextColor={theme.subtext}
           value={search}
           onChangeText={setSearch}
+          style={{
+            flex: 1,
+            marginLeft: 8,
+            color: theme.text,
+            fontSize: 15,
+          }}
         />
 
         {search.length > 0 && (
           <Pressable onPress={() => setSearch("")}>
-            <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+            <Ionicons name="close-circle" size={18} color={theme.subtext} />
           </Pressable>
         )}
       </View>
 
- 
-        <FlatList
-          data={filteredUsers}
-          keyExtractor={(item) => item.clerkId}
-          renderItem={renderUserItem}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            search.trim() ? (
-              <Text className="text-center mt-10 text-foreground-muted">
-                No results found
-              </Text>
-            ) : (
-              <ListEmptyComponent />
-            )
-          }
-        />
-      
-    </View>
+      <FlatList
+        data={filteredUsers}
+        keyExtractor={(item) => item.clerkId}
+        renderItem={renderUserItem}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+        windowSize={5}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        removeClippedSubviews
+        ListEmptyComponent={
+          search.trim() ? (
+            <Text
+              style={{ textAlign: "center", marginTop: 40, color: theme.subtext }}
+            >
+              No results found
+            </Text>
+          ) : (
+            <ListEmptyComponent />
+          )
+        }
+      />
+    </SafeAreaView>
   );
 };
 

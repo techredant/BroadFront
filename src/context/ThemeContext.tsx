@@ -63,27 +63,38 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const [isDark, setIsDark] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    // Load saved theme preference
     const loadTheme = async () => {
       const savedTheme = await AsyncStorage.getItem("theme");
       if (savedTheme) {
         setIsDark(savedTheme === "dark");
       }
+      setHydrated(true);
     };
     loadTheme();
   }, []);
 
   const toggleTheme = async () => {
-    const newValue = !isDark;
-    setIsDark(newValue);
-    await AsyncStorage.setItem("theme", newValue ? "dark" : "light");
+    // ✅ 1. Optimistic update (instant UI)
+    setIsDark((prev) => {
+      const next = !prev;
+
+      // ✅ 2. Persist in background
+      AsyncStorage.setItem("theme", next ? "dark" : "light");
+
+      return next;
+    });
   };
 
   return (
     <ThemeContext.Provider
-      value={{ theme: isDark ? darkTheme : lightTheme, isDark, toggleTheme }}
+      value={{
+        theme: isDark ? darkTheme : lightTheme,
+        isDark,
+        toggleTheme,
+      }}
     >
       {children}
     </ThemeContext.Provider>

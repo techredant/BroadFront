@@ -82,8 +82,8 @@ export default function TabsLayout() {
           tabBarActiveTintColor: theme.primary,
           tabBarInactiveTintColor: theme.subtext,
           tabBarStyle: {
-            backgroundColor: theme.card,
-            borderTopColor: theme.border,
+            backgroundColor: theme.background,
+            borderTopColor: theme.background,
           },
         }}
       >
@@ -158,7 +158,7 @@ export default function TabsLayout() {
               profileImage ? (
                 <Image
                   source={{
-                    uri: userDetails?.image || user?.imageUrl,
+                    uri: userDetails?.image,
                   }}
                   style={{
                     width: 30,

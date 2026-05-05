@@ -190,13 +190,13 @@ export default function NewsScreen() {
         }
         ListEmptyComponent={
           <View style={{ alignItems: "center", marginTop: 60 }}>
-            {loading || isLoadingUser ? ( 
-                <LoaderKitView
-                  style={{ width: 50, height: 50 }}
-                  name="BallScaleRippleMultiple"
-                  animationSpeedMultiplier={1}
-                  color={theme.text}
-                />
+            {loading || isLoadingUser ? (
+              <LoaderKitView
+                style={{ width: 50, height: 50 }}
+                name="BallScaleRippleMultiple"
+                animationSpeedMultiplier={1}
+                color={theme.text}
+              />
             ) : (
               <Text style={{ color: theme.subtext }}>
                 No news for this level yet

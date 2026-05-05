@@ -38,7 +38,7 @@ export function FloatingLevelButton() {
 
     // 🔥 SPECIAL ROUTES
     if (type === "ai") {
-      router.push("/(ai)/aiindex");
+      router.push("/(ai)"); // ✅ NO /index
       return;
     }
 
@@ -107,7 +107,7 @@ export function FloatingLevelButton() {
     {
       key: "live",
       label: "Go Live",
-      icon: <Feather name="video" size={16} color="#fff" />,
+      icon:  <Ionicons name="radio-outline" size={16} color="#fff" />,
       offset: 300,
     },
     {

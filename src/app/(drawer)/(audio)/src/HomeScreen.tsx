@@ -7,6 +7,7 @@ import {
   FlatList,
   StatusBar,
   Modal,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -107,6 +108,20 @@ export const HomeScreen = () => {
       console.log("Create error:", err);
     }
   };
+  {
+    loading && (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: theme.background,
+        }}
+      >
+        <ActivityIndicator size="small" />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>

@@ -1,42 +1,151 @@
-// RootLayout.tsx
 import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import { SplashScreen, Stack, useRouter, useSegments } from "expo-router";
 import "../../global.css";
+
 import { AppProvider } from "@/contexts/AppProvider";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ActivityIndicator, View } from "react-native";
 import { MenuProvider } from "react-native-popup-menu";
 import { useEffect } from "react";
-import { ThemeProvider } from "@/context/ThemeContext";
+
+import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { LevelProvider } from "@/context/LevelContext";
 import { UserOnboardingProvider } from "@/context/UserOnBoardingContext";
 import { NotificationProvider } from "@/context/notification";
 import { FollowProvider } from "@/context/FollowContext";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+/* ===========================
+   🔔 NOTIFICATION CLICK HANDLER
+   =========================== */
+function useNotificationObserver() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const redirect = (notification: Notifications.Notification) => {
+      const data = notification.request.content.data as any;
+      const url = data?.url;
+
+      if (typeof url === "string" && url.startsWith("/")) {
+        router.push(url);
+      }
+    };
+
+    const last = Notifications.getLastNotificationResponse();
+    if (last?.notification) {
+      redirect(last.notification);
+    }
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        redirect(response.notification);
+      },
+    );
+
+    return () => subscription.remove();
+  }, []);
+}
+
+/* ===========================
+   ROOT LAYOUT
+   =========================== */
 export default function RootLayout() {
+  useNotificationObserver();
+
   return (
-    <ClerkProvider
-      publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
-      tokenCache={tokenCache}
-    >
-      <RootInnerLayout />
-    </ClerkProvider>
+    <SafeAreaProvider>
+      <ClerkProvider
+        publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
+        tokenCache={tokenCache}
+      >
+        <ThemeProvider>
+          <RootInnerLayout />
+        </ThemeProvider>
+      </ClerkProvider>
+    </SafeAreaProvider>
   );
 }
 
+/* ===========================
+   INNER LAYOUT
+   =========================== */
 function RootInnerLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const router = useRouter();
   const segments = useSegments();
+  const { theme } = useTheme();
 
-  // 1. Handle Splash Screen separately (and only once)
+  /* ===========================
+     PUSH NOTIFICATION SETUP
+     =========================== */
+  useEffect(() => {
+    const registerPush = async () => {
+      if (!isSignedIn || !user?.id) return;
+      if (!Device.isDevice) return;
+
+      try {
+        const { status: existingStatus } =
+          await Notifications.getPermissionsAsync();
+
+        let finalStatus = existingStatus;
+
+        if (existingStatus !== "granted") {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+
+        if (finalStatus !== "granted") return;
+
+        const token = (
+          await Notifications.getExpoPushTokenAsync({
+            projectId: "e693fdcd-e810-4cf4-ae07-e5218d8032c1", // 🔴 FIX THIS
+          })
+        ).data;
+
+        console.log("🔥 PUSH TOKEN:", token);
+
+        const storedToken = await AsyncStorage.getItem("pushToken");
+
+        if (storedToken !== token) {
+          await axios.post("https://cast-api-zeta.vercel.app/api/notification-token/token", {
+            userId: user.id,
+            token,
+          });
+
+          await AsyncStorage.setItem("pushToken", token);
+        }
+      } catch (err) {
+        console.log("Push setup error:", err);
+      }
+    };
+
+    registerPush();
+  }, [isSignedIn, user?.id]);
+
+  /* ===========================
+     ROUTING LOGIC
+     =========================== */
   useEffect(() => {
     SplashScreen.preventAutoHideAsync();
   }, []);
 
-  // 2. Auth & Onboarding Redirect Logic
   useEffect(() => {
     if (!isLoaded) return;
 
@@ -46,71 +155,68 @@ function RootInnerLayout() {
 
     const hasCompletedName = user?.unsafeMetadata?.hasCompletedName;
     const onboardingComplete = user?.unsafeMetadata?.onboardingComplete;
+    const accountType = user?.unsafeMetadata?.myAccountType;
+    const isPersonal = accountType === "Personal Account";
 
-    // Case: Not signed in
     if (!isSignedIn && !inAuthGroup) {
       router.replace("/(auth)");
-    }
-    // Case: Signed in but needs Name
-    else if (isSignedIn && !hasCompletedName && !inOnboardingGroup) {
+    } else if (isSignedIn && !hasCompletedName && !inOnboardingGroup) {
       router.replace("/(onboarding)/nameScreen");
-    }
-    // Case: Signed in, has name, needs Location
-    else if (
+    } else if (
       isSignedIn &&
       hasCompletedName &&
+      isPersonal &&
       !onboardingComplete &&
       !inOnboardingGroup
     ) {
       router.replace("/(onboarding)/location");
-    }
-    // Case: Fully ready, move to main app
-    else if (
-      isSignedIn &&
-      onboardingComplete &&
-      !inDrawerGroup &&
-      !inOnboardingGroup
-    ) {
+    } else if (isSignedIn && onboardingComplete && !inDrawerGroup) {
       router.replace("/(drawer)/(tabs)");
     }
 
-    // Hide splash screen once we've figured out where to go
     SplashScreen.hideAsync();
   }, [isLoaded, isSignedIn, user?.unsafeMetadata, segments]);
 
+  /* ===========================
+     LOADING STATE
+     =========================== */
   if (!isLoaded) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="small" color="#0000ff" />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: theme.background,
+        }}
+      >
+        <ActivityIndicator size="small" color={theme.text} />
       </View>
     );
   }
 
-  
-
+  /* ===========================
+     APP TREE
+     =========================== */
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider>
-        <LevelProvider>
-          <UserOnboardingProvider>
-            {/* Wrap specific providers only if user exists to prevent crashes */}
-            {isSignedIn ? (
-              <FollowProvider>
-                <MenuProvider>
-                  <NotificationProvider>
-                    <AppProvider>
-                      <Stack screenOptions={{ headerShown: false }} />
-                    </AppProvider>
-                  </NotificationProvider>
-                </MenuProvider>
-              </FollowProvider>
-            ) : (
-              // Auth stack (doesn't need Stream/Chat contexts)
-              <Stack screenOptions={{ headerShown: false }} />
-            )}
-          </UserOnboardingProvider>
-        </LevelProvider>
-      </ThemeProvider>
+      <LevelProvider>
+        <UserOnboardingProvider>
+          <FollowProvider>
+            <MenuProvider>
+              <NotificationProvider>
+                <AppProvider>
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                    }}
+                  />
+                </AppProvider>
+              </NotificationProvider>
+            </MenuProvider>
+          </FollowProvider>
+        </UserOnboardingProvider>
+      </LevelProvider>
     </GestureHandlerRootView>
   );
 }

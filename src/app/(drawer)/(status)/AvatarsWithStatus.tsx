@@ -22,7 +22,7 @@ export function AvatarWithStatus({
     <Pressable
       onPress={onPress || (() => router.replace("/StatusInput"))}
       hitSlop={10}
-      style={{ alignItems: "center", width: size + 20, marginTop: 10 }}
+      style={{ alignItems: "center", width: size + 20, marginTop: 10, paddingBottom: 5 }}
     >
       <View style={{ width: size, height: size }}>
         {/* Ring */}

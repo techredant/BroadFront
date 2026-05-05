@@ -1,4 +1,5 @@
 // app/(auth)/nameScreen.tsx
+
 import {
   View,
   Text,
@@ -11,7 +12,8 @@ import {
   Platform,
   StatusBar,
 } from "react-native";
-import React, { useEffect, useState } from "react";
+
+import React, { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import axios from "axios";
 import { useAuth, useUser } from "@clerk/clerk-expo";
@@ -21,7 +23,6 @@ import { useRouter } from "expo-router";
 import { useTheme } from "@/context/ThemeContext";
 import { useUserOnboarding } from "@/context/UserOnBoardingContext";
 import { useLevel } from "@/context/LevelContext";
-import { registerForPushNotificationsAsync } from "@/utils/notification";
 
 const accountOptions = [
   "Personal Account",
@@ -38,23 +39,29 @@ const NamesScreen = () => {
   const router = useRouter();
   const { user } = useUser();
   const { getToken } = useAuth();
+
   const { theme, isDark } = useTheme();
   const { refreshUserDetails } = useLevel();
 
   const {
-    firstName = "",
+    setHasCompletedName,
+    setMyAccountType,
+    myAccountType,
+    firstName,
     setFirstName,
-    lastName = "",
+    lastName,
     setLastName,
-    nickName = "",
+    nickName,
     setNickName,
-    image = "",
+    image,
     setImage,
-    companyName = "",
+    companyName,
     setCompanyName,
   } = useUserOnboarding();
 
   const [loading, setLoading] = useState(false);
+  const [accountType, setAccountType] = useState(accountOptions[0]);
+
   const [errors, setErrors] = useState({
     firstName: "",
     lastName: "",
@@ -62,10 +69,8 @@ const NamesScreen = () => {
     accountType: "",
     companyName: "",
   });
-  const [accountType, setAccountType] = useState(accountOptions[0]);
-  const [isEditing, setIsEditing] = useState(false);
 
-  // Pick image from gallery
+  /* ---------------- IMAGE PICK ---------------- */
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
@@ -78,8 +83,31 @@ const NamesScreen = () => {
     }
   };
 
+  /* ---------------- CLOUDINARY ---------------- */
+  const uploadToCloudinary = async (uri: string) => {
+    const data = new FormData();
 
-  // Validate form fields
+    data.append("file", {
+      uri,
+      type: "image/jpeg",
+      name: "profile.jpg",
+    } as any);
+
+    data.append("upload_preset", "MediaCast");
+
+    const res = await fetch(
+      "https://api.cloudinary.com/v1_1/ds25oyyqo/image/upload",
+      {
+        method: "POST",
+        body: data,
+      },
+    );
+
+    const result = await res.json();
+    return result.secure_url;
+  };
+
+  /* ---------------- VALIDATION ---------------- */
   const validateFields = () => {
     const newErrors = {
       firstName: "",
@@ -88,27 +116,32 @@ const NamesScreen = () => {
       accountType: "",
       companyName: "",
     };
-    let valid = true;
 
-    if (accountType === "Personal Account") {
+    let valid = true;
+    const isPersonal = accountType === "Personal Account";
+
+    if (isPersonal) {
       if (!firstName.trim()) {
         newErrors.firstName = "First name is required";
         valid = false;
       }
+
       if (!lastName.trim()) {
         newErrors.lastName = "Last name is required";
         valid = false;
       }
+
       if (!nickName.trim()) {
         newErrors.nickName = "Nickname is required";
         valid = false;
       }
     } else {
       if (!companyName.trim()) {
-        newErrors.companyName = "Company name is required";
+        newErrors.companyName = "Organization name is required";
         valid = false;
       }
-      if (!nickName.trim() && !isEditing) {
+
+      if (!nickName.trim()) {
         newErrors.nickName = "Nickname is required";
         valid = false;
       }
@@ -118,43 +151,24 @@ const NamesScreen = () => {
     return valid;
   };
 
-
-  // Fetch existing user (for editing)
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        if (!user?.id) return;
-        const res = await axios.get(
-          `https://cast-api-zeta.vercel.app/api/users/${user.id}`,
-        );
-        if (res.data) {
-          setFirstName(res.data.firstName || "");
-          setLastName(res.data.lastName || "");
-          setNickName(res.data.nickName || "");
-          setImage(res.data.image || user?.imageUrl);
-          setAccountType(res.data.accountType || accountOptions[0]);
-          setIsEditing(true);
-          setCompanyName(res.data.companyName || "");
-        }
-      } catch {
-        setIsEditing(false);
-      }
-    };
-    fetchUser();
-  }, [user]);
-
+  /* ---------------- SUBMIT ---------------- */
   const handleSubmit = async () => {
-    // 1️⃣ Validate fields first
     if (!validateFields()) return;
 
     setLoading(true);
 
-    const formattedNickName = nickName.startsWith("@")
-      ? nickName
-      : `@${nickName}`;
-
     try {
-      // 2️⃣ Build payload for your backend
+      let finalImage = image;
+
+      if (image?.startsWith("file://")) {
+        const uploaded = await uploadToCloudinary(image);
+        if (uploaded) finalImage = uploaded;
+      }
+
+      const formattedNickName = nickName.startsWith("@")
+        ? nickName
+        : `@${nickName}`;
+
       const payload = {
         clerkId: user?.id,
         email: user?.primaryEmailAddress?.emailAddress || "",
@@ -162,59 +176,49 @@ const NamesScreen = () => {
         lastName: accountType === "Personal Account" ? lastName : "",
         companyName: accountType !== "Personal Account" ? companyName : "",
         nickName: formattedNickName,
-        image,
+        image: finalImage,
         accountType,
       };
 
-      // 3️⃣ Save to backend
       const res = await axios.post(
         "https://cast-api-zeta.vercel.app/api/users/create-user",
         payload,
-        { timeout: 10000 }, // prevent hanging
+        { timeout: 10000 },
       );
 
-      
+      if (!res.data?.success) return;
 
+      setHasCompletedName(true);
+      setMyAccountType(accountType);
 
-      if (!res.data?.success) {
-        setErrors((prev) => ({
-          ...prev,
-          accountType: "Failed to save profile",
-        }));
-        return;
-      }
+      await user?.update({
+        unsafeMetadata: {
+          ...user.unsafeMetadata,
+          myAccountType: accountType,
+          hasCompletedName: true,
+          onboardingComplete: accountType !== "Personal Account",
+        },
+      });
 
-      // 4️⃣ Update Clerk user metadata safely
-      if (user) {
-        try {
-          await user.update({
-            unsafeMetadata: {
-              ...user.unsafeMetadata,
-              accountType,
-              hasCompletedName: true,
-            },
-          });
-        } catch (err) {
-          console.error("Clerk update failed:", err);
-        }
-      }
-
-      // 5️⃣ Update your LevelContext (or any global context) so drawer re-renders immediately
       await refreshUserDetails();
 
-      // 6️⃣ Navigate to next onboarding step
-      if (isEditing) {
-        router.replace("/(tabs)"); // 🔥 go back to main app
+      if (accountType === "Personal Account") {
+        router.replace("/(onboarding)/location");
       } else {
-        router.replace("/(onboarding)/location"); // onboarding flow
+        router.replace("/(tabs)");
       }
-    } catch (err: any) {
-      console.error("Error saving profile:", err);
-      setErrors((prev) => ({ ...prev, accountType: "Failed to save profile" }));
+    } catch (err) {
+      console.error(err);
+      setErrors((p) => ({
+        ...p,
+        accountType: "Failed to save profile",
+      }));
     } finally {
       setLoading(false);
     }
   };
+
+  const isPersonal = accountType === "Personal Account";
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
@@ -223,14 +227,12 @@ const NamesScreen = () => {
         backgroundColor="transparent"
         barStyle={isDark ? "light-content" : "dark-content"}
       />
+
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView
-          contentContainerStyle={{ padding: 16, gap: 10 }}
-          keyboardShouldPersistTaps="handled"
-        >
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
           <Text
             style={{
               fontSize: 24,
@@ -242,6 +244,7 @@ const NamesScreen = () => {
             Complete Your Profile 🚀
           </Text>
 
+          {/* IMAGE */}
           <TouchableOpacity
             onPress={pickImage}
             style={{ alignItems: "center", marginVertical: 10 }}
@@ -256,51 +259,42 @@ const NamesScreen = () => {
             />
           </TouchableOpacity>
 
+          {/* ACCOUNT TYPE */}
           <Text style={{ color: theme.text, fontWeight: "bold" }}>
             Account Type
           </Text>
+
           <Dropdown
             style={{
               borderWidth: 1,
               borderColor: theme.border,
               borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              marginBottom: 10,
-              opacity: isEditing ? 0.6 : 1,
+              padding: 10,
+              backgroundColor: theme.background,
             }}
-            disable={isEditing} // 🔥 THIS IS THE REAL FIX
-            data={accountOptions.map((item) => ({
-              label: item,
-              value: item,
+            data={accountOptions.map((i) => ({
+              label: i,
+              value: i,
             }))}
             labelField="label"
             valueField="value"
-            placeholder="Select Account Type"
             value={accountType}
-            search
-            searchPlaceholder="Search account type..."
             onChange={(item) => setAccountType(item.value)}
           />
+
           {errors.accountType ? (
             <Text style={{ color: "red" }}>{errors.accountType}</Text>
           ) : null}
 
-          {accountType === "Personal Account" ? (
+          {/* FIELDS */}
+          {isPersonal ? (
             <>
               <TextInput
                 placeholder="First Name"
                 value={firstName}
                 onChangeText={setFirstName}
-                style={{
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  padding: 12,
-                  borderRadius: 8,
-                  marginBottom: 5,
-                  color: theme.text,
-                }}
-                placeholderTextColor={theme.subtext}
+                style={{ borderWidth: 1, padding: 12, color: theme.text }}
+                placeholderTextColor={theme.text}
               />
               {errors.firstName && (
                 <Text style={{ color: "red" }}>{errors.firstName}</Text>
@@ -310,15 +304,8 @@ const NamesScreen = () => {
                 placeholder="Last Name"
                 value={lastName}
                 onChangeText={setLastName}
-                style={{
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  padding: 12,
-                  borderRadius: 8,
-                  marginBottom: 5,
-                  color: theme.text,
-                }}
-                placeholderTextColor={theme.subtext}
+                style={{ borderWidth: 1, padding: 12, color: theme.text }}
+                placeholderTextColor={theme.text}
               />
               {errors.lastName && (
                 <Text style={{ color: "red" }}>{errors.lastName}</Text>
@@ -327,64 +314,34 @@ const NamesScreen = () => {
               <TextInput
                 placeholder="Nickname"
                 value={nickName}
-                onChangeText={setNickName}
-                editable={!isEditing} // 🔥 KEY LINE
-                style={{
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  padding: 12,
-                  borderRadius: 8,
-                  marginBottom: 5,
-                  color: theme.text,
-                  backgroundColor: isEditing ? theme.card : theme.background, // subtle disabled look
-                  opacity: isEditing ? 0.6 : 1,
-                }}
-                placeholderTextColor={theme.subtext}
+                onChangeText={(t) =>
+                  setNickName(t.charAt(0).toLowerCase() + t.slice(1))
+                }
+                style={{ borderWidth: 1, padding: 12, color: theme.text }}
+                placeholderTextColor={theme.text}
               />
-              {errors.nickName && (
-                <Text style={{ color: "red" }}>{errors.nickName}</Text>
-              )}
             </>
           ) : (
             <>
               <TextInput
-                placeholder="Organization Namae"
+                placeholder="Organization Name"
                 value={companyName}
                 onChangeText={setCompanyName}
-                style={{
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  padding: 12,
-                  borderRadius: 8,
-                  marginBottom: 5,
-                  color: theme.text,
-                }}
-                placeholderTextColor={theme.subtext}
+                style={{ borderWidth: 1, padding: 12, color: theme.text }}
+                placeholderTextColor={theme.text}
               />
-              {errors.companyName && (
-                <Text style={{ color: "red" }}>{errors.companyName}</Text>
-              )}
 
               <TextInput
-                placeholder="Organization Nickname"
+                placeholder="Nickname"
                 value={nickName}
                 onChangeText={setNickName}
-                style={{
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  padding: 12,
-                  borderRadius: 8,
-                  marginBottom: 5,
-                  color: theme.text,
-                }}
-                placeholderTextColor={theme.subtext}
+                style={{ borderWidth: 1, padding: 12, color: theme.text }}
+                placeholderTextColor={theme.text}
               />
-              {errors.nickName && (
-                <Text style={{ color: "red" }}>{errors.nickName}</Text>
-              )}
             </>
           )}
 
+          {/* SUBMIT */}
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={loading}
@@ -396,15 +353,13 @@ const NamesScreen = () => {
               marginTop: 20,
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "bold" }}>
-              {loading
-                ? isEditing
-                  ? "Updating..."
-                  : "Saving..."
-                : isEditing
-                  ? "Update Profile"
-                  : "Save & Continue"}
-            </Text>
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={{ color: "#fff", fontWeight: "bold" }}>
+                Save & Continue
+              </Text>
+            )}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>

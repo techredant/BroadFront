@@ -16,6 +16,7 @@ import { useRouter } from "expo-router"; // ✅ Expo Router
 import * as ImagePicker from "expo-image-picker";
 import { useUser } from "@clerk/clerk-expo";
 import { useTheme } from "@/context/ThemeContext";
+import Video from "react-native-video";
 
 const SellFormScreen = () => {
   const router = useRouter(); // ✅
@@ -28,7 +29,6 @@ const SellFormScreen = () => {
   const [category, setCategory] = useState("");
   const [loading, setLoading] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
-
 
   const [media, setMedia] = useState<
     { uri: string; type: "image" | "video" }[]
@@ -65,8 +65,7 @@ const SellFormScreen = () => {
     "Books",
     "Music & Instruments",
     "Art & Collectibles",
-    "Vehicles",
-    "Cars",
+    "Vehicles & Cars",
     "Motorcycles",
     "Agriculture",
     "Industrial Equipment",
@@ -76,7 +75,7 @@ const SellFormScreen = () => {
 
   const pickMedia = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images", "videos"],
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
       quality: 1,
     });
@@ -93,7 +92,7 @@ const SellFormScreen = () => {
 
   const takePhotoOrVideo = async () => {
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images", "videos"],
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
       quality: 1,
     });
 
@@ -170,11 +169,11 @@ const SellFormScreen = () => {
       }
 
       if (hasError || !user) return;
-
-      const uploadedUrls: string[] = [];
-      for (const item of media) {
+      // Upload media
+      const uploadedMedia: string[] = [];
+      for (let item of media) {
         const url = await uploadToCloudinary(item.uri, item.type);
-        if (url) uploadedUrls.push(url);
+        if (url) uploadedMedia.push(url);
       }
 
       await fetch(`https://cast-api-zeta.vercel.app/api/products`, {
@@ -185,7 +184,7 @@ const SellFormScreen = () => {
           price,
           description,
           category,
-          images: uploadedUrls,
+          media: uploadedMedia,
           userId: user.id,
           phoneNumber,
         }),
@@ -337,15 +336,25 @@ const SellFormScreen = () => {
 
         {/* Images */}
         <Text style={[styles.label, { color: theme.text }]}>
-          Product Images
+          Product Images {media.length}
         </Text>
         {media.length > 0 ? (
           media.length === 1 ? (
             <View style={{ marginVertical: 10 }}>
-              <Image
-                source={{ uri: media[0].uri }}
-                style={styles.fullWidthImage}
-              />
+              {media[0].type === "image" ? (
+                <Image
+                  source={{ uri: media[0].uri }}
+                  style={styles.fullWidthImage}
+                />
+              ) : (
+                <Video
+                  source={{ uri: media[0].uri }}
+                  style={styles.fullWidthImage}
+                  repeat
+                  resizeMode="cover"
+                />
+              )}
+
               <TouchableOpacity
                 style={styles.removeBtnSingle}
                 onPress={() => removeMedia(media[0].uri)}
@@ -364,10 +373,21 @@ const SellFormScreen = () => {
                   key={index}
                   style={{ marginRight: 10, position: "relative" }}
                 >
-                  <Image
-                    source={{ uri: item.uri }}
-                    style={styles.imagePreview}
-                  />
+                  {item.type === "image" ? (
+                    <Image
+                      source={{ uri: item.uri }}
+                      style={styles.imagePreview}
+                    />
+                  ) : (
+                    <Video
+                      source={{ uri: item.uri }}
+                      style={styles.imagePreview}
+                      resizeMode="cover"
+                      repeat
+                      muted
+                    />
+                  )}
+
                   <TouchableOpacity
                     style={styles.removeBtn}
                     onPress={() => removeMedia(item.uri)}
@@ -385,13 +405,10 @@ const SellFormScreen = () => {
           >
             <Ionicons name="camera" size={28} color="#666" />
             <Text style={{ color: "#666", marginTop: 4 }}>
-              Click here to upload Images
+              Click here to upload Images or Videos
             </Text>
           </TouchableOpacity>
         )}
-        {imagesError ? (
-          <Text style={styles.errorText}>{imagesError}</Text>
-        ) : null}
 
         {/* Actions */}
         <View style={styles.actionsRow}>

@@ -194,7 +194,9 @@ export default function HomeScreen() {
   // ---------------- Render ----------------
   return (
     // <BottomSheetModalProvider>
-    <View style={{ flex: 1, backgroundColor: theme.background }}>
+      <View
+          style={{ flex: 1, backgroundColor: theme.background }}
+        >
       <StatusBar
         translucent
         backgroundColor="transparent"
@@ -206,6 +208,10 @@ export default function HomeScreen() {
         ref={listRef}
         onScroll={handleScroll}
         data={posts}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        windowSize={5}
+        removeClippedSubviews
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         keyExtractor={(item) => item._id.toString()}
@@ -257,8 +263,8 @@ export default function HomeScreen() {
               <Image
                 source={require("../../../../assets/images/icon.jpg")}
                 style={{
-                  height: 50,
-                  width: 50,
+                  height: 40,
+                  width: 40,
                   borderRadius: 50,
                   alignSelf: "flex-end",
                 }}
@@ -306,7 +312,7 @@ export default function HomeScreen() {
         pointerEvents={showScrollTop ? "auto" : "none"}
         style={{
           position: "absolute",
-          bottom: 100,
+          bottom: 60,
           right: 20,
           opacity: scrollTopOpacity,
           transform: [
@@ -330,9 +336,7 @@ export default function HomeScreen() {
             elevation: 5,
           }}
         >
-          <Text style={{ color: theme.text, fontWeight: "bold" }}>
-            ↑ Top
-          </Text>
+          <Text style={{ color: "#fff", fontWeight: "bold" }}>↑ Top</Text>
         </Pressable>
       </Animated.View>
 

@@ -63,22 +63,25 @@ export const LevelProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const token = await getToken();
 
-     const clerkId = user?.id;
+      const clerkId = user?.id;
 
-     if (!clerkId) {
-       console.log("⛔ No clerkId yet");
-       return;
-     }
+      if (!clerkId) {
+        console.log("⛔ No clerkId yet");
+        return;
+      }
 
-     const res = await axios.get(`${BASE_URL}/api/users/${clerkId}`, {
-       headers: {
-         Authorization: `Bearer ${token}`,
-       },
-     });
+      const res = await axios.get(`${BASE_URL}/api/users/${clerkId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const data = res.data;
 
-      setUserDetails(data);
+      setUserDetails((prev: any) => ({
+        ...prev,
+        ...data,
+      }));
 
       // Automatically set user level
       if (data?.home) {
@@ -119,17 +122,21 @@ export const LevelProvider = ({ children }: { children: React.ReactNode }) => {
 
   /* ---------------- LOAD USER ---------------- */
 
+  // useEffect(() => {
+  //   if (!user) {
+  //     setUserDetails(null);
+  //     setCurrentLevel(null);
+  //     return;
+  //   }
+
+  //   refreshUserDetails();
+  // }, [user]);
+
   useEffect(() => {
-    if (!user) {
-      setUserDetails(null);
-      setCurrentLevel(null);
-      return;
-    }
+    if (!user) return;
 
     refreshUserDetails();
   }, [user]);
-
-  
 
   /* ---------------- LOAD POSTS WHEN LEVEL CHANGES ---------------- */
 

@@ -13,13 +13,13 @@ export default function LocationSelection() {
   const { theme, isDark } = useTheme();
   const { user } = useUser();
 
-  const [selectedCounty, setSelectedCounty] = useState(null);
-  const [selectedConstituency, setSelectedConstituency] = useState(null);
-  const [selectedWard, setSelectedWard] = useState(null);
+  const [selectedCounty, setSelectedCounty] = useState<string | null>(null);
+  const [selectedConstituency, setSelectedConstituency] = useState<
+    string | null
+  >(null);
+  const [selectedWard, setSelectedWard] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-
-  // Derived data
   const constituencies = useMemo(() => {
     if (!selectedCounty) return [];
     const county = iebc.counties.find((c) => c.name === selectedCounty);
@@ -29,7 +29,7 @@ export default function LocationSelection() {
   const wards = useMemo(() => {
     if (!selectedConstituency) return [];
     const constituency = constituencies.find(
-      (c) => c.name === selectedConstituency,
+      (c) => c.name === selectedConstituency
     );
     return constituency?.wards || [];
   }, [selectedConstituency, constituencies]);
@@ -38,6 +38,7 @@ export default function LocationSelection() {
     if (loading || !user?.id) return;
 
     setLoading(true);
+
     try {
       await axios.post(
         "https://cast-api-zeta.vercel.app/api/users/update-location",
@@ -46,7 +47,7 @@ export default function LocationSelection() {
           county: selectedCounty,
           constituency: selectedConstituency,
           ward: selectedWard,
-        },
+        }
       );
 
       await user.update({
@@ -56,10 +57,9 @@ export default function LocationSelection() {
         },
       });
 
-
       router.replace("/(drawer)/(tabs)");
     } catch (err) {
-      console.log("❌ Save failed:", err);
+      console.log("Save failed:", err);
     } finally {
       setLoading(false);
     }
@@ -72,6 +72,34 @@ export default function LocationSelection() {
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginTop: 10,
+    backgroundColor: theme.background,
+  };
+
+  const dropdownProps = {
+    style: dropdownStyle,
+    containerStyle: {
+      backgroundColor: theme.card,
+      borderRadius: 10,
+      borderColor: theme.border,
+    },
+    itemContainerStyle: {
+      backgroundColor: theme.card,
+    },
+    itemTextStyle: {
+      color: theme.text,
+    },
+    selectedTextStyle: {
+      color: theme.text,
+    },
+    placeholderStyle: {
+      color: theme.subtext,
+    },
+    searchInputStyle: {
+      color: theme.text,
+      backgroundColor: theme.background,
+      borderRadius: 8,
+    },
+    searchPlaceholderTextColor: theme.subtext,
   };
 
   return (
@@ -89,7 +117,6 @@ export default function LocationSelection() {
         barStyle={isDark ? "light-content" : "dark-content"}
       />
 
-      {/* Header */}
       <View style={{ height: 120 }}>
         <TypeWriter
           typing={1}
@@ -109,8 +136,9 @@ export default function LocationSelection() {
       <Text style={{ fontWeight: "bold", fontSize: 18, color: theme.text }}>
         County
       </Text>
+
       <Dropdown
-        style={dropdownStyle}
+        {...dropdownProps}
         data={iebc.counties}
         labelField="name"
         valueField="name"
@@ -136,8 +164,9 @@ export default function LocationSelection() {
       >
         Constituency
       </Text>
+
       <Dropdown
-        style={dropdownStyle}
+        {...dropdownProps}
         data={constituencies}
         labelField="name"
         valueField="name"
@@ -163,8 +192,9 @@ export default function LocationSelection() {
       >
         Ward
       </Text>
+
       <Dropdown
-        style={dropdownStyle}
+        {...dropdownProps}
         data={wards}
         labelField="name"
         valueField="name"
@@ -178,9 +208,9 @@ export default function LocationSelection() {
         }}
       />
 
-      {/* Preview */}
+      {/* PREVIEW */}
       <Text style={{ marginTop: 20, color: theme.subtext }}>
-        ✅ {selectedCounty || "-"}
+        {selectedCounty || "-"}
         {selectedConstituency ? ` → ${selectedConstituency}` : ""}
         {selectedWard ? ` → ${selectedWard}` : ""}
       </Text>
@@ -197,7 +227,11 @@ export default function LocationSelection() {
           }}
         >
           <Text
-            style={{ color: "#fff", textAlign: "center", fontWeight: "bold" }}
+            style={{
+              color: "#fff",
+              textAlign: "center",
+              fontWeight: "bold",
+            }}
           >
             {loading ? "Saving..." : "Save & Continue"}
           </Text>

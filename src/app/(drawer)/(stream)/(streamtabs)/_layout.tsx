@@ -12,7 +12,7 @@ export default function StreamTabsLayout() {
   const router = useRouter();
   const { isSignedIn, isLoaded } = useAuth();
   const { userDetails } = useLevel();
-  const { theme } = useTheme();
+  const { theme,  isDark } = useTheme();
 
   if (!isLoaded) return null;
   if (!isSignedIn) return <Redirect href={"/(auth)"} />;
@@ -30,8 +30,8 @@ export default function StreamTabsLayout() {
           tabBarActiveTintColor: theme.primary,
           tabBarInactiveTintColor: theme.subtext,
           tabBarStyle: {
-            backgroundColor: "#0F0E17",
-            borderTopColor: "#0F0E17",
+            backgroundColor: theme.background,
+            borderTopColor: theme.background,
           },
         }}
       >

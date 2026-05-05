@@ -82,11 +82,14 @@ export const HomeScreen = ({ client, joinCall }: Props) => {
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       {/* HEADER */}
-      <DrawerMenuButton />
+
       <Animated.View entering={FadeInUp}>
         <View style={styles.header}>
+          <Pressable onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color={theme.text} />
+          </Pressable>
           <Text></Text>
-          <View style={{ paddingTop: 10}}>
+          <View style={{ paddingTop: 10 }}>
             <Text style={[styles.level, { color: theme.text }]}>
               {currentLevel?.value?.toUpperCase()} Live Streams
             </Text>
@@ -142,7 +145,7 @@ export const HomeScreen = ({ client, joinCall }: Props) => {
               alignItems: "center",
             }}
           >
-            <ActivityIndicator size="small" color={theme.primary} />
+            <ActivityIndicator size="small" color={theme.text} />
           </View>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>

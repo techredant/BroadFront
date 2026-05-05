@@ -46,6 +46,7 @@ export default function TrendsScreen() {
     "election",
     "votes",
     "cs",
+    "mwejeje"
   ];
 
   type Post = {
@@ -176,6 +177,10 @@ export default function TrendsScreen() {
         renderItem={renderTrend}
         refreshing={refreshing}
         onRefresh={onRefresh}
+        windowSize={5}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        removeClippedSubviews
         contentContainerStyle={{ paddingTop: 40, paddingBottom: 40 }}
         ListHeaderComponent={
           <View style={styles.header}>
@@ -209,7 +214,7 @@ const styles = StyleSheet.create({
   trendItem: {
     paddingVertical: 16,
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   rank: { fontSize: 18, fontWeight: "600", width: 24 },
   category: { fontSize: 12, marginBottom: 2 },

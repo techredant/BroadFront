@@ -23,6 +23,7 @@ import {
   withSpring,
 } from "react-native-reanimated";
 import { Gesture } from "react-native-gesture-handler";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const MAX_CHARS = 280;
 
@@ -63,6 +64,10 @@ export function ReciteModal({
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  const [expandedStates, setExpandedStates] = useState<{
+    [key: string]: boolean;
+  }>({});
+
   // /* ---------------- PINCH ZOOM ---------------- */
   const pinchScale = useSharedValue(1);
 
@@ -82,6 +87,15 @@ export function ReciteModal({
     setSelectedIndex(index);
     setModalVisible(true);
   };
+  const text = postCard.quote ? postCard.quote : postCard.caption;
+  const isExpanded = expandedStates[postCard._id];
+
+  const toggleExpand = (postId: string) => {
+    setExpandedStates((prev) => ({
+      ...prev,
+      [postId]: !prev[postId],
+    }));
+  };
 
   return (
     <>
@@ -91,7 +105,7 @@ export function ReciteModal({
         presentationStyle="pageSheet"
         onRequestClose={() => setQuoteVisible(false)}
       >
-        <View style={{ flex: 1, backgroundColor: theme.background }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
           {/* HEADER */}
           <View style={styles.header}>
             <Pressable onPress={() => setQuoteVisible(false)}>
@@ -164,14 +178,38 @@ export function ReciteModal({
                       {postCard.reciteFirstName || postCard.user?.firstName}
                     </Text>
                     <Text style={styles.username}>
-                      @{postCard.reciteNickName || postCard.user?.nickName}
+                      {postCard.reciteNickName || postCard.user?.nickName}
                     </Text>
                   </View>
                 </View>
 
-                <Text numberOfLines={3} style={styles.caption}>
-                  {postCard.caption}
+                <Text
+                  numberOfLines={isExpanded ? undefined : 3}
+                  style={{
+                    color: theme.text,
+                    paddingHorizontal: 12,
+                    marginTop: 6,
+                  }}
+                >
+                  {text}
                 </Text>
+                {text && text.length > 80 && (
+                  <TouchableOpacity
+                    onPress={() => toggleExpand(postCard._id)}
+                    style={{ zIndex: 20, padding: 4 }}
+                  >
+                    <Text
+                      style={{
+                        color: theme.primary,
+                        paddingHorizontal: 12,
+                        marginTop: 4,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {isExpanded ? "Show less" : "Show more"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                   {mediaList.slice(0, 4).map((uri: string, idx: number) => {
                     const remaining = mediaCount - 4;
@@ -266,7 +304,7 @@ export function ReciteModal({
               </View>
             </ScrollView>
           </KeyboardAvoidingView>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* MEDIA MODAL */}

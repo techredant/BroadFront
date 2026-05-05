@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ScrollView,
   StatusBar,
+  Pressable,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +21,67 @@ import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import Video from "react-native-video";
 
+function LinkPreviewCard({ preview, theme }: any) {
+  if (!preview) return null;
+
+  return (
+    <Pressable
+      onPress={() => Linking.openURL(preview.url)}
+      style={{
+        marginHorizontal: 12,
+        marginTop: 10,
+        borderRadius: 12,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: theme.border || "#ddd",
+        backgroundColor: theme.card,
+      }}
+    >
+      {/* IMAGE FULL WIDTH */}
+      {preview.image && (
+        <Image
+          source={{ uri: preview.image }}
+          style={{
+            width: "100%",
+            height: 200,
+          }}
+          resizeMode="cover"
+        />
+      )}
+
+      {/* TEXT BELOW IMAGE */}
+      <View style={{ padding: 10 }}>
+        <Text
+          numberOfLines={2}
+          style={{ fontWeight: "700", color: theme.text, fontSize: 14 }}
+        >
+          {preview.title}
+        </Text>
+
+        {!!preview.description && (
+          <Text
+            numberOfLines={3}
+            style={{ color: theme.subtext, marginTop: 6, fontSize: 12 }}
+          >
+            {preview.description}
+          </Text>
+        )}
+
+        <Text
+          numberOfLines={1}
+          style={{
+            color: theme.primary,
+            marginTop: 8,
+            fontSize: 11,
+          }}
+        >
+          {preview.url}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function InputScreen() {
   const [cast, setCast] = useState("");
   const [media, setMedia] = useState<
@@ -28,7 +90,7 @@ export default function InputScreen() {
   const [loading, setLoading] = useState(false);
   const [postError, setPostError] = useState("");
   const [accountType, setAccountType] = useState<string | null>(null);
-  const [linkData, setLinkData] = useState<any>(null);
+ const [linkData, setLinkData] = useState<any[]>([]);
   const [linkLoading, setLinkLoading] = useState(false);
 
   const { user } = useUser();
@@ -51,41 +113,45 @@ export default function InputScreen() {
   /* =======================
        LINK PREVIEW
     ======================= */
-  useEffect(() => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const urls = cast.match(urlRegex);
 
-    if (!urls?.length) {
-      setLinkData(null);
-      return;
-    }
+    
+useEffect(() => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const urls = cast.match(urlRegex);
 
-    const url = urls[0];
-    setLinkLoading(true);
+  if (!urls?.length) {
+    setLinkData([]);
+    return;
+  }
 
-    fetch(url)
-      .then((res) => res.text())
-      .then((html) => {
-        const title = html.match(/<title>(.*?)<\/title>/i)?.[1];
-        const desc = html.match(
-          /<meta\s+name=["']description["']\s+content=["'](.*?)["']/i,
-        )?.[1];
-        const img = html.match(
-          /<meta\s+property=["']og:image["']\s+content=["'](.*?)["']/i,
-        )?.[1];
+  const url = urls[0];
+  setLinkLoading(true);
 
-        setLinkData({
+  fetch(url)
+    .then((res) => res.text())
+    .then((html) => {
+      const title = html.match(/<title>(.*?)<\/title>/i)?.[1];
+      const desc = html.match(
+        /<meta\s+name=["']description["']\s+content=["'](.*?)["']/i,
+      )?.[1];
+      const img = html.match(
+        /<meta\s+property=["']og:image["']\s+content=["'](.*?)["']/i,
+      )?.[1];
+
+      setLinkData([
+        {
           url,
           title: title || "No title",
           description: desc || "",
           images: img ? [img] : [],
-        });
-      })
-      .catch(() =>
-        setLinkData({ url, title: "Preview unavailable", images: [] }),
-      )
-      .finally(() => setLinkLoading(false));
-  }, [cast]);
+        },
+      ]);
+    })
+    .catch(() =>
+      setLinkData([{ url, title: "Preview unavailable", images: [] }]),
+    )
+    .finally(() => setLinkLoading(false));
+}, [cast]);
 
   /* =======================
        MEDIA PICKERS
@@ -154,9 +220,45 @@ export default function InputScreen() {
   /* =======================
        POST HANDLER
     ======================= */
-    
+
+  const sendNotification = async (token: any, title: string, body: string) => {
+    console.log("🔥 sendNotification CALLED");
+    try {
+      console.log("📨 Sending notification to token:", token);
+
+      const response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: token,
+          sound: "notification_sound.wav",
+          title,
+          body,
+          data: { screen: "post" },
+        }),
+      });
+
+      const result = await response.json();
+
+      console.log("📩 Expo push response:", result);
+
+      if (result?.data?.status === "ok") {
+        console.log("✅ Notification sent successfully");
+      } else {
+        console.log("⚠️ Notification not accepted:", result);
+      }
+
+      return result;
+    } catch (err) {
+      console.log("❌ Notification error:", err);
+    }
+  };
+
   const handlePost = async (
-    postType: "normal" | "recasted" | "recited" = "normal",
+    postType: "post" | "recast" | "recite" = "post",
     originalPostId?: string,
   ) => {
     setPostError("");
@@ -185,18 +287,24 @@ export default function InputScreen() {
           : (user.publicMetadata?.companyName as string) || "Org";
 
       // Post payload
-      const safeLinkData = linkData
-        ? {
-            url: linkData.url,
-            title: linkData.title || "",
-            description: linkData.description || "",
-            images: linkData.images?.slice() || [],
-          }
-        : null;
+const safeLinkData = linkData.length
+  ? [
+      {
+        url: linkData[0].url,
+        title: linkData[0].title || "",
+        description: linkData[0].description || "",
+        image: linkData[0].images?.[0] || "",
+      },
+    ]
+  : [];
+
+const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+const cleanCaption = cast.replace(urlRegex, "").trim();   
 
       const payload = {
         userId: user.id,
-        caption: cast,
+        caption: cleanCaption,
         media: uploadedUrls,
         levelType,
         levelValue,
@@ -204,7 +312,6 @@ export default function InputScreen() {
         type: postType,
         contentType: uploadedUrls?.length ? "media" : "text", // ✅ ADD THIS
         originalPostId: originalPostId || null,
-
       };
 
       const res = await axios.post(
@@ -212,12 +319,28 @@ export default function InputScreen() {
         payload,
       );
 
+      /* ===========================
+         LOAD USER SETTINGS
+      =========================== */
+      // Example: notify followers OR another user
+      // You must fetch real tokens from backend
+      const recipientToken = res.data?.recipientToken;
+
+      if (recipientToken) {
+        console.log("🚀 Triggering notification...");
+
+        await sendNotification(
+          recipientToken,
+          "New Post 📢",
+          `${user.firstName || "Someone"} posted something new`,
+        );
+      }
       // console.log("✅ Post saved:", res.data);
 
       // Reset state
       setCast("");
       setMedia([]);
-      setLinkData(null);
+      setLinkData([]);
       router.replace("/(drawer)/(tabs)");
     } catch (err: any) {
       console.error("❌ Post Error:", err.response?.data || err.message);
@@ -244,6 +367,7 @@ export default function InputScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
+      edges={["top"]}
     >
       <StatusBar
         translucent
@@ -306,28 +430,113 @@ export default function InputScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* LINK PREVIEW */}
+      {linkData.map((item, index) => (
+        <TouchableOpacity
+          key={index}
+          style={[
+            styles.linkPreview,
+            {
+              borderColor: theme.border,
+              backgroundColor: theme.card,
+            },
+          ]}
+          onPress={() => Linking.openURL(item.url)}
+          activeOpacity={0.9}
+        >
+          {/* IMAGE FULL WIDTH */}
+          {item.image && item.image.startsWith("http") ? (
+            <Image source={{ uri: item.image }} style={styles.linkImageFull} />
+          ) : (
+            <View
+              style={[styles.linkImageFull, { backgroundColor: theme.border }]}
+            />
+          )}
+
+          {/* TEXT BELOW IMAGE */}
+          <View style={styles.linkContentFull}>
+            <Text
+              style={[styles.linkTitle, { color: theme.text }]}
+              numberOfLines={2}
+            >
+              {item.title}
+            </Text>
+
+            {!!item.description && (
+              <Text
+                style={[styles.linkDesc, { color: theme.subtext }]}
+                numberOfLines={3}
+              >
+                {item.description}
+              </Text>
+            )}
+
+            <Text
+              style={[styles.linkUrl, { color: theme.primary }]}
+              numberOfLines={1}
+            >
+              {item.url}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => setLinkData([])}
+            style={styles.linkClose}
+          >
+            <Ionicons name="close" size={18} color={theme.text} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      ))}
+
       {/* MEDIA PREVIEW */}
       {media.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {media.map((item, i) => (
-            <View key={i} style={styles.preview}>
-              {item.type === "image" ? (
-                <Image
-                  source={{ uri: item.uri }}
-                  style={styles.media}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Video source={{ uri: item.uri }} style={styles.media} />
-              )}
-              <TouchableOpacity
-                style={styles.removeButton}
-                onPress={() => removeMedia(item.uri)}
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {media.map((item, i) => {
+            return (
+              <View
+                key={i}
+                style={[
+                  styles.preview,
+                  {
+                    width: "100%",
+                  },
+                ]}
               >
-                <Ionicons name="close-circle" size={24} color="red" />
-              </TouchableOpacity>
-            </View>
-          ))}
+                {item.type === "image" ? (
+                  <Image
+                    source={{ uri: item.uri }}
+                    style={[
+                      styles.media,
+                      {
+                        width: "100%",
+                        height: 250,
+                      },
+                    ]}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Video
+                    source={{ uri: item.uri }}
+                    style={[
+                      styles.media,
+                      {
+                        width: "100%",
+                        height: 250,
+                      },
+                    ]}
+                    resizeMode="cover"
+                  />
+                )}
+
+                <TouchableOpacity
+                  style={styles.removeButton}
+                  onPress={() => removeMedia(item.uri)}
+                >
+                  <Ionicons name="close-circle" size={24} color="red" />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -345,6 +554,46 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     // marginBottom: 15,
     marginTop: 20,
+  },
+  linkPreview: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginVertical: 12,
+    position: "relative",
+  },
+
+  linkImageFull: {
+    width: "100%",
+    height: 200,
+  },
+
+  linkContentFull: {
+    padding: 12,
+  },
+
+  linkTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+
+  linkDesc: {
+    fontSize: 13,
+    marginBottom: 6,
+  },
+
+  linkUrl: {
+    fontSize: 11,
+  },
+
+  linkClose: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: 20,
+    padding: 4,
   },
   headerTitle: { fontWeight: "bold", fontSize: 18 },
   postButton: {
@@ -368,4 +617,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
   },
+
+  linkImage: {
+    width: 100,
+    height: 100,
+  },
+  linkContent: {
+    flex: 1,
+    padding: 10,
+    justifyContent: "center",
+  },
+
 });

@@ -1,6 +1,4 @@
-
-
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -11,20 +9,23 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  TouchableOpacity,
+  StyleSheet,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
+import Animated, { FadeInUp } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import Video from "react-native-video";
 
 type Product = {
   _id: string;
   title: string;
   price: number;
-  images: string[];
+  media: string[];
   category: string;
   status?: "new" | "sold";
   verified?: boolean;
@@ -40,358 +41,340 @@ export default function MarketScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-const fetchProducts = useCallback(async () => {
-  try {
-    const res = await axios.get<Product[]>(
-      "https://cast-api-zeta.vercel.app/api/products",
-    );
-    setProducts(res.data);
-  } catch (err) {
-    console.error("❌ Product fetch error:", err);
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-}, []);
+  const fetchProducts = useCallback(async () => {
+    try {
+      const res = await axios.get<Product[]>(
+        "https://cast-api-zeta.vercel.app/api/products",
+      );
 
-useFocusEffect(
-  useCallback(() => {
+      const sorted = (res.data || [])
+        .filter((p) => p && p._id && p.title)
+        .sort((a, b) => b._id.localeCompare(a._id));
+
+      setProducts(sorted);
+    } catch (err) {
+      console.error("❌ Product fetch error:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchProducts();
+    }, [fetchProducts]),
+  );
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
     fetchProducts();
-  }, [fetchProducts]),
-);
+  }, [fetchProducts]);
 
-// useEffect(() => {
-//   fetchProducts(); // 🔥 FIXED
-// }, [fetchProducts]);
-
-const onRefresh = useCallback(() => {
-  setRefreshing(true);
-  fetchProducts();
-}, [fetchProducts]);
-
-
-  // Derive categories
   const categories = useMemo(() => {
     return Array.from(new Set(products.map((p) => p.category)));
   }, [products]);
 
-  // Filter products
   const filteredProducts = useMemo(() => {
     return products.filter((item) => {
-      const matchesSearch = item.title
+      const matchesSearch = (item.title || "")
         .toLowerCase()
         .includes(searchText.toLowerCase());
+
       const matchesCategory = selectedCategory
         ? item.category === selectedCategory
         : true;
+
       return matchesSearch && matchesCategory;
     });
   }, [products, searchText, selectedCategory]);
 
   if (loading) {
     return (
-      <SafeAreaView
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: theme.background,
-        }}
-      >
-        {/* <LoaderKitView
-          style={{ width: 50, height: 50 }}
-          name={"BallScaleRippleMultiple"}
-          animationSpeedMultiplier={1.0} 
-          color={theme.text} 
-        /> */}
-
-        <ActivityIndicator size={"small"} />
+      <SafeAreaView style={styles.loader}>
+        <ActivityIndicator size="small" />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
-      {/* HEADER */}
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.background }]}
+    >
       <DrawerMenuButton />
 
-      {/* TOP ROW */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingHorizontal: 16,
-          marginTop: 10,
-          marginBottom: 12,
-        }}
-      >
-        <Text></Text>
-        {/* Title */}
-        <Text
-          style={{
-            fontWeight: "bold",
-            fontSize: 22,
-            color: theme.text,
-            textAlign: "center",
-          }}
-        >
-          Market
-        </Text>
+      {/* HEADER */}
+      <View style={styles.header}>
+        <Text />
 
-        {/* Sell Button */}
+        <Text style={[styles.title, { color: theme.text }]}>Market</Text>
+
         <Pressable
           onPress={() => router.push("/sell-form")}
-          style={{
-            backgroundColor: theme.button,
-            paddingVertical: 8,
-            paddingHorizontal: 14,
-            borderRadius: 20,
-            justifyContent: "center",
-            alignItems: "center",
-          }}
+          style={[styles.sellBtn, { backgroundColor: theme.primary }]}
         >
-          <Text
-            style={{
-              color: theme.buttonText,
-              fontWeight: "600",
-            }}
-          >
+          <Text style={{ color: theme.buttonText, fontWeight: "600" }}>
             Sell
           </Text>
         </Pressable>
       </View>
 
-      {/* SEARCH BAR */}
-      <View
-        style={{
-          paddingHorizontal: 16,
-          marginBottom: 16,
-        }}
-      >
+      {/* SEARCH */}
+      <View style={styles.searchWrapper}>
         <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: theme.card,
-            borderRadius: 30,
-            borderWidth: 1,
-            borderColor: theme.border,
-            paddingHorizontal: 12,
-          }}
+          style={[
+            styles.searchBox,
+            { backgroundColor: theme.card, borderColor: theme.border },
+          ]}
         >
-          <Ionicons
-            name="search"
-            size={18}
-            color={theme.subtext}
-            style={{ marginRight: 8 }}
-          />
-
+          <Ionicons name="search" size={18} color={theme.subtext} />
           <TextInput
             placeholder="Search products..."
             placeholderTextColor={theme.subtext}
             value={searchText}
             onChangeText={setSearchText}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              color: theme.text,
-            }}
+            style={[styles.searchInput, { color: theme.text }]}
           />
         </View>
       </View>
-      {/* CATEGORY SCROLL */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingHorizontal: 8,
-          alignItems: "center",
-          height: 50,
-        }}
-        style={{ marginBottom: 16 }}
-      >
-        {/* All Categories */}
-        <Pressable
-          onPress={() => setSelectedCategory(null)}
-          style={{
-            paddingHorizontal: 16,
-            borderRadius: 20,
-            justifyContent: "center",
-            alignItems: "center",
-            height: 40,
-            marginRight: 8,
-            backgroundColor:
-              selectedCategory === null ? theme.primary : theme.card,
-          }}
-        >
-          <Text
-            style={{
-              color: selectedCategory === null ? theme.buttonText : theme.text,
-            }}
-          >
-            All
-          </Text>
-        </Pressable>
 
-        {categories.map((cat) => {
-          const selected = selectedCategory === cat;
-          return (
-            <Pressable
-              key={cat}
-              onPress={() => setSelectedCategory(selected ? null : cat)}
+      {/* CATEGORIES (FIXED SPACING) */}
+      <View style={styles.categoryWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryContainer}
+        >
+          <Pressable
+            onPress={() => setSelectedCategory(null)}
+            style={[
+              styles.categoryChip,
+              {
+                backgroundColor:
+                  selectedCategory === null ? theme.primary : theme.card,
+              },
+            ]}
+          >
+            <Text
               style={{
-                paddingHorizontal: 16,
-                borderRadius: 20,
-                justifyContent: "center",
-                alignItems: "center",
-                height: 40,
-                marginRight: 8,
-                backgroundColor: selected ? theme.primary : theme.card,
+                color:
+                  selectedCategory === null ? theme.buttonText : theme.text,
               }}
             >
-              <Text style={{ color: selected ? theme.buttonText : theme.text }}>
-                {cat}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+              All
+            </Text>
+          </Pressable>
 
-      {/* PRODUCTS GRID */}
+          {categories.map((cat) => {
+            const selected = selectedCategory === cat;
+
+            return (
+              <Pressable
+                key={cat}
+                onPress={() => setSelectedCategory(selected ? null : cat)}
+                style={[
+                  styles.categoryChip,
+                  {
+                    backgroundColor: selected ? theme.primary : theme.card,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: selected ? theme.buttonText : theme.text,
+                  }}
+                >
+                  {cat}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* PRODUCTS */}
       <FlatList
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.listContainer}
         data={filteredProducts}
         keyExtractor={(item) => item._id}
-        showsVerticalScrollIndicator={false}
         numColumns={2}
-        columnWrapperStyle={{
-          justifyContent: "flex-start",
-          paddingHorizontal: 12,
-        }}
-         refreshControl={
+        showsVerticalScrollIndicator={false}
+        columnWrapperStyle={styles.row}
+        refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={theme.text}
           />
         }
-        renderItem={({ item, index }) => (
-          <Pressable
-            onPress={() => router.push(`/${item._id}`)}
-            style={{
-              flex: 1,
-              marginBottom: 16,
-              marginRight: index % 2 === 0 ? 8 : 0, // spacing only for left column
-              borderRadius: 16,
-              overflow: "hidden",
-              backgroundColor: theme.card,
-              shadowColor: theme.shadow,
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.1,
-              shadowRadius: 4,
-              elevation: 2,
-            }}
-          >
-            {/* IMAGE */}
-            <Animated.View
-              entering={FadeInUp.delay(200).duration(300)}
-              style={{ position: "relative" }}
-            >
-              <Image
-                source={{ uri: item.images[0] }}
-                style={{ width: "100%", height: 160 }}
-                resizeMode="cover"
-              />
-              {/* BADGES */}
-              {item.status && (
-                <View
-                  style={{
-                    position: "absolute",
-                    top: 8,
-                    left: 8,
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderRadius: 8,
-                    backgroundColor: theme.danger,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: theme.buttonText,
-                      fontSize: 10,
-                      fontWeight: "600",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {item.status}
-                  </Text>
-                </View>
-              )}
-              {item.verified && (
-                <View
-                  style={{
-                    position: "absolute",
-                    top: 8,
-                    right: 8,
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderRadius: 8,
-                    backgroundColor: theme.info,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: theme.buttonText,
-                      fontSize: 10,
-                      fontWeight: "600",
-                    }}
-                  >
-                    Verified
-                  </Text>
-                </View>
-              )}
-            </Animated.View>
+        renderItem={({ item, index }) => {
+          const mediaUrl =
+            item.media?.[item.media.length - 1] ||
+            "https://via.placeholder.com/300";
 
-            {/* CARD CONTENT */}
-            <View style={{ padding: 12 }}>
-              <Text
-                style={{ color: theme.text, fontWeight: "600", fontSize: 16 }}
-                numberOfLines={1}
-              >
-                {item.title}
-              </Text>
-              <Text
-                style={{
-                  color: theme.success,
-                  fontWeight: "700",
-                  marginTop: 4,
-                }}
-              >
-                KES {item.price.toLocaleString("en-KE")}
-              </Text>
-              <View
-                style={{
-                  marginTop: 4,
-                  alignSelf: "flex-start",
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 12,
-                  backgroundColor: theme.badge,
-                }}
-              >
-                <Text style={{ fontSize: 12, color: theme.text }}>
-                  {item.category}
+          const isVideo = /\.(mp4|mov|webm)$/i.test(mediaUrl);
+
+          return (
+            <Pressable
+              onPress={() => router.push(`/${item._id}`)}
+              style={[styles.card, { backgroundColor: theme.card }]}
+            >
+              <Animated.View entering={FadeInUp.delay(120)}>
+                {isVideo ? (
+                  <Video
+                    source={{ uri: mediaUrl }}
+                    style={styles.media}
+                    resizeMode="cover"
+                    muted
+                    repeat
+                  />
+                ) : (
+                  <Image
+                    source={{ uri: mediaUrl }}
+                    style={styles.media}
+                    resizeMode="cover"
+                  />
+                )}
+              </Animated.View>
+
+              <View style={styles.cardBody}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.productTitle, { color: theme.text }]}
+                >
+                  {item.title}
                 </Text>
+
+                <Text style={[styles.price, { color: theme.success }]}>
+                  KES {(item.price || 0).toLocaleString("en-KE")}
+                </Text>
+
+                <View style={[styles.badge, { backgroundColor: theme.badge }]}>
+                  <Text style={{ fontSize: 12, color: theme.text }}>
+                    {item.category || "Other"}
+                  </Text>
+                </View>
               </View>
-            </View>
-          </Pressable>
-        )}
-        ListEmptyComponent={
-          <View style={{ alignItems: "center", marginTop: 32 }}>
-            <Text style={{ color: theme.text }}>No products found</Text>
-          </View>
-        }
+            </Pressable>
+          );
+        }}
       />
     </SafeAreaView>
   );
 }
+
+/* ---------------- STYLES ---------------- */
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+
+  loader: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 8,
+  },
+
+  title: {
+    fontSize: 22,
+    fontWeight: "bold",
+  },
+
+  sellBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+  },
+
+  searchWrapper: {
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 30,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+  },
+
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    marginLeft: 8,
+  },
+
+  categoryWrapper: {
+    marginBottom: 8, // 🔥 FIXED spacing issue
+  },
+
+  categoryContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    alignItems: "center",
+  },
+
+  categoryChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+  },
+
+  listContainer: {
+    paddingBottom: 24,
+    paddingHorizontal: 8,
+  },
+
+  row: {
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
+  },
+
+  card: {
+    flex: 1,
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: "hidden",
+    elevation: 2,
+    marginHorizontal: 4,
+  },
+
+  media: {
+    width: "100%",
+    height: 160,
+  },
+
+  cardBody: {
+    padding: 12,
+  },
+
+  productTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  price: {
+    fontWeight: "700",
+    marginTop: 4,
+  },
+
+  badge: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+});

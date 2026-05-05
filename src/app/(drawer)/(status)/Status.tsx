@@ -2,8 +2,6 @@ import { FlatList, View, StyleSheet } from "react-native";
 import { CreateStatus } from "./CreateStatus";
 import { useTheme } from "@/context/ThemeContext";
 import { StatusItem } from "./StatusItem";
-import { Feather, Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
 
 interface Status {
   _id: string;
@@ -13,7 +11,6 @@ interface Status {
   media: string[];
   backgroundColor: string;
   createdAt: string;
-  
 }
 
 export function Status({ statuses }: { statuses: Status[] }) {
@@ -22,37 +19,40 @@ export function Status({ statuses }: { statuses: Status[] }) {
   /* =========================
      GROUP BY USER
   ========================= */
-const groupedStatuses = Object.values(
-  statuses.reduce((acc: any, status) => {
-    const key = status.userId;
+  const groupedStatuses = Object.values(
+    statuses.reduce((acc: any, status) => {
+      const key = status.userId;
 
-    if (!acc[key]) {
-      acc[key] = {
-        userId: status.userId,
-        statuses: [],
-      };
-    }
+      if (!acc[key]) {
+        acc[key] = {
+          userId: status.userId,
+          statuses: [],
+        };
+      }
 
-    acc[key].statuses.push(status);
+      acc[key].statuses.push(status);
 
-    return acc;
-  }, {})
-).map((group: any) => {
-  // IMPORTANT: sort each user’s statuses same as viewer
-  group.statuses.sort(
-    (a: any, b: any) =>
-      new Date(b.createdAt).getTime() -
-      new Date(a.createdAt).getTime()
-  );
+      return acc;
+    }, {}),
+  ).map((group: any) => {
+    // IMPORTANT: sort each user’s statuses same as viewer
+    group.statuses.sort(
+      (a: any, b: any) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
 
-  return group;
-});
+    return group;
+  });
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.card }]}>
+    <View style={[styles.container, { backgroundColor: "theme.background" }]}>
       <FlatList
         data={groupedStatuses}
         horizontal
+        windowSize={5}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        removeClippedSubviews
         keyExtractor={(item: any) => item.userId}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}

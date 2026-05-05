@@ -3,6 +3,7 @@ import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
 import { useRouter } from "expo-router";
 import moment from "moment";
 import Video from "react-native-video";
+import { useTheme } from "@/context/ThemeContext";
 
 function Ring({ count, viewed }: any) {
   const size = 60;
@@ -59,6 +60,8 @@ export default function StatusItem({ userStatus }: any) {
 
   const firstMedia = latest?.media?.[0];
 
+  const { theme } = useTheme()
+
 
   return (
     <Pressable
@@ -89,7 +92,10 @@ export default function StatusItem({ userStatus }: any) {
                 },
               ]}
             >
-              <Text style={styles.textOnly} numberOfLines={2}>
+              <Text
+                style={[styles.textOnly, { color: theme.text }]}
+                numberOfLines={2}
+              >
                 {latest.caption}
               </Text>
             </View>
@@ -100,19 +106,23 @@ export default function StatusItem({ userStatus }: any) {
 
       {/* MIDDLE: TEXT */}
       <View style={styles.middle}>
-        <Text style={styles.name}>{userStatus.firstName || "Unknown"}</Text>
+        <Text style={[styles.name, { color: theme.text }]}>
+          {userStatus.firstName || "Unknown"}
+        </Text>
 
-        <Text style={styles.caption} numberOfLines={1}>
+        <Text style={[styles.caption, { color: theme.text }]} numberOfLines={1}>
           {latest?.caption || "No status updates"}
         </Text>
       </View>
 
       {/* RIGHT: TIME */}
       <View>
-        <Text style={styles.time}>
+        <Text style={[styles.time, { color: theme.subtext }]}>
           {moment(userStatus.createdAt).fromNow()}
         </Text>
-        <Text style={styles.time}>{userStatus.statuses.length} status</Text>
+        <Text style={[styles.time, { color: theme.text }]}>
+          {userStatus.statuses.length} status
+        </Text>
       </View>
     </Pressable>
   );

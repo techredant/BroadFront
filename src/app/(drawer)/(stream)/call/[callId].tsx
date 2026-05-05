@@ -1,4 +1,4 @@
-import { COLORS } from "@/lib/theme";
+import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import {
   Call,
@@ -13,7 +13,13 @@ import {
 } from "@stream-io/video-react-native-sdk";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useChatContext } from "stream-chat-expo";
 
@@ -24,6 +30,7 @@ const CallScreen = () => {
 
   const [call, setCall] = useState<Call | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { theme } = useTheme();
 
   useEffect(() => {
     if (!videoClient || !callId) return;
@@ -66,7 +73,7 @@ const CallScreen = () => {
     return (
       <SafeAreaView className="flex-1 bg-background">
         <View className="flex-1 items-center justify-center gap-4">
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="small" color={theme.text} />
           <Text className="mt-2 text-base text-foreground-muted">
             Starting call...
           </Text>
@@ -99,6 +106,14 @@ function CallUI() {
     if (callingState === CallingState.LEFT) router.back();
   }, [callingState]);
 
+  if (callingState === CallingState.RINGING) {
+    return <IncomingCall />;
+  }
+
+  if (callingState === CallingState.OUTGOING_CALL) {
+    return <OutgoingCall />;
+  }
+
   const ControlButton = ({
     icon,
     onPress,
@@ -122,19 +137,21 @@ function CallUI() {
 
   // controls
   return (
-    <View style={{ flex: 1, backgroundColor: "black" }}>
-      {/* ONLY ONCE */}
+    <View style={{ flex: 1 }}>
       <CallContent />
 
-      {/* YOUR UI */}
       <View
         style={{
           position: "absolute",
-          right: 16,
-          top: "35%",
-          flexDirection: "column",
+          bottom: 32,
+          left: 24,
+          right: 24,
+          flexDirection: "row",
+          justifyContent: "space-around",
           alignItems: "center",
-          gap: 16,
+          paddingVertical: 10,
+          backgroundColor: "rgba(0, 0, 0, 0.28)",
+          borderRadius: 999,
           zIndex: 9999,
           elevation: 9999,
         }}
@@ -167,10 +184,12 @@ export default CallScreen;
 
 function ErrorCallUI({ error }: { error: string }) {
   const router = useRouter();
+  const { theme } = useTheme();
+
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="flex-1 items-center justify-center gap-4">
-        <Ionicons name="alert-circle-outline" size={48} color={COLORS.danger} />
+        <Ionicons name="alert-circle-outline" size={48} color={theme.danger} />
         <Text className="mt-2 text-base text-foreground">{error}</Text>
         <Pressable
           className="mt-4 rounded-xl bg-primary px-6 py-3"
@@ -184,3 +203,5 @@ function ErrorCallUI({ error }: { error: string }) {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({});

@@ -12,23 +12,36 @@ type UseStartChatParams = {
 const useStartChat = ({ client, userId, setChannel, setCreating }: UseStartChatParams) => {
   const router = useRouter();
 
-  const handleStartChat = async (targetId: string) => {
-    setCreating(targetId);
+const handleStartChat = async (targetId: string) => {
+  if (!targetId || typeof targetId !== "string") {
+    console.log("Invalid targetId:", targetId);
+    Alert.alert("Error", "Invalid user selected");
+    return;
+  }
 
-    try {
-      const channel = client.channel("messaging", { members: [userId, targetId] });
-      await channel.watch();
+  if (targetId === userId) {
+    Alert.alert("Error", "You can't chat with yourself");
+    return;
+  }
 
-      setChannel(channel);
+  setCreating(targetId);
 
-      router.push(`/channel/${channel.cid}`);
-    } catch (error) {
-      console.log("Error creating chat:", error);
-      Alert.alert("Error", "Could not create chat. Please try again.");
-    } finally {
-      setCreating(null);
-    }
-  };
+  try {
+    const channel = client.channel("messaging", {
+      members: [userId, targetId],
+    });
+
+    await channel.watch();
+    setChannel(channel);
+
+    router.push(`/channel/${channel.cid}`);
+  } catch (error) {
+    console.log("Error creating chat:", error);
+    Alert.alert("Error", "Could not create chat. Please try again.");
+  } finally {
+    setCreating(null);
+  }
+};
 
   return { handleStartChat };
 };

@@ -10,6 +10,7 @@ import {
 import useSWR from "swr";
 import React from "react";
 import axios from "axios";
+import { useFocusEffect } from "expo-router";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app/api/users";
 
@@ -24,6 +25,7 @@ interface User {
   firstName: string;
   lastName: string;
   nickName: string;
+  companyName: string;
   image: string;
   followers: string[];
   following: string[];
@@ -38,6 +40,7 @@ type FollowContextType = {
   followersCount: number;
   followingCount: number;
   handleFollow: (targetClerkId: string) => Promise<void>;
+  refreshMembers: () => Promise<void>;
   loading: boolean;
   error: any;
 };
@@ -102,6 +105,14 @@ const followerUsers = useMemo(() => {
     }
   }, [user?.id]);
 
+  const refreshMembers = async () => {
+    const res = await axios.get(`${BASE_URL}/api/users`, {
+      params: { clerkId: user?.id },
+    });
+
+    setMembers(res.data.users);
+  };
+
   /** FOLLOW / UNFOLLOW */
 const handleFollow = async (targetClerkId: string) => {
   if (!user?.id) return;
@@ -138,10 +149,13 @@ const handleFollow = async (targetClerkId: string) => {
   }
 };
 
-  useEffect(() => {
-    if (!user?.id) return;
-    fetchUsers();
-  }, [user?.id, fetchUsers]);
+ useFocusEffect(
+   useCallback(() => {
+     if (!user?.id) return;
+
+     fetchUsers();
+   }, [user?.id, fetchUsers]),
+ );
 
   return (
     <FollowCtx.Provider
@@ -153,6 +167,7 @@ const handleFollow = async (targetClerkId: string) => {
         followingUsers,
         followerUsers,
         handleFollow,
+        refreshMembers,
         loading,
         error,
         members,

@@ -1,155 +1,258 @@
+import { useTheme } from "@/context/ThemeContext";
 import useSocialAuth from "@/hooks/useSocialAuth";
 import { Ionicons } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import React, { useEffect } from "react";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 
 const AuthScreen = () => {
   const { handleSocialAuth, loadingStrategy } = useSocialAuth();
   const isLoading = loadingStrategy !== null;
+  const { theme } = useTheme();
+
+  const appVersion = Constants.expoConfig?.version;
+
+  // 🔥 animation
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    scale.value = withRepeat(withTiming(1.05, { duration: 2000 }), -1, true);
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
   return (
-    <View className="flex-1 bg-background">
-      {/* gradient background */}
-      <View className="absolute inset-0">
-        <LinearGradient
-          colors={["#0B0B0F", "#121218", "#1A1A22", "#121218", "#0B0B0F"]}
-          locations={[0, 0.25, 0.5, 0.75, 1]}
-          style={{ width: "100%", height: "100%" }}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-      </View>
-
+    <LinearGradient
+      colors={["#000000", "#0F172A", "#1E293B"]}
+      style={{ flex: 1 }}
+    >
       <SafeAreaView className="flex-1 justify-between">
-        {/* TOP SECTION: logo + hero */}
+        {/* VERSION */}
+        <Text style={[styles.version, { color: theme.subtext }]}>
+          Version {appVersion}
+        </Text>
+
+        {/* TOP SECTION */}
         <View>
-          <View className="items-center pt-10 pb-2">
-            <Text className="text-3xl font-extrabold text-foreground tracking-tight mt-4 font-mono">
-              Broadcast
-            </Text>
+          {/* TITLE */}
+          <View className="items-center">
+            <Text style={styles.title}>Broadcast</Text>
 
-            <Text className="text-foreground-muted text-[15px] mt-1.5 tracking-wide">
-              The platform for open political conversation
+            <Text style={styles.subtitle}>
+              Speak freely. Debate boldly. Shape the future.
             </Text>
           </View>
 
-          <View className="items-center px-6 mt-4">
-            <Image
-              source={require("@/assets/images/icon.jpg")}
-              style={{ width: 320, height: 350, borderRadius: 100 }}
-              contentFit="cover"
-            />
-          </View>
+          {/* HERO IMAGE */}
+          <Animated.View
+            style={[animatedStyle, { alignItems: "center", marginTop: 20 }]}
+          >
+            {/* <LinearGradient
+              colors={["#6C5CE7", "#4f46e5", "#00B894"]}
+              style={styles.imageGlow}
+            > */}
+              <Image
+                source={require("@/assets/images/icon.jpg")}
+                style={styles.image}
+                contentFit="cover"
+              />
+            {/* </LinearGradient> */}
+          </Animated.View>
 
-          {/* feature chips */}
-          <View className="flex-row flex-wrap justify-center gap-3 px-6 mt-5">
+          {/* FEATURE CHIPS */}
+          <View className="flex-row flex-wrap justify-center gap-3 px-6 mt-6">
             {[
               {
-                icon: "megaphone" as const,
+                icon: "megaphone",
                 label: "Public Debates",
                 color: "#A29BFE",
-                bg: "bg-primary/12 border-primary/20",
               },
               {
-                icon: "chatbubbles" as const,
+                icon: "chatbubbles",
                 label: "Political Discussions",
                 color: "#FF6B6B",
-                bg: "bg-accent/12 border-accent/20",
               },
               {
-                icon: "people" as const,
-                label: "Join Communities",
+                icon: "people",
+                label: "Communities",
                 color: "#00B894",
-                bg: "bg-accent-secondary/12 border-accent-secondary/20",
               },
             ].map((chip) => (
-              <View
-                key={chip.label}
-                className={`flex-row items-center gap-1.5 px-3.5 py-2 rounded-full border ${chip.bg}`}
-              >
-                <Ionicons name={chip.icon} size={14} color={chip.color} />
-                <Text className="text-foreground-muted text-xs font-semibold tracking-wide">
-                  {chip.label}
-                </Text>
+              <View key={chip.label} style={styles.chip}>
+                <Ionicons
+                  name={chip.icon as any}
+                  size={14}
+                  color={chip.color}
+                />
+                <Text style={styles.chipText}>{chip.label}</Text>
               </View>
             ))}
           </View>
         </View>
 
-        <View className="px-8 pb-4">
+        {/* BOTTOM SECTION */}
+        <View className="px-8 pb-5">
+          {/* DIVIDER */}
           <View className="flex-row items-center gap-3 mb-6">
-            <View className="flex-1 h-px bg-border" />
-            <Text className="text-foreground-subtle text-xs font-medium tracking-widest uppercase">
-              Continue with
-            </Text>
-            <View className="flex-1 h-px bg-border" />
+            <View className="flex-1 h-px bg-gray-700" />
+            <Text style={styles.continue}>Continue with</Text>
+            <View className="flex-1 h-px bg-gray-700" />
           </View>
 
-          <View className="flex-row justify-center items-center gap-4 mb-5">
-            {/* GOOGLE btn */}
+          {/* BUTTONS */}
+          <View style={styles.buttonRow}>
+            {/* GOOGLE */}
             <Pressable
-              className="size-20 rounded-2xl bg-white items-center justify-center active:scale-95 shadow-lg shadow-white/10"
-              style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+              style={({ pressed }) => [
+                styles.button,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}
               disabled={isLoading}
-              accessibilityRole="button"
-              accessibilityLabel="Continue with Google"
               onPress={() => !isLoading && handleSocialAuth("oauth_google")}
             >
               {loadingStrategy === "oauth_google" ? (
-                <ActivityIndicator size={"small"} color={"#6C5CE7"} />
+                <ActivityIndicator color="#fff" />
               ) : (
                 <Image
                   source={require("../../../assets/images/google.png")}
                   style={{ width: 28, height: 28 }}
-                  contentFit="contain"
                 />
               )}
             </Pressable>
 
-            {/* APPLE btn */}
+            {/* APPLE */}
             <Pressable
-              className="size-20 rounded-2xl bg-surface border border-border-light items-center justify-center active:scale-95"
-              style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+              style={({ pressed }) => [
+                styles.button,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}
               disabled={isLoading}
-              accessibilityRole="button"
-              accessibilityLabel="Continue with Apple"
               onPress={() => !isLoading && handleSocialAuth("oauth_apple")}
             >
               {loadingStrategy === "oauth_apple" ? (
-                <ActivityIndicator size="small" color="#6C5CE7" />
+                <ActivityIndicator color="#fff" />
               ) : (
-                <Ionicons name="logo-apple" size={30} color="#FFFFFE" />
+                <Ionicons name="logo-apple" size={28} color="#fff" />
               )}
             </Pressable>
 
-            {/* GITHUB btn */}
+            {/* GITHUB */}
             <Pressable
-              className="size-20 rounded-2xl bg-surface border border-border-light items-center justify-center active:scale-95"
-              style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+              style={({ pressed }) => [
+                styles.button,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}
               disabled={isLoading}
-              accessibilityRole="button"
-              accessibilityLabel="Continue with GitHub"
               onPress={() => !isLoading && handleSocialAuth("oauth_github")}
             >
               {loadingStrategy === "oauth_github" ? (
-                <ActivityIndicator size="small" color="#6C5CE7" />
+                <ActivityIndicator color="#fff" />
               ) : (
-                <Ionicons name="logo-github" size={28} color="#FFFFFE" />
+                <Ionicons name="logo-github" size={26} color="#fff" />
               )}
             </Pressable>
           </View>
 
-          <Text className="text-foreground-subtle text-[11px] text-center leading-4">
+          {/* TERMS */}
+          <Text style={styles.terms}>
             By continuing, you agree to our{" "}
-            <Text className="text-primary-light">Terms of Service</Text> and{" "}
-            <Text className="text-primary-light">Privacy Policy</Text>
+            <Text style={styles.link}>Terms</Text> and{" "}
+            <Text style={styles.link}>Privacy Policy</Text>
           </Text>
         </View>
       </SafeAreaView>
-    </View>
+    </LinearGradient>
   );
 };
 
 export default AuthScreen;
+
+const styles = StyleSheet.create({
+  version: {
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 6,
+  },
+  title: {
+    fontSize: 36,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    textShadowColor: "#6C5CE7",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 12,
+  },
+  subtitle: {
+    color: "#94A3B8",
+    fontSize: 15,
+    marginTop: 6,
+  },
+  imageGlow: {
+    padding: 3,
+    borderRadius: 140,
+  },
+  image: {
+    width: 260,
+    height: 260,
+    borderRadius: 140,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  chipText: {
+    color: "#CBD5F5",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  continue: {
+    color: "#94A3B8",
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 2,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 16,
+    marginBottom: 20,
+  },
+  button: {
+    width: 75,
+    height: 75,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  terms: {
+    color: "#64748B",
+    fontSize: 11,
+    textAlign: "center",
+  },
+  link: {
+    color: "#6C5CE7",
+  },
+});

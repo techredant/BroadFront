@@ -34,7 +34,7 @@ import {
 } from "@expo/vector-icons";
 import { Gesture } from "react-native-gesture-handler";
 import moment from "moment";
-import { router } from "expo-router";
+import { Link, router } from "expo-router";
 import { MediaViewerModal } from "./MediaViewModal";
 import axios from "axios";
 import {
@@ -54,6 +54,8 @@ import { ReciteModal } from "./ReciteModal";
 import CommentModal from "./CommentModal";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
+import { EditModal } from "./EditModal";
+import { Linking } from "react-native";
 
 interface Member {
   id: string;
@@ -64,6 +66,63 @@ interface Member {
   image: string;
   followers: string[];
   isFollowing?: boolean;
+}
+
+const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+const extractUrls = (text: any = "") =>
+  typeof text === "string" ? text.match(urlRegex) || [] : [];
+
+/* ---------------- FACEBOOK STYLE LINK CARD ---------------- */
+function LinkPreviewCard({ preview, theme }: any) {
+  if (!preview?.url) return null;
+
+  return (
+    <Pressable
+      onPress={() => Linking.openURL(preview.url)}
+      style={{
+        marginHorizontal: 12,
+        marginTop: 10,
+        borderRadius: 12,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: theme.border || "#ddd",
+        backgroundColor: theme.card,
+      }}
+    >
+      {!!preview.image && (
+        <Image
+          source={{ uri: preview.image }}
+          style={{ width: "100%", height: 180 }}
+        />
+      )}
+
+      <View style={{ padding: 10 }}>
+        <Text
+          numberOfLines={2}
+          style={{ fontWeight: "700", color: theme.text }}
+        >
+          {preview.title || "Link"}
+        </Text>
+
+        {!!preview.description && (
+          <Text
+            numberOfLines={2}
+            style={{ color: theme.subtext, marginTop: 4 }}
+          >
+            {preview.description}
+          </Text>
+        )}
+
+        <Text
+          numberOfLines={1}
+          style={{ color: theme.primary, marginTop: 6, fontSize: 12 }}
+        >
+          {preview.url}
+        </Text>
+      </View>
+    </Pressable>
+  );
 }
 
 const { width } = Dimensions.get("window");
@@ -92,11 +151,20 @@ export function PostCard({
   const [postCard, setPostCard] = useState(post);
 
   const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [expandedStates, setExpandedStates] = useState<{
+    [key: string]: boolean;
+  }>({});
 
   const onOpenComments = (postId: string) => {
     setCommentModalVisible(true);
     fetchComments(); // reload comments when modal opens
   };
+
+  useEffect(() => {
+    if (commentModalVisible) {
+      fetchComments();
+    }
+  }, [commentModalVisible]);
 
   const LIKE_COLOR = "#E0245E";
 
@@ -109,20 +177,12 @@ export function PostCard({
   const reciteItemSize = reciteGridWidth / 3 - 4;
 
   const mediaCount = mediaList.length;
-  const [expandedStates, setExpandedStates] = useState<{
-    [key: string]: boolean;
-  }>({});
-  const [showMoreStates, setShowMoreStates] = useState<{
-    [key: string]: boolean;
-  }>({});
+
   const [quoteVisible, setQuoteVisible] = useState(false);
   const [loadingRecite, setLoadingRecite] = useState(false);
   const [loadingRecast, setLoadingRecast] = useState(false);
-
-  const [linkData, setLinkData] = useState<any>(null);
-
-  const isExpanded = expandedStates[postCard._id];
-  const showMore = showMoreStates[postCard._id];
+  const [editVisible, setEditVisible] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(false);
 
   const gridWidth = width - 24;
   const itemSize = gridWidth / 2 - 4;
@@ -140,10 +200,10 @@ export function PostCard({
   const [reciteVisible, setReciteVisible] = useState(false);
   // const [loadingRecite, setLoadingRecite] = useState(false);
 
-const openMedia = (index: number) => {
-  setSelectedIndex(index);
-  setModalVisible(true);
-};
+  const openMedia = (index: number) => {
+    setSelectedIndex(index);
+    setModalVisible(true);
+  };
 
   const [isMuted, setIsMuted] = useState(true); // default muted
 
@@ -152,6 +212,13 @@ const openMedia = (index: number) => {
   const [refreshing, setRefreshing] = useState(false);
 
   const spinValue = useRef(new Animated.Value(0)).current;
+
+  const toggleExpand = (postId: string) => {
+    setExpandedStates((prev) => ({
+      ...prev,
+      [postId]: !prev[postId],
+    }));
+  };
 
   useEffect(() => {
     let animation: Animated.CompositeAnimation;
@@ -203,8 +270,6 @@ const openMedia = (index: number) => {
   useEffect(() => {
     fetchComments();
   }, [fetchComments]);
-
-
 
   // /* ---------------- PINCH ZOOM ---------------- */
   const pinchScale = useSharedValue(1);
@@ -296,15 +361,89 @@ const openMedia = (index: number) => {
     }
   };
 
+  /* ---------------- UPLOAD ---------------- */
+  const uploadToCloudinary = async (uri: string) => {
+    const data = new FormData();
+
+    const isVideo = uri.includes(".mp4") || uri.includes(".mov");
+
+    data.append("file", {
+      uri,
+      type: isVideo ? "video/mp4" : "image/jpeg",
+      name: isVideo ? "video.mp4" : "image.jpg",
+    } as any);
+
+    data.append("upload_preset", "MediaCast");
+
+    const endpoint = isVideo
+      ? "https://api.cloudinary.com/v1_1/ds25oyyqo/video/upload"
+      : "https://api.cloudinary.com/v1_1/ds25oyyqo/image/upload";
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      body: data,
+    });
+
+    const result = await res.json();
+    return result.secure_url;
+  };
+
+  const handleEdit = async (data: {
+    caption?: string;
+    quote?: string;
+    media: string[];
+    linkPreview?: any;
+  }) => {
+    if (!userDetails.clerkId) return;
+
+    setLoadingEdit(true);
+
+    try {
+      // Upload only new files
+      const uploadedMedia = await Promise.all(
+        data.media.map(async (item) => {
+          if (item.startsWith("file://")) {
+            return await uploadToCloudinary(item);
+          }
+          return item; // already uploaded
+        }),
+      );
+
+      const res = await axios.put(
+        `https://cast-api-zeta.vercel.app/api/posts/${postCard._id}`,
+        {
+          caption: data.caption,
+          media: uploadedMedia, // ✅ always array
+          userId: userDetails.clerkId,
+          linkPreview: data.linkPreview || null,
+          quote: data.quote,
+        },
+      );
+
+      const updatedPost = res.data;
+
+      setPostCard(updatedPost);
+      onUpdatePost?.(updatedPost);
+      onRefresh?.();
+
+      setEditVisible(false);
+    } catch (err) {
+      console.error("Edit failed:", err);
+    } finally {
+      setLoadingEdit(false);
+    }
+  };
+
   const handleRecite = async (text: string) => {
     if (!userDetails.clerkId) return;
     setLoadingRecite(true);
 
     const newRecite = {
       userId: userDetails.clerkId,
+      reciteUserId: postCard.user.clerkId, // original author
       reciteImage: postCard.user?.image,
-      reciteFirstName: postCard.user.firstName,
-      reciteLastName: postCard.user.firstName,
+      reciteFirstName: postCard.user.firstName || postCard.user?.companyName,
+      reciteLastName: postCard.user.lastName,
       reciteNickName: postCard.user.nickName || "Anonymous",
       caption: postCard.caption,
       reciteMedia: postCard.media,
@@ -325,7 +464,6 @@ const openMedia = (index: number) => {
       await incrementViews();
       await incrementRecite();
       onRefresh?.();
-
 
       setQuoteVisible(false);
     } catch (err) {
@@ -351,8 +489,8 @@ const openMedia = (index: number) => {
       levelValue: postCard.levelValue,
 
       type: "recast", // marks it as a recast/recite
-
-      reciteFirstName: postCard?.user?.firstName || "",
+      reciteUserId: postCard?.user?.clerkId || "",
+      reciteFirstName: postCard?.user?.firstName || postCard?.user?.companyName,
       reciteLastName: postCard?.user?.lastName || "",
       reciteNickName: postCard?.user?.nickName || "",
       reciteImage: postCard?.user?.image || "",
@@ -398,41 +536,29 @@ const openMedia = (index: number) => {
     }
   };
 
+  const text = postCard.quote ? postCard.quote : postCard.caption;
+
+  const isExpanded = expandedStates[postCard._id];
+
   const isOwner = userDetails?.clerkId === postCard.userId;
- 
+
+  /* ---------------- LINK DETECTION ---------------- */
+  const detectedUrl = extractUrls(text)[0];
+
+  const linkPreview = Array.isArray(postCard.linkPreview)
+    ? postCard.linkPreview[0]
+    : postCard.linkPreview || null;
+
+    console.log("reciteuserId", postCard?.reciteUserId);
+    
 
   return (
     <>
-      {/* RECAST BANNER */}
-      {postCard.type == "recast" && (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 6,
-            paddingHorizontal: 12,
-            paddingBottom: 6,
-          }}
-        >
-          <Feather name="repeat" size={14} color={theme.text} />
-          <Text
-            style={{
-              color: theme.text,
-              fontSize: 12,
-              fontWeight: "600",
-            }}
-          >
-            Recasted by {postCard?.user.nickName}{" "}from{" "}
-            {postCard?.reciteNickName}  
-          </Text>
-        </View>
-      )}
-
       <View
         style={{
-          backgroundColor: "theme.card",
-          paddingVertical: 12,
-          marginBottom: 8,
+          backgroundColor: theme.background,
+          paddingVertical: 2,
+          marginBottom: 4,
           borderRadius: 12,
         }}
       >
@@ -446,18 +572,33 @@ const openMedia = (index: number) => {
           }}
         >
           <Pressable
-            onPress={() => router.push(`/profileId/${postCard.userId}`)}
-            style={{ flex: 1, flexDirection: "row", gap: 10 }}
+            onPress={() => router.push(`/(profileId)/${postCard.userId}`)}
+            style={{ flex: 1, flexDirection: "row", gap: 10, zIndex: 10 }}
           >
             <Image
-              source={{ uri: postCard.user?.image }}
+              source={{
+                uri:
+                  postCard.userId === userDetails?.clerkId
+                    ? userDetails?.image
+                    : postCard.user?.image,
+              }}
               style={{ width: 30, height: 30, borderRadius: 15 }}
             />
             <View>
-              <Text style={{ color: theme.text, fontWeight: "bold" }}>
-                {postCard.user?.firstName}
+              <Text
+                style={{ color: theme.text, fontWeight: "bold", fontSize: 12 }}
+              >
+                {postCard.userId === userDetails?.clerkId
+                  ? userDetails?.firstName || userDetails?.companyName
+                  : postCard.user?.firstName || postCard.user?.companyName}
               </Text>
-              <Text style={{ color: theme.subtext, fontSize: 12 }}>
+              <Text
+                style={{
+                  color: theme.subtext,
+                  fontSize: 10,
+                  fontWeight: "bold",
+                }}
+              >
                 {postCard.user?.nickName}
               </Text>
               <Text
@@ -468,7 +609,7 @@ const openMedia = (index: number) => {
                   color: theme.subtext,
                 }}
               >
-                {postCard?.levelValue.toLowerCase() === "home"
+                {postCard?.levelValue?.toLowerCase() === "home"
                   ? ""
                   : `#${postCard.levelValue} ${postCard.levelType}`}
               </Text>
@@ -514,9 +655,29 @@ const openMedia = (index: number) => {
                   borderRadius: 12,
                   paddingVertical: 6,
                   width: 180,
+                  backgroundColor: theme.card, // ✅ THIS is what matters
+
+                  borderColor: theme.border || "#00000020",
                 },
               }}
             >
+              {isOwner && (
+                <MenuOption onSelect={() => setEditVisible(true)}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: 8,
+                    }}
+                  >
+                    <Feather name="edit-2" size={16} color={theme.text} />
+                    <Text style={{ color: theme.text, fontWeight: "600" }}>
+                      Edit Post
+                    </Text>
+                  </View>
+                </MenuOption>
+              )}
               {/* Save */}
               <MenuOption onSelect={() => alert("Save post")}>
                 <View
@@ -527,8 +688,8 @@ const openMedia = (index: number) => {
                     padding: 8,
                   }}
                 >
-                  <Feather name="bookmark" size={16} color="#111" />
-                  <Text>Save</Text>
+                  <Feather name="bookmark" size={16} color={theme.text} />
+                  <Text style={{ color: theme.text }}>Save</Text>
                 </View>
               </MenuOption>
 
@@ -542,8 +703,8 @@ const openMedia = (index: number) => {
                     padding: 8,
                   }}
                 >
-                  <Feather name="share-2" size={16} color="#111" />
-                  <Text>Share</Text>
+                  <Feather name="share-2" size={16} color={theme.text} />
+                  <Text style={{ color: theme.text }}>Share</Text>
                 </View>
               </MenuOption>
 
@@ -557,8 +718,8 @@ const openMedia = (index: number) => {
                     padding: 8,
                   }}
                 >
-                  <Feather name="flag" size={16} color="#E11D48" />
-                  <Text style={{ color: "#E11D48" }}>Report</Text>
+                  <Feather name="flag" size={16} color="#9E9505" />
+                  <Text style={{ color: "#9E9505" }}>Report</Text>
                 </View>
               </MenuOption>
 
@@ -606,12 +767,51 @@ const openMedia = (index: number) => {
           style={{
             color: theme.text,
             paddingHorizontal: 12,
-            marginTop: 6,
+            marginTop: 2,
           }}
         >
-          {postCard.quote ? postCard.quote : postCard.caption}
+          {text}
         </Text>
-        {postCard.quote ? (
+        {/* 1. If backend preview exists */}
+        {linkPreview && <LinkPreviewCard preview={linkPreview} theme={theme} />}
+
+        {/* 2. fallback: just URL (Facebook behavior) */}
+        {!linkPreview && detectedUrl && (
+          <Pressable
+            onPress={() => Linking.openURL(detectedUrl)}
+            style={{
+              marginHorizontal: 12,
+              marginTop: 10,
+              padding: 10,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: theme.border,
+              backgroundColor: theme.card,
+            }}
+          >
+            <Text style={{ color: theme.primary }}>{detectedUrl}</Text>
+          </Pressable>
+        )}
+
+        {text && text.length > 80 && (
+          <TouchableOpacity
+            onPress={() => toggleExpand(postCard._id)}
+            style={{ zIndex: 20, padding: 4 }}
+          >
+            <Text
+              style={{
+                color: theme.primary,
+                paddingHorizontal: 12,
+                marginTop: 4,
+                fontWeight: "600",
+              }}
+            >
+              {isExpanded ? "Show less" : "Show more"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {postCard.type === "recite" ? (
           <View
             style={{
               backgroundColor: theme.badge,
@@ -637,7 +837,8 @@ const openMedia = (index: number) => {
                 <Text
                   style={{ fontWeight: "700", fontSize: 11, color: theme.text }}
                 >
-                  {postCard?.reciteFirstName}
+                  {postCard?.reciteFirstName ||
+                    postCard.user?.reciteCompanyName}
                 </Text>
                 <Text
                   style={{
@@ -652,7 +853,7 @@ const openMedia = (index: number) => {
             </View>
             {/* RECITE MEDIA GRID */}
             <View
-              style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8 }}
+              style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 4 }}
             >
               {reciteMediaList.slice(0, 4).map((uri: string, idx: number) => {
                 const remaining = reciteMediaCount - 2;
@@ -677,6 +878,7 @@ const openMedia = (index: number) => {
                       overflow: "hidden",
                       position: "relative",
                       backgroundColor: "#000",
+                      zIndex: 10,
                     }}
                   >
                     {isVideo ? (
@@ -688,8 +890,19 @@ const openMedia = (index: number) => {
                           paused={!isVisible}
                           muted={isMuted}
                           repeat
-                          controls
                         />
+
+                        <TouchableOpacity
+                          style={{
+                            ...StyleSheet.absoluteFillObject,
+                            backgroundColor: "rgba(0,0,0,0.0)",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            borderRadius: 12,
+                            overflow: "hidden",
+                          }}
+                          onPress={() => openMedia(idx)}
+                        ></TouchableOpacity>
 
                         <TouchableOpacity
                           style={{
@@ -700,7 +913,10 @@ const openMedia = (index: number) => {
                             borderRadius: 20,
                             padding: 5,
                           }}
-                          onPress={() => setIsMuted((prev) => !prev)}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            setIsMuted((prev) => !prev);
+                          }}
                         >
                           <Ionicons
                             name={isMuted ? "volume-mute" : "volume-high"}
@@ -719,6 +935,7 @@ const openMedia = (index: number) => {
 
                     {isLast && (
                       <View
+                        pointerEvents="none"
                         style={{
                           // ...StyleSheet.absoluteFillObject,
                           backgroundColor: "rgba(0,0,0,0.6)",
@@ -743,11 +960,28 @@ const openMedia = (index: number) => {
             </View>
 
             <Text
-              style={{ fontStyle: "italic", marginTop: 6, color: theme.text }}
+              style={{ fontStyle: "italic", marginTop: 2, color: theme.text }}
               numberOfLines={isExpanded ? undefined : 3}
             >
               {postCard.caption}
             </Text>
+            {postCard?.caption && postCard.caption.length > 80 && (
+              <TouchableOpacity
+                onPress={() => toggleExpand(postCard._id)}
+                style={{ zIndex: 20, padding: 4 }}
+              >
+                <Text
+                  style={{
+                    color: theme.primary,
+                    paddingHorizontal: 12,
+                    marginTop: 4,
+                    fontWeight: "600",
+                  }}
+                >
+                  {isExpanded ? "Show less" : "Show more"}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View
@@ -758,11 +992,10 @@ const openMedia = (index: number) => {
             }}
           >
             {mediaList.slice(0, 4).map((uri: string, idx: number) => {
-              const remaining = mediaCount - 4;
+              const currentMediaCount = mediaList.length;
+              const remaining = currentMediaCount - 4;
+              const isSingle = currentMediaCount === 1;
               const isLast = idx === 3 && remaining > 0;
-
-              const isSingle = mediaCount === 1;
-
               const containerWidth = isSingle ? width : width / 2;
               const containerHeight = isSingle ? width * 0.75 : width / 2;
 
@@ -776,6 +1009,7 @@ const openMedia = (index: number) => {
                     width: containerWidth,
                     height: containerHeight,
                     padding: 2,
+                    zIndex: 10,
                   }}
                 >
                   <View
@@ -795,8 +1029,19 @@ const openMedia = (index: number) => {
                           paused={!isVisible}
                           muted={isMuted}
                           repeat
-                          controls
                         />
+
+                        <TouchableOpacity
+                          style={{
+                            ...StyleSheet.absoluteFillObject,
+                            backgroundColor: "rgba(0,0,0,0.0)",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            borderRadius: 12,
+                            overflow: "hidden",
+                          }}
+                          onPress={() => openMedia(idx)}
+                        ></TouchableOpacity>
 
                         <TouchableOpacity
                           style={{
@@ -807,7 +1052,10 @@ const openMedia = (index: number) => {
                             borderRadius: 20,
                             padding: 6,
                           }}
-                          onPress={() => setIsMuted((prev) => !prev)}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            setIsMuted((prev) => !prev);
+                          }}
                         >
                           <Ionicons
                             name={isMuted ? "volume-mute" : "volume-high"}
@@ -826,6 +1074,7 @@ const openMedia = (index: number) => {
                   </View>
                   {isLast && (
                     <View
+                      pointerEvents="none"
                       style={{
                         ...StyleSheet.absoluteFillObject,
                         backgroundColor: "rgba(0,0,0,0.55)",
@@ -851,6 +1100,86 @@ const openMedia = (index: number) => {
             })}
           </View>
         )}
+
+        {postCard.type == "recite" && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 12,
+              paddingBottom: 6,
+            }}
+          >
+            {/* <Feather name="repeat" size={14} color={theme.text} /> */}
+            <Text
+              style={{
+                color: theme.text,
+                fontSize: 12,
+                fontWeight: "600",
+                zIndex: 10,
+                padding: 4,
+              }}
+            >
+              {" "}
+              Recited by{" "}
+              <Link
+                href={`/(profileId)/${postCard?.user.clerkId}`}
+                style={{ color: theme.primary, fontWeight: "600" }}
+              >
+                {postCard?.user.nickName}
+              </Link>
+              <Text style={{ fontSize: 12, color: theme.text }}> from </Text>
+              {postCard?.reciteUserId && (
+                <Link
+                  href={`/(profileId)/${postCard?.reciteUserId}`}
+                  style={{ color: theme.primary, fontWeight: "600" }}
+                  asChild
+                >
+                  <Text>{postCard?.reciteNickName}</Text>
+                </Link>
+              )}
+            </Text>
+          </View>
+        )}
+        {/* RECAST BANNER */}
+        {postCard.type == "recast" && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 12,
+              paddingBottom: 6,
+            }}
+          >
+            {/* <Feather name="repeat" size={14} color={theme.text} /> */}
+            <Text
+              style={{
+                color: theme.text,
+                fontSize: 12,
+                fontWeight: "600",
+              }}
+            >
+              {" "}
+              Recasted by{" "}
+              <Link
+                href={`/(profileId)/${postCard?.user.clerkId}`}
+                style={{ color: theme.primary, fontWeight: "600" }}
+              >
+                {postCard?.user.nickName}
+              </Link>
+              <Text style={{ fontSize: 12, color: theme.text }}> from </Text>
+              <Link
+                href={`/(profileId)/${postCard?.reciteUserId}`}
+                style={{ color: theme.primary, fontWeight: "600" }}
+                asChild
+              >
+                <Text>{postCard?.reciteNickName}</Text>
+              </Link>
+            </Text>
+          </View>
+        )}
         {/* MEDIA GRID */}
 
         {/* ACTIONS */}
@@ -858,7 +1187,7 @@ const openMedia = (index: number) => {
           style={{
             flexDirection: "row",
             justifyContent: "space-between",
-            marginTop: 8,
+            marginTop: 4,
             alignItems: "center",
             paddingHorizontal: 20,
             borderWidth: StyleSheet.hairlineWidth,
@@ -872,17 +1201,11 @@ const openMedia = (index: number) => {
           {/* Comments */}
           <Pressable
             onPress={() => onOpenComments(postCard._id)}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-              padding: 4,
-              margin: 2,
-            }}
+            style={styles.commentBtn}
           >
             <Feather name="message-circle" size={18} color={theme.subtext} />
-            <Text style={{ color: theme.subtext }}>
-              {postCard.commentsCount > 0 ? postCard.commentsCount : " "}
+            <Text style={{ color: theme.subtext, fontWeight: "bold" }}>
+              {comments.length > 0 ? comments.length : " "}
             </Text>
           </Pressable>
 
@@ -890,20 +1213,14 @@ const openMedia = (index: number) => {
             onPress={async () => {
               (await incrementViews(), setQuoteVisible(true));
             }}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-              padding: 4,
-              margin: 2,
-            }}
+            style={styles.commentBtn}
           >
             <MaterialCommunityIcons
               name="comment-quote-outline"
               size={20}
               color={recited ? theme.text : theme.subtext}
             />
-            <Text style={{ color: theme.subtext }}>
+            <Text style={{ color: theme.subtext, fontWeight: "bold" }}>
               {postCard.quoteCount > 0 ? postCard.quoteCount : " "}
             </Text>
           </Pressable>
@@ -933,6 +1250,7 @@ const openMedia = (index: number) => {
               <Text
                 style={{
                   color: reposted ? theme.text : theme.subtext,
+                  fontWeight: "bold",
                   minWidth: 8,
                 }}
               >
@@ -962,6 +1280,7 @@ const openMedia = (index: number) => {
                 style={{
                   color: isLiked ? LIKE_COLOR : theme.subtext,
                   minWidth: 8,
+                  fontWeight: "bold",
                 }}
               >
                 {postCard.likes?.length > 0 ? postCard.likes.length : " "}
@@ -980,7 +1299,9 @@ const openMedia = (index: number) => {
             }}
           >
             <Feather name="eye" size={18} color={theme.subtext} />
-            <Text style={{ color: theme.subtext }}>{postCard.views}</Text>
+            <Text style={{ color: theme.subtext, fontWeight: "bold" }}>
+              {postCard.views}
+            </Text>
           </View>
         </View>
       </View>
@@ -1026,7 +1347,7 @@ const openMedia = (index: number) => {
               style={{
                 color: theme.subtext,
                 textAlign: "center",
-                marginTop: 8,
+                marginTop: 4,
                 lineHeight: 20,
               }}
             >
@@ -1078,8 +1399,13 @@ const openMedia = (index: number) => {
       <CommentModal
         visible={commentModalVisible}
         onClose={() => setCommentModalVisible(false)}
-        postId={postCard._id}
+        postCard={postCard}
+        mediaList={mediaList}
         comments={comments}
+        mediaCount={mediaCount}
+        width={width}
+        itemSize={itemSize}
+        theme={theme}
         setComments={setComments}
         userId={userDetails?.clerkId}
         userName={userDetails?.nickName}
@@ -1087,24 +1413,33 @@ const openMedia = (index: number) => {
       />
 
       {/* reciteModal */}
-      <ReciteModal
-        quoteVisible={quoteVisible}
-        setQuoteVisible={setQuoteVisible}
-        loadingRecite={loadingRecite}
+      {quoteVisible && (
+        <ReciteModal
+          quoteVisible={quoteVisible}
+          setQuoteVisible={setQuoteVisible}
+          loadingRecite={loadingRecite}
+          postCard={postCard}
+          theme={theme}
+          mediaList={mediaList}
+          mediaCount={mediaCount}
+          width={width}
+          itemSize={itemSize}
+          handleRecite={handleRecite}
+        />
+      )}
+
+      {/* //Edit Modal */}
+      <EditModal
+        editVisible={editVisible}
+        setEditVisible={setEditVisible}
+        loadingEdit={loadingEdit}
         postCard={postCard}
         theme={theme}
         mediaList={mediaList}
         mediaCount={mediaCount}
         width={width}
         itemSize={itemSize}
-        handleRecite={async (text) => {
-          setLoadingRecite(true);
-          try {
-            await handleRecite(text); // reuse your existing logic
-          } finally {
-            setLoadingRecite(false);
-          }
-        }}
+        handleEdit={handleEdit}
       />
 
       {/* MEDIA MODAL */}
@@ -1121,3 +1456,45 @@ const openMedia = (index: number) => {
   );
 }
 
+const styles = StyleSheet.create({
+  commentBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    padding: 6,
+    margin: 2,
+    zIndex: 20,
+  },
+  linkPreview: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginVertical: 12,
+    flexDirection: "row",
+  },
+  linkImage: {
+    width: 100,
+    height: 100,
+  },
+  linkContent: {
+    flex: 1,
+    padding: 10,
+    justifyContent: "center",
+  },
+  linkTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  linkDesc: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  linkUrl: {
+    fontSize: 11,
+  },
+  linkClose: {
+    padding: 8,
+    justifyContent: "center",
+  },
+});

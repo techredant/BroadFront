@@ -73,7 +73,7 @@ export default function App() {
       />
       {!client ? (
         <View
-          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+          style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: theme.background }}
         >
           <ActivityIndicator size="small" />
         </View>

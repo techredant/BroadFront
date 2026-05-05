@@ -1,7 +1,7 @@
 import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
 import { useLevel } from "@/context/LevelContext";
+import { useTheme } from "@/context/ThemeContext";
 import { useAppContext } from "@/contexts/AppProvider";
-import { COLORS } from "@/lib/theme";
 import { getGreetingForHour } from "@/lib/utils";
 import { useUser } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,6 +17,8 @@ const ChatsScreen = () => {
   const { setChannel } = useAppContext();
   const { userDetails } = useLevel();
   const [search, setSearch] = useState("");
+    const { theme,  isDark } = useTheme();
+  
 
   const filters = { members: { $in: [userDetails?.clerkId!] }, type: "messaging" };
 
@@ -45,13 +47,16 @@ const channelRenderFilterFn = (channels: Channel[]) => {
 };
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-         {/* <StatusBar
+    <SafeAreaView
+      className="flex-1"
+      style={{ backgroundColor: theme.background }}
+    >
+      {/* <StatusBar
               translucent
               backgroundColor="transparent"
               barStyle={"light-content"}
             /> */}
-      
+
       {/* HEADER */}
       <DrawerMenuButton />
       <View className="px-5 pt-3 pb-2">
@@ -61,12 +66,15 @@ const channelRenderFilterFn = (channels: Channel[]) => {
       </View>
 
       {/* SEARCH BAR */}
-      <View className="flex-row items-center bg-surface mx-5 mb-3 px-3.5 mt-2 rounded-[14px] gap-2.5 border border-border">
-        <Ionicons name="search" size={18} color={COLORS.textMuted} />
+      <View
+        className="flex-row items-center  mx-5 mb-3 px-3.5 mt-2 rounded-[14px] gap-2.5 border "
+        style={{ backgroundColor: theme.background, borderColor: theme.border }}
+      >
+        <Ionicons name="search" size={18} color={theme.text} />
         <TextInput
           className="flex-1 text-[15px] text-foreground"
           placeholder="Search members..."
-          placeholderTextColor={COLORS.textMuted}
+          placeholderTextColor={theme.subtext}
           value={search}
           onChangeText={setSearch}
         />
@@ -74,8 +82,10 @@ const channelRenderFilterFn = (channels: Channel[]) => {
 
       {/* SECTION LABEL */}
       <View className="flex-row items-center px-5 my-1.5 gap-2">
-        <Ionicons name="chatbubbles" size={16} color={COLORS.primaryLight} />
-        <Text className="text-[15px] font-semibold text-primary-light">Your Chats</Text>
+        <Ionicons name="chatbubbles" size={16} color={theme.text} />
+        <Text className="text-[15px] font-semibold text-primary-light">
+          Your Chats
+        </Text>
       </View>
 
       {/* CHANNEL LIST */}
@@ -91,7 +101,13 @@ const channelRenderFilterFn = (channels: Channel[]) => {
           router.push(`/channel/${channel.id}`);
         }}
         additionalFlatListProps={{
-          contentContainerStyle: { flexGrow: 1 },
+          contentContainerStyle: {
+            flexGrow: 1,
+            backgroundColor: theme.background, // ✅ important
+          },
+          style: {
+            backgroundColor: theme.background, // ✅ important
+          },
         }}
         // EmptyStateIndicator={() => <Text className="flex-1 text-white">Hey start chatting</Text>}
       />
