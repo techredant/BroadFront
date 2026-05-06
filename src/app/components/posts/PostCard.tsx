@@ -83,32 +83,44 @@ function LinkPreviewCard({ preview, theme }: any) {
       style={{
         marginHorizontal: 12,
         marginTop: 10,
-        borderRadius: 12,
+        borderRadius: 14,
         overflow: "hidden",
         borderWidth: 1,
-        borderColor: theme.border || "#ddd",
+        borderColor: theme.border,
         backgroundColor: theme.card,
       }}
     >
       {!!preview.image && (
         <Image
           source={{ uri: preview.image }}
-          style={{ width: "100%", height: 180 }}
+          style={{
+            width: "100%",
+            height: 180,
+          }}
         />
       )}
 
-      <View style={{ padding: 10 }}>
+      <View style={{ padding: 12 }}>
         <Text
           numberOfLines={2}
-          style={{ fontWeight: "700", color: theme.text }}
+          style={{
+            fontWeight: "700",
+            fontSize: 14,
+            color: theme.text,
+          }}
         >
-          {preview.title || "Link"}
+          {preview.title || "Link preview"}
         </Text>
 
         {!!preview.description && (
           <Text
             numberOfLines={2}
-            style={{ color: theme.subtext, marginTop: 4 }}
+            style={{
+              color: theme.subtext,
+              marginTop: 4,
+              fontSize: 12,
+              lineHeight: 16,
+            }}
           >
             {preview.description}
           </Text>
@@ -116,9 +128,13 @@ function LinkPreviewCard({ preview, theme }: any) {
 
         <Text
           numberOfLines={1}
-          style={{ color: theme.primary, marginTop: 6, fontSize: 12 }}
+          style={{
+            color: theme.primary,
+            marginTop: 6,
+            fontSize: 11,
+          }}
         >
-          {preview.url}
+          {preview.url.replace(/^https?:\/\//, "")}
         </Text>
       </View>
     </Pressable>
@@ -542,6 +558,8 @@ export function PostCard({
 
   const isOwner = userDetails?.clerkId === postCard.userId;
 
+  const isRecite = postCard.type === "recite";
+
   /* ---------------- LINK DETECTION ---------------- */
   const detectedUrl = extractUrls(text)[0];
 
@@ -549,8 +567,52 @@ export function PostCard({
     ? postCard.linkPreview[0]
     : postCard.linkPreview || null;
 
-    console.log("reciteuserId", postCard?.reciteUserId);
-    
+  const topLinkPreview = isRecite ? null : linkPreview;
+
+const parts = text.split(/(@[A-Za-z0-9_]+)/g);
+
+const renderCaptionWithMentions = (
+  text: string,
+  mentions: any[],
+  onMentionPress: (userId: string) => void,
+) => {
+  const parts = text.split(/(@[A-Za-z0-9_]+)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("@")) {
+      const nick = part.replace("@", "").toLowerCase();
+
+      const mentionedUser = mentions?.find(
+        (m) => m.nickName.toLowerCase() === nick,
+      );
+
+      return (
+        <Text
+          key={index}
+          style={{ color: theme.primary, fontWeight: "600" }}
+          onPress={() => {
+            if (mentionedUser?.userId) {
+              onMentionPress(mentionedUser.userId);
+            }
+          }}
+        >
+          {part}
+        </Text>
+      );
+    }
+
+    return (
+      <Text key={index} style={{ color: theme.text }}>
+        {part}
+      </Text>
+    );
+  });
+};
+
+
+const handleMentionPress = (userId: string) => {
+  router.push(`/(profileId)/${userId}`);
+};
 
   return (
     <>
@@ -762,54 +824,67 @@ export function PostCard({
           </Menu>
         </View>
         {/* COLLAPSIBLE CAPTION */}
-        <Text
-          numberOfLines={isExpanded ? undefined : 3}
-          style={{
-            color: theme.text,
-            paddingHorizontal: 12,
-            marginTop: 2,
-          }}
-        >
-          {text}
-        </Text>
-        {/* 1. If backend preview exists */}
-        {linkPreview && <LinkPreviewCard preview={linkPreview} theme={theme} />}
+        {/* CAPTION */}
+        {text ? (
+          <View style={{ paddingHorizontal: 12, marginTop: 4 }}>
+            <Text
+              numberOfLines={isExpanded ? undefined : 3}
+              style={{
+                color: theme.text,
+                fontSize: 14,
+                lineHeight: 20,
+              }}
+            >
+              {renderCaptionWithMentions(
+                post.caption,
+                post.mentions || [],
+                handleMentionPress,
+              )}
+            </Text>
 
-        {/* 2. fallback: just URL (Facebook behavior) */}
-        {!linkPreview && detectedUrl && (
+            {text.length > 80 && (
+              <TouchableOpacity onPress={() => toggleExpand(postCard._id)}>
+                <Text
+                  style={{
+                    color: theme.primary,
+                    marginTop: 4,
+                    fontWeight: "600",
+                  }}
+                >
+                  {isExpanded ? "Show less" : "Show more"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : null}
+
+        {/* LINK PREVIEW (ALWAYS OUTSIDE TEXT) */}
+        {topLinkPreview ? (
+          <LinkPreviewCard preview={topLinkPreview} theme={theme} />
+        ) : !isRecite && detectedUrl ? (
           <Pressable
             onPress={() => Linking.openURL(detectedUrl)}
             style={{
               marginHorizontal: 12,
               marginTop: 10,
-              padding: 10,
-              borderRadius: 10,
+              padding: 12,
+              borderRadius: 12,
               borderWidth: 1,
               borderColor: theme.border,
               backgroundColor: theme.card,
             }}
           >
-            <Text style={{ color: theme.primary }}>{detectedUrl}</Text>
-          </Pressable>
-        )}
-
-        {text && text.length > 80 && (
-          <TouchableOpacity
-            onPress={() => toggleExpand(postCard._id)}
-            style={{ zIndex: 20, padding: 4 }}
-          >
             <Text
+              numberOfLines={1}
               style={{
                 color: theme.primary,
-                paddingHorizontal: 12,
-                marginTop: 4,
-                fontWeight: "600",
+                fontWeight: "500",
               }}
             >
-              {isExpanded ? "Show less" : "Show more"}
+              {detectedUrl}
             </Text>
-          </TouchableOpacity>
-        )}
+          </Pressable>
+        ) : null}
 
         {postCard.type === "recite" ? (
           <View
@@ -837,8 +912,7 @@ export function PostCard({
                 <Text
                   style={{ fontWeight: "700", fontSize: 11, color: theme.text }}
                 >
-                  {postCard?.reciteFirstName ||
-                    postCard.user?.reciteCompanyName}
+                  {postCard?.reciteFirstName || postCard?.reciteCompanyName}
                 </Text>
                 <Text
                   style={{
@@ -856,16 +930,22 @@ export function PostCard({
               style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 4 }}
             >
               {reciteMediaList.slice(0, 4).map((uri: string, idx: number) => {
-                const remaining = reciteMediaCount - 2;
-                const isLast = idx === 3 && remaining > 0;
-                const isSingle = reciteMediaCount === 1;
+                const count = reciteMediaList.length;
+                const remaining = count - 4;
 
-                const containerWidth = isSingle ? "100%" : reciteItemSize;
-                const containerHeight = isSingle ? 280 : reciteItemSize;
+                const gridWidth = width - 48; // match padding
+                const half = gridWidth / 2;
+
+                const isSingle = count === 1;
+                const isLast = idx === 3 && remaining > 0;
+
+                const containerWidth = isSingle ? gridWidth : half;
+                const containerHeight = isSingle ? gridWidth * 0.75 : half;
 
                 const isVideo =
                   uri?.toLowerCase().includes(".mp4") ||
                   uri?.toLowerCase().includes(".mov");
+
                 return (
                   <Pressable
                     key={`${uri}-${idx}`}
@@ -873,74 +953,71 @@ export function PostCard({
                     style={{
                       width: containerWidth,
                       height: containerHeight,
-                      margin: isSingle ? 0 : 2,
-                      borderRadius: 10,
-                      overflow: "hidden",
-                      position: "relative",
-                      backgroundColor: "#000",
-                      zIndex: 10,
+                      padding: 2,
                     }}
                   >
-                    {isVideo ? (
-                      <>
-                        <Video
+                    <View
+                      style={{
+                        flex: 1,
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        backgroundColor: "#000",
+                      }}
+                    >
+                      {isVideo ? (
+                        <>
+                          <Video
+                            source={{ uri }}
+                            style={{ width: "100%", height: "100%" }}
+                            resizeMode="cover"
+                            paused={!isVisible}
+                            muted={isMuted}
+                            repeat
+                          />
+
+                          <TouchableOpacity
+                            style={StyleSheet.absoluteFillObject}
+                            onPress={() => openMedia(idx)}
+                          />
+
+                          <TouchableOpacity
+                            style={{
+                              position: "absolute",
+                              top: 8,
+                              right: 8,
+                              backgroundColor: "rgba(0,0,0,0.5)",
+                              borderRadius: 20,
+                              padding: 5,
+                            }}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              setIsMuted((prev) => !prev);
+                            }}
+                          >
+                            <Ionicons
+                              name={isMuted ? "volume-mute" : "volume-high"}
+                              size={16}
+                              color="#fff"
+                            />
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <Image
                           source={{ uri }}
                           style={{ width: "100%", height: "100%" }}
                           resizeMode="cover"
-                          paused={!isVisible}
-                          muted={isMuted}
-                          repeat
                         />
-
-                        <TouchableOpacity
-                          style={{
-                            ...StyleSheet.absoluteFillObject,
-                            backgroundColor: "rgba(0,0,0,0.0)",
-                            justifyContent: "center",
-                            alignItems: "center",
-                            borderRadius: 12,
-                            overflow: "hidden",
-                          }}
-                          onPress={() => openMedia(idx)}
-                        ></TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={{
-                            position: "absolute",
-                            top: 8,
-                            right: 8,
-                            backgroundColor: "rgba(0,0,0,0.5)",
-                            borderRadius: 20,
-                            padding: 5,
-                          }}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            setIsMuted((prev) => !prev);
-                          }}
-                        >
-                          <Ionicons
-                            name={isMuted ? "volume-mute" : "volume-high"}
-                            size={16}
-                            color="#fff"
-                          />
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      <Image
-                        source={{ uri }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="cover"
-                      />
-                    )}
+                      )}
+                    </View>
 
                     {isLast && (
                       <View
-                        pointerEvents="none"
                         style={{
-                          // ...StyleSheet.absoluteFillObject,
+                          ...StyleSheet.absoluteFillObject,
                           backgroundColor: "rgba(0,0,0,0.6)",
                           justifyContent: "center",
                           alignItems: "center",
+                          borderRadius: 12,
                         }}
                       >
                         <Text
@@ -963,7 +1040,58 @@ export function PostCard({
               style={{ fontStyle: "italic", marginTop: 2, color: theme.text }}
               numberOfLines={isExpanded ? undefined : 3}
             >
-              {postCard.caption}
+              {/* RECITE TEXT */}
+              {postCard.caption ? (
+                <View style={{ marginTop: 6 }}>
+                  <Text
+                    numberOfLines={isExpanded ? undefined : 3}
+                    style={{
+                      fontStyle: "italic",
+                      color: theme.text,
+                      fontSize: 13,
+                      lineHeight: 18,
+                    }}
+                  >
+                    {postCard.caption}
+                  </Text>
+
+                  {postCard.caption.length > 80 && (
+                    <TouchableOpacity
+                      onPress={() => toggleExpand(postCard._id)}
+                    >
+                      <Text
+                        style={{
+                          color: theme.primary,
+                          marginTop: 4,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {isExpanded ? "Show less" : "Show more"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : null}
+
+              {/* RECITE LINK PREVIEW */}
+              {linkPreview ? (
+                <LinkPreviewCard preview={linkPreview} theme={theme} />
+              ) : detectedUrl ? (
+                <Pressable
+                  onPress={() => Linking.openURL(detectedUrl)}
+                  style={{
+                    marginTop: 8,
+                    padding: 10,
+                    borderRadius: 10,
+                    width: "100%",
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.card,
+                  }}
+                >
+                  <Text style={{ color: theme.primary }}>{detectedUrl}</Text>
+                </Pressable>
+              ) : null}
             </Text>
             {postCard?.caption && postCard.caption.length > 80 && (
               <TouchableOpacity

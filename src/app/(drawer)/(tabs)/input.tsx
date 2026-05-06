@@ -17,6 +17,7 @@ import axios from "axios";
 import { useUser } from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFollowContext } from "@/context/FollowContext";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import Video from "react-native-video";
@@ -90,12 +91,66 @@ export default function InputScreen() {
   const [loading, setLoading] = useState(false);
   const [postError, setPostError] = useState("");
   const [accountType, setAccountType] = useState<string | null>(null);
- const [linkData, setLinkData] = useState<any[]>([]);
+  const [linkData, setLinkData] = useState<any[]>([]);
   const [linkLoading, setLinkLoading] = useState(false);
 
   const { user } = useUser();
   const { currentLevel } = useLevel();
   const { theme, isDark } = useTheme();
+  const { members } = useFollowContext();
+
+  const [mentionResults, setMentionResults] = useState<any[]>([]);
+
+const extractMentionQuery = (text: string) => {
+  const match = text.match(/(?:^|\s)@([A-Za-z0-9_]*)$/);
+  return match ? match[1] : null;
+};
+
+  useEffect(() => {
+    const query = extractMentionQuery(cast);
+    if (query === null) {
+      setMentionResults([]);
+      return;
+    }
+
+    const lower = query.toLowerCase();
+
+    const filtered = members
+      .filter((member: any) => {
+        const nick = member.nickName?.toLowerCase() || "";
+        const first = member.firstName?.toLowerCase() || "";
+        const last = member.lastName?.toLowerCase() || "";
+
+        if (!lower) return true;
+        return (
+          nick.startsWith(lower) ||
+          first.startsWith(lower) ||
+          last.startsWith(lower) ||
+          nick.includes(lower) ||
+          first.includes(lower) ||
+          last.includes(lower)
+        );
+      })
+      .slice(0, 6);
+
+    setMentionResults(filtered);
+  }, [cast, members]);
+
+const handleMentionSelect = (member: any) => {
+  const mentionPattern = /(?:^|\s)@([A-Za-z0-9_]*)$/;
+  const match = cast.match(mentionPattern);
+  if (!match) return;
+
+  const start = match.index ?? 0;
+
+  // replace the whole "@something" with "@nickname"
+  const newText =
+    cast.substring(0, start) +
+    match[0].replace(/@([A-Za-z0-9_]*)$/, `${member.nickName} `);
+
+  setCast(newText);
+  setMentionResults([]);
+};
 
   /* =======================
        ACCOUNT TYPE
@@ -114,44 +169,43 @@ export default function InputScreen() {
        LINK PREVIEW
     ======================= */
 
-    
-useEffect(() => {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const urls = cast.match(urlRegex);
+  useEffect(() => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urls = cast.match(urlRegex);
 
-  if (!urls?.length) {
-    setLinkData([]);
-    return;
-  }
+    if (!urls?.length) {
+      setLinkData([]);
+      return;
+    }
 
-  const url = urls[0];
-  setLinkLoading(true);
+    const url = urls[0];
+    setLinkLoading(true);
 
-  fetch(url)
-    .then((res) => res.text())
-    .then((html) => {
-      const title = html.match(/<title>(.*?)<\/title>/i)?.[1];
-      const desc = html.match(
-        /<meta\s+name=["']description["']\s+content=["'](.*?)["']/i,
-      )?.[1];
-      const img = html.match(
-        /<meta\s+property=["']og:image["']\s+content=["'](.*?)["']/i,
-      )?.[1];
+    fetch(url)
+      .then((res) => res.text())
+      .then((html) => {
+        const title = html.match(/<title>(.*?)<\/title>/i)?.[1];
+        const desc = html.match(
+          /<meta\s+name=["']description["']\s+content=["'](.*?)["']/i,
+        )?.[1];
+        const img = html.match(
+          /<meta\s+property=["']og:image["']\s+content=["'](.*?)["']/i,
+        )?.[1];
 
-      setLinkData([
-        {
-          url,
-          title: title || "No title",
-          description: desc || "",
-          images: img ? [img] : [],
-        },
-      ]);
-    })
-    .catch(() =>
-      setLinkData([{ url, title: "Preview unavailable", images: [] }]),
-    )
-    .finally(() => setLinkLoading(false));
-}, [cast]);
+        setLinkData([
+          {
+            url,
+            title: title || "No title",
+            description: desc || "",
+            images: img ? [img] : [],
+          },
+        ]);
+      })
+      .catch(() =>
+        setLinkData([{ url, title: "Preview unavailable", images: [] }]),
+      )
+      .finally(() => setLinkLoading(false));
+  }, [cast]);
 
   /* =======================
        MEDIA PICKERS
@@ -287,24 +341,41 @@ useEffect(() => {
           : (user.publicMetadata?.companyName as string) || "Org";
 
       // Post payload
-const safeLinkData = linkData.length
-  ? [
-      {
-        url: linkData[0].url,
-        title: linkData[0].title || "",
-        description: linkData[0].description || "",
-        image: linkData[0].images?.[0] || "",
-      },
-    ]
-  : [];
+      const safeLinkData = linkData.length
+        ? [
+            {
+              url: linkData[0].url,
+              title: linkData[0].title || "",
+              description: linkData[0].description || "",
+              image: linkData[0].images?.[0] || "",
+            },
+          ]
+        : [];
 
-const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
 
-const cleanCaption = cast.replace(urlRegex, "").trim();   
+      const cleanCaption = cast.replace(urlRegex, "").trim();
+  const mentionMatches = cast.match(/@([A-Za-z0-9_]+)/g) || [];
+
+  const mentions = mentionMatches
+    .map((m) => {
+      const nick = m.replace("@", "").toLowerCase();
+
+      const user = members.find((u: any) => u.nickName?.toLowerCase() === nick);
+
+      return user
+        ? {
+            userId: user.clerkId,
+            nickName: user.nickName,
+          }
+        : null;
+    })
+    .filter(Boolean);
 
       const payload = {
         userId: user.id,
         caption: cleanCaption,
+        mentions,
         media: uploadedUrls,
         levelType,
         levelValue,
@@ -419,6 +490,37 @@ const cleanCaption = cast.replace(urlRegex, "").trim();
         value={cast}
         onChangeText={setCast}
       />
+
+      {mentionResults.length > 0 && /(?:^|\s)@([A-Za-z0-9_]*)$/.test(cast) && (
+        <View
+          style={[
+            styles.mentionList,
+            { borderColor: theme.border, backgroundColor: theme.card },
+          ]}
+        >
+          {mentionResults.map((member) => (
+            <Pressable
+              key={member.clerkId}
+              onPress={() => handleMentionSelect(member)}
+              style={styles.mentionItem}
+            >
+              <Image
+                source={{ uri: member.image }}
+                style={styles.mentionAvatar}
+              />
+              <View style={styles.mentionTextWrapper}>
+                <Text style={[styles.mentionName, { color: theme.text }]}>
+                  {member.nickName}
+                </Text>
+                <Text style={[styles.mentionMeta, { color: theme.subtext }]}>
+                  {" "}
+                  {member.firstName} {member.lastName}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       {/* ACTIONS */}
       <View style={styles.actions}>
@@ -627,5 +729,34 @@ const styles = StyleSheet.create({
     padding: 10,
     justifyContent: "center",
   },
-
+  mentionList: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    marginBottom: 10,
+    maxHeight: 240,
+  },
+  mentionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#ddd",
+  },
+  mentionAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+    backgroundColor: "#eee",
+  },
+  mentionTextWrapper: {
+    flex: 1,
+  },
+  mentionName: {
+    fontWeight: "700",
+  },
+  mentionMeta: {
+    fontSize: 12,
+    marginTop: 2,
+  },
 });

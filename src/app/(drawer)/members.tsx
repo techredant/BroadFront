@@ -43,37 +43,39 @@ const MembersScreen = () => {
   );
 
   /* FILTERED MEMBERS */
- const filteredMembers = useMemo(() => {
-   let filtered = members;
+  const filteredMembers = useMemo(() => {
+    let filtered = members;
 
-   if (filter === "following") {
-     filtered = members.filter((m) => following.includes(m.clerkId));
-   }
+    if (filter === "following") {
+      filtered = members.filter((m) => following.includes(m.clerkId));
+    }
 
-   if (filter === "notFollowing") {
-     filtered = members.filter(
-       (m) => !following.includes(m.clerkId) && m.clerkId !== user?.id,
-     );
-   }
+    if (filter === "notFollowing") {
+      filtered = members.filter(
+        (m) => !following.includes(m.clerkId) && m.clerkId !== user?.id,
+      );
+    }
 
-   if (search.trim()) {
-     const q = search.toLowerCase();
+    if (search.trim()) {
+      const q = search.toLowerCase();
 
-     filtered = filtered.filter(
-       (m) =>
-         `${m.firstName || ""} ${m.lastName || ""}`.toLowerCase().includes(q) ||
-         m.companyName?.toLowerCase().includes(q) ||
-         m.nickName?.toLowerCase().includes(q),
-     );
-   }
+      filtered = filtered.filter(
+        (m) =>
+          `${m.firstName || ""} ${m.lastName || ""}`
+            .toLowerCase()
+            .includes(q) ||
+          m.companyName?.toLowerCase().includes(q) ||
+          m.nickName?.toLowerCase().includes(q),
+      );
+    }
 
-   // Put current user first
-   return [...filtered].sort((a, b) => {
-     if (a.clerkId === user?.id) return -1;
-     if (b.clerkId === user?.id) return 1;
-     return 0;
-   });
- }, [members, following, search, filter, user?.id]);
+    // Put current user first
+    return [...filtered].sort((a, b) => {
+      if (a.clerkId === user?.id) return -1;
+      if (b.clerkId === user?.id) return 1;
+      return 0;
+    });
+  }, [members, following, search, filter, user?.id]);
 
   /* RENDER MEMBER */
   const renderMember = ({ item }: any) => {
@@ -106,11 +108,23 @@ const MembersScreen = () => {
             <Text style={styles.youText}>You</Text>
           </View>
         ) : (
-          <TouchableOpacity onPress={() => handleFollow(item.clerkId)}>
-            <Text style={isFollowing ? styles.unfollowText : styles.followText}>
-              {isFollowing ? "Unfollow" : "Follow"}
-            </Text>
-          </TouchableOpacity>
+          <>
+            {isFollowing ? (
+              <TouchableOpacity
+                style={styles.unfollowBtn}
+                onPress={() => handleFollow(item.clerkId)}
+              >
+                <Text style={styles.unfollowText}>Following</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.followBtn}
+                onPress={() => handleFollow(item.clerkId)}
+              >
+                <Text style={styles.followText}>Follow</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
     );
@@ -163,6 +177,7 @@ const MembersScreen = () => {
             onPress={() => setFilter(item.key as any)}
             style={[
               styles.filterBtn,
+              filter === item.key && styles.activeFilter,
               {
                 backgroundColor:
                   filter === item.key ? theme.primary : theme.card,
@@ -202,23 +217,30 @@ export default MembersScreen;
 /* STYLES */
 const styles = StyleSheet.create({
   title: {
-    fontSize: 18,
-    fontWeight: "bold",
+    fontSize: 20,
+    fontWeight: "700",
     textAlign: "center",
-    marginVertical: 12,
+    marginVertical: 14,
+    letterSpacing: 0.3,
   },
 
   list: {
-    padding: 16,
-    paddingBottom: 60,
+    paddingHorizontal: 16,
+    paddingBottom: 80,
   },
 
   card: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
-    borderRadius: 14,
-    elevation: 2,
+    padding: 14,
+    borderRadius: 18,
+
+    // 🔥 modern shadow (iOS + Android)
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
 
   userInfo: {
@@ -228,53 +250,74 @@ const styles = StyleSheet.create({
   },
 
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     marginRight: 12,
   },
 
   name: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
   },
 
   username: {
-    fontSize: 14,
+    fontSize: 13,
     marginTop: 2,
+    opacity: 0.7,
+  },
+
+  /* 🔥 FOLLOW BUTTON (PRIMARY) */
+  followBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: "#1DA1F2",
   },
 
   followText: {
-    color: "blue",
-    fontWeight: "bold",
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+
+  /* 🔥 UNFOLLOW BUTTON (OUTLINE) */
+  unfollowBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#E53935",
   },
 
   unfollowText: {
-    color: "red",
-    fontWeight: "bold",
+    color: "#E53935",
+    fontWeight: "600",
+    fontSize: 13,
   },
 
+  /* YOU CHIP */
   youChip: {
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: "#1DA1F2",
+    backgroundColor: "#1DA1F215",
   },
 
   youText: {
     color: "#1DA1F2",
     fontWeight: "600",
-    fontStyle: "italic",
+    fontSize: 12,
   },
 
+  /* SEARCH */
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 14,
     paddingHorizontal: 14,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     height: 48,
   },
@@ -285,16 +328,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 
+  /* FILTER PILLS */
   filterRow: {
     flexDirection: "row",
     justifyContent: "center",
     gap: 10,
-    marginBottom: 14,
+    marginBottom: 16,
   },
 
   filterBtn: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 22,
+  },
+
+  activeFilter: {
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
 });

@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Image,
   TouchableOpacity,
+  Linking,
 } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import Video from "react-native-video";
@@ -38,6 +39,63 @@ interface ReciteModalProps {
   mediaCount: number;
   width: number;
   itemSize: number;
+}
+
+const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+const extractUrls = (text: any = "") =>
+  typeof text === "string" ? text.match(urlRegex) || [] : [];
+
+/* ---------------- FACEBOOK STYLE LINK CARD ---------------- */
+function LinkPreviewCard({ preview, theme }: any) {
+  if (!preview?.url) return null;
+
+  return (
+    <Pressable
+      onPress={() => Linking.openURL(preview.url)}
+      style={{
+        marginHorizontal: 12,
+        marginTop: 10,
+        borderRadius: 12,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: theme.border || "#ddd",
+        backgroundColor: theme.card,
+      }}
+    >
+      {!!preview.image && (
+        <Image
+          source={{ uri: preview.image }}
+          style={{ width: "100%", height: 180 }}
+        />
+      )}
+
+      <View style={{ padding: 10 }}>
+        <Text
+          numberOfLines={2}
+          style={{ fontWeight: "700", color: theme.text }}
+        >
+          {preview.title || "Link"}
+        </Text>
+
+        {!!preview.description && (
+          <Text
+            numberOfLines={2}
+            style={{ color: theme.subtext, marginTop: 4 }}
+          >
+            {preview.description}
+          </Text>
+        )}
+
+        <Text
+          numberOfLines={1}
+          style={{ color: theme.primary, marginTop: 6, fontSize: 12 }}
+        >
+          {preview.url}
+        </Text>
+      </View>
+    </Pressable>
+  );
 }
 
 export function ReciteModal({
@@ -96,6 +154,12 @@ export function ReciteModal({
       [postId]: !prev[postId],
     }));
   };
+
+  const detectedUrl = extractUrls(postCard.linkPreview)[0];
+
+    const linkPreview = Array.isArray(postCard.linkPreview)
+      ? postCard.linkPreview[0]
+      : postCard.linkPreview || null;
 
   return (
     <>
@@ -210,6 +274,28 @@ export function ReciteModal({
                     </Text>
                   </TouchableOpacity>
                 )}
+                {linkPreview && (
+                  <LinkPreviewCard preview={linkPreview} theme={theme} />
+                )}
+
+                {/* 2. fallback: just URL (Facebook behavior) */}
+                {!linkPreview && detectedUrl && (
+                  <Pressable
+                    onPress={() => Linking.openURL(detectedUrl)}
+                    style={{
+                      marginHorizontal: 12,
+                      marginTop: 10,
+                      padding: 10,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                      backgroundColor: theme.card,
+                    }}
+                  >
+                    <Text style={{ color: theme.primary }}>{detectedUrl}</Text>
+                  </Pressable>
+                )}
+
                 <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                   {mediaList.slice(0, 4).map((uri: string, idx: number) => {
                     const remaining = mediaCount - 4;
