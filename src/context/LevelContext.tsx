@@ -122,16 +122,6 @@ export const LevelProvider = ({ children }: { children: React.ReactNode }) => {
 
   /* ---------------- LOAD USER ---------------- */
 
-  // useEffect(() => {
-  //   if (!user) {
-  //     setUserDetails(null);
-  //     setCurrentLevel(null);
-  //     return;
-  //   }
-
-  //   refreshUserDetails();
-  // }, [user]);
-
   useEffect(() => {
     if (!user) return;
 

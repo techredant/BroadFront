@@ -101,10 +101,10 @@ export default function InputScreen() {
 
   const [mentionResults, setMentionResults] = useState<any[]>([]);
 
-const extractMentionQuery = (text: string) => {
-  const match = text.match(/(?:^|\s)@([A-Za-z0-9_]*)$/);
-  return match ? match[1] : null;
-};
+  const extractMentionQuery = (text: string) => {
+    const match = text.match(/(?:^|\s)@([A-Za-z0-9_]*)$/);
+    return match ? match[1] : null;
+  };
 
   useEffect(() => {
     const query = extractMentionQuery(cast);
@@ -136,21 +136,21 @@ const extractMentionQuery = (text: string) => {
     setMentionResults(filtered);
   }, [cast, members]);
 
-const handleMentionSelect = (member: any) => {
-  const mentionPattern = /(?:^|\s)@([A-Za-z0-9_]*)$/;
-  const match = cast.match(mentionPattern);
-  if (!match) return;
+  const handleMentionSelect = (member: any) => {
+    const mentionPattern = /(?:^|\s)@([A-Za-z0-9_]*)$/;
+    const match = cast.match(mentionPattern);
+    if (!match) return;
 
-  const start = match.index ?? 0;
+    const start = match.index ?? 0;
 
-  // replace the whole "@something" with "@nickname"
-  const newText =
-    cast.substring(0, start) +
-    match[0].replace(/@([A-Za-z0-9_]*)$/, `${member.nickName} `);
+    // replace the whole "@something" with "@nickname"
+    const newText =
+      cast.substring(0, start) +
+      match[0].replace(/@([A-Za-z0-9_]*)$/, `@${member.nickName} `);
 
-  setCast(newText);
-  setMentionResults([]);
-};
+    setCast(newText);
+    setMentionResults([]);
+  };
 
   /* =======================
        ACCOUNT TYPE
@@ -355,22 +355,28 @@ const handleMentionSelect = (member: any) => {
       const urlRegex = /(https?:\/\/[^\s]+)/g;
 
       const cleanCaption = cast.replace(urlRegex, "").trim();
-  const mentionMatches = cast.match(/@([A-Za-z0-9_]+)/g) || [];
+      const mentionMatches = cast.match(/@([A-Za-z0-9_]+)/g) || [];
 
-  const mentions = mentionMatches
-    .map((m) => {
-      const nick = m.replace("@", "").toLowerCase();
+      const mentions = mentionMatches
+        .map((m) => {
+          const nick = m.replace("@", "").toLowerCase();
 
-      const user = members.find((u: any) => u.nickName?.toLowerCase() === nick);
+          const user = members.find(
+            (u: any) =>
+              u.nickName?.toLowerCase() === nick ||
+              u.nickName?.toLowerCase().includes(nick),
+          );
 
-      return user
-        ? {
-            userId: user.clerkId,
-            nickName: user.nickName,
-          }
-        : null;
-    })
-    .filter(Boolean);
+          return user
+            ? {
+                userId: user.clerkId,
+                nickName: user.nickName,
+              }
+            : null;
+        })
+        .filter(Boolean);
+
+      console.log("📢 Mentions extracted:", mentions);
 
       const payload = {
         userId: user.id,
@@ -438,7 +444,6 @@ const handleMentionSelect = (member: any) => {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
-      edges={["top"]}
     >
       <StatusBar
         translucent

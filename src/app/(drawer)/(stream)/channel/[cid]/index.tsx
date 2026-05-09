@@ -18,6 +18,7 @@ import {
 const ChannelScreen = () => {
   const { channel, setThread } = useAppContext();
   const { client } = useChatContext();
+      const { theme, isDark } = useTheme();
 
   const router = useRouter();
   const navigation = useNavigation();
@@ -111,10 +112,9 @@ const ChannelScreen = () => {
       </View>
     );
 
-      const { theme,  isDark } = useTheme();
 
   return (
-    <SafeAreaView className=" " style={{ backgroundColor: theme.background}}>
+    <SafeAreaView style={{ backgroundColor: theme.background}}>
       <Channel
         channel={channel}
         keyboardVerticalOffset={headerHeight}

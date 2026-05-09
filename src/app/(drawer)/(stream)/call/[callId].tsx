@@ -11,25 +11,28 @@ import {
   useStreamVideoClient,
   CallContent,
 } from "@stream-io/video-react-native-sdk";
+
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useChatContext } from "stream-chat-expo";
 
 const CallScreen = () => {
   const { callId } = useLocalSearchParams<{ callId: string }>();
+
   const videoClient = useStreamVideoClient();
+
   const { client: chatClient } = useChatContext();
 
   const [call, setCall] = useState<Call | null>(null);
+
   const [error, setError] = useState<string | null>(null);
+
+  const [isCaller, setIsCaller] = useState(false);
+
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -37,43 +40,53 @@ const CallScreen = () => {
 
     const startCall = async () => {
       try {
-        // find channel by ID to find its members
+        // chat channel
         const channel = chatClient.channel("messaging", callId);
+
         await channel.watch();
 
+        // create call
         const _call = videoClient.call("default", callId);
 
-        const members = Object.values(channel.state.members).map((member) => ({
-          user_id: member?.user?.id as string,
-        }));
+        // exclude current user from ringing users
+        const members = Object.values(channel.state.members)
+          .filter((member) => member.user?.id !== chatClient.user?.id)
+          .map((member) => ({
+            user_id: member.user?.id as string,
+          }));
+
+        // mark THIS device as caller immediately
+        setIsCaller(true);
 
         await _call.getOrCreate({
           ring: true,
+
           data: {
             members,
-            custom: {
-              triggeredBy: chatClient.user?.id,
-            },
           },
         });
 
         setCall(_call);
-      } catch (error) {
-        console.error("Failed to start call:", error);
+      } catch (err) {
+        console.error("Failed to start call:", err);
+
         setError("Failed to start the call. Try again");
       }
     };
-    startCall();
-    // eslint-disable-next-line
-  }, []);
 
-  if (error) return <ErrorCallUI error={error} />;
+    startCall();
+  }, [videoClient, callId]);
+
+  if (error) {
+    return <ErrorCallUI error={error} />;
+  }
 
   if (!call) {
     return (
       <SafeAreaView className="flex-1 bg-background">
         <View className="flex-1 items-center justify-center gap-4">
-          <ActivityIndicator size="small" color={theme.text} />
+          <ActivityIndicator size="small" color="white" />
+
           <Text className="mt-2 text-base text-foreground-muted">
             Starting call...
           </Text>
@@ -85,112 +98,56 @@ const CallScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-background">
       <StreamCall call={call}>
-        <CallUI />
+        <CallUI isCaller={isCaller} />
       </StreamCall>
     </SafeAreaView>
   );
 };
 
-function CallUI() {
-  const call = useCall();
+function CallUI({ isCaller }: { isCaller: boolean }) {
   const router = useRouter();
 
-  const { useCallCallingState, useMicrophoneState, useCameraState } =
-    useCallStateHooks();
+  const { useCallCallingState } = useCallStateHooks();
 
   const callingState = useCallCallingState();
-  const mic = useMicrophoneState();
-  const cam = useCameraState();
 
   useEffect(() => {
-    if (callingState === CallingState.LEFT) router.back();
+    if (callingState === CallingState.LEFT) {
+      router.back();
+    }
   }, [callingState]);
 
-  if (callingState === CallingState.RINGING) {
+  // 👇 RECEIVER only
+  if (callingState === CallingState.RINGING && !isCaller) {
     return <IncomingCall />;
   }
 
-  if (callingState === CallingState.OUTGOING_CALL) {
+  // 👇 CALLER NEVER sees ringing
+  if (isCaller && callingState !== CallingState.JOINED) {
     return <OutgoingCall />;
   }
 
-  const ControlButton = ({
-    icon,
-    onPress,
-    danger,
-  }: {
-    icon: any;
-    onPress: () => void;
-    danger?: boolean;
-  }) => {
-    return (
-      <Pressable
-        onPress={onPress}
-        className={`w-14 h-14 rounded-full items-center justify-center ${
-          danger ? "bg-red-600" : "bg-white/20"
-        }`}
-      >
-        <Ionicons name={icon} size={24} color={danger ? "white" : "white"} />
-      </Pressable>
-    );
-  };
-
-  // controls
   return (
     <View style={{ flex: 1 }}>
       <CallContent />
-
-      <View
-        style={{
-          position: "absolute",
-          bottom: 32,
-          left: 24,
-          right: 24,
-          flexDirection: "row",
-          justifyContent: "space-around",
-          alignItems: "center",
-          paddingVertical: 10,
-          backgroundColor: "rgba(0, 0, 0, 0.28)",
-          borderRadius: 999,
-          zIndex: 9999,
-          elevation: 9999,
-        }}
-      >
-        <ControlButton
-          icon={mic?.isMute ? "mic-off-outline" : "mic-outline"}
-          onPress={() => call?.microphone.toggle()}
-        />
-
-        <ControlButton
-          icon={cam?.isEnabled ? "videocam-outline" : "videocam-off-outline"}
-          onPress={() => call?.camera.toggle()}
-        />
-
-        <ControlButton
-          icon="camera-reverse-outline"
-          onPress={() => call?.camera.flip()}
-        />
-
-        <ControlButton
-          icon="call-outline"
-          danger
-          onPress={() => call?.endCall()}
-        />
-      </View>
     </View>
   );
 }
+
 export default CallScreen;
 
 function ErrorCallUI({ error }: { error: string }) {
   const router = useRouter();
+
   const { theme } = useTheme();
 
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="flex-1 items-center justify-center gap-4">
         <Ionicons name="alert-circle-outline" size={48} color={theme.danger} />
+
         <Text className="mt-2 text-base text-foreground">{error}</Text>
+
         <Pressable
           className="mt-4 rounded-xl bg-primary px-6 py-3"
           onPress={() => router.back()}
@@ -203,5 +160,3 @@ function ErrorCallUI({ error }: { error: string }) {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({});

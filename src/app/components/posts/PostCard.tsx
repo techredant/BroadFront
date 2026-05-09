@@ -569,50 +569,47 @@ export function PostCard({
 
   const topLinkPreview = isRecite ? null : linkPreview;
 
-const parts = text.split(/(@[A-Za-z0-9_]+)/g);
+  const renderCaptionWithMentions = (
+    text: string,
+    mentions: any[],
+    onMentionPress: (userId: string) => void,
+  ) => {
+    const parts = text.split(/(@[A-Za-z0-9_]+)/g);
 
-const renderCaptionWithMentions = (
-  text: string,
-  mentions: any[],
-  onMentionPress: (userId: string) => void,
-) => {
-  const parts = text.split(/(@[A-Za-z0-9_]+)/g);
+    let mentionIndex = 0; // 👈 track order
 
-  return parts.map((part, index) => {
-    if (part.startsWith("@")) {
-      const nick = part.replace("@", "").toLowerCase();
+    return parts.map((part, index) => {
+      if (part.startsWith("@")) {
+        const mentionedUser = mentions?.find((m: any) => m.userId);
 
-      const mentionedUser = mentions?.find(
-        (m) => m.nickName.toLowerCase() === nick,
-      );
+        return (
+          <Text
+            key={index}
+            onPress={() => {
+              console.log("MENTION CLICKED:", mentionedUser);
+              if (mentionedUser?.userId) {
+                onMentionPress(mentionedUser);
+              }
+            }}
+            style={{ color: theme.primary, fontWeight: "600" }}
+          >
+            {part}
+          </Text>
+        );
+      }
 
       return (
-        <Text
-          key={index}
-          style={{ color: theme.primary, fontWeight: "600" }}
-          onPress={() => {
-            if (mentionedUser?.userId) {
-              onMentionPress(mentionedUser.userId);
-            }
-          }}
-        >
+        <Text key={index} style={{ color: theme.text }}>
           {part}
         </Text>
       );
-    }
+    });
+  };
 
-    return (
-      <Text key={index} style={{ color: theme.text }}>
-        {part}
-      </Text>
-    );
-  });
-};
-
-
-const handleMentionPress = (userId: string) => {
-  router.push(`/(profileId)/${userId}`);
-};
+  const handleMentionPress = (userId: string) => {
+    // console.log("MENTION CLICKED:", text);
+    router.push(`/(profileId)/${userId}`);
+  };
 
   return (
     <>
@@ -824,7 +821,6 @@ const handleMentionPress = (userId: string) => {
           </Menu>
         </View>
         {/* COLLAPSIBLE CAPTION */}
-        {/* CAPTION */}
         {text ? (
           <View style={{ paddingHorizontal: 12, marginTop: 4 }}>
             <Text
@@ -835,11 +831,13 @@ const handleMentionPress = (userId: string) => {
                 lineHeight: 20,
               }}
             >
-              {renderCaptionWithMentions(
-                post.caption,
-                post.mentions || [],
-                handleMentionPress,
-              )}
+              <Text style={{ fontSize: 14, lineHeight: 20 }}>
+                {renderCaptionWithMentions(
+                  text,
+                  postCard.mentions || [],
+                  handleMentionPress,
+                )}
+              </Text>
             </Text>
 
             {text.length > 80 && (
@@ -1093,23 +1091,7 @@ const handleMentionPress = (userId: string) => {
                 </Pressable>
               ) : null}
             </Text>
-            {postCard?.caption && postCard.caption.length > 80 && (
-              <TouchableOpacity
-                onPress={() => toggleExpand(postCard._id)}
-                style={{ zIndex: 20, padding: 4 }}
-              >
-                <Text
-                  style={{
-                    color: theme.primary,
-                    paddingHorizontal: 12,
-                    marginTop: 4,
-                    fontWeight: "600",
-                  }}
-                >
-                  {isExpanded ? "Show less" : "Show more"}
-                </Text>
-              </TouchableOpacity>
-            )}
+         
           </View>
         ) : (
           <View
