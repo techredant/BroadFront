@@ -52,6 +52,7 @@ export default function CommentModal({
   const [isMuted, setIsMuted] = useState(true);
     const scrollTopOpacity = useRef(new Animated.Value(0)).current;
     const [showScrollTop, setShowScrollTop] = useState(false);
+    
   
     /* ---------------- SCROLL ---------------- */
     const handleScroll = (event: any) => {

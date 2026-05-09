@@ -41,7 +41,7 @@ export default function MediaScreen() {
     try {
       setLoading(true);
 
-      const res = await axios.get(`${BASE_URL}/api/posts`, {
+      const res = await axios.get(`${BASE_URL}/api/posts/media`, {
         params: {
           levelType: currentLevel.type,
           levelValue: currentLevel.value,
@@ -141,7 +141,7 @@ export default function MediaScreen() {
 
   // -------------------- UI --------------------
   return (
-    <View style={{ flex: 1, backgroundColor: theme.background }}>
+    <View style={{ flex: 1, backgroundColor: theme.background, marginTop: 10 }}>
       <DrawerMenuButton />
 
       {/* HEADER */}

@@ -171,16 +171,17 @@ export function PostCard({
     [key: string]: boolean;
   }>({});
 
-  const onOpenComments = (postId: string) => {
-    setCommentModalVisible(true);
-    fetchComments(); // reload comments when modal opens
-  };
+const onOpenComments = (postId: string) => {
+  setCommentModalVisible(true);
+  setPage(1); // reset pagination
+};
 
-  useEffect(() => {
-    if (commentModalVisible) {
-      fetchComments();
-    }
-  }, [commentModalVisible]);
+useEffect(() => {
+  if (!commentModalVisible) return;
+
+  setPage(1);
+  fetchComments(1, true); // ✅ always first 5
+}, [commentModalVisible]);
 
   const LIKE_COLOR = "#E0245E";
 
@@ -215,6 +216,7 @@ export function PostCard({
 
   const [reciteVisible, setReciteVisible] = useState(false);
   // const [loadingRecite, setLoadingRecite] = useState(false);
+  
 
   const openMedia = (index: number) => {
     setSelectedIndex(index);
@@ -226,6 +228,9 @@ export function PostCard({
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const spinValue = useRef(new Animated.Value(0)).current;
 
@@ -263,24 +268,46 @@ export function PostCard({
     outputRange: ["0deg", "360deg"],
   });
 
-  const fetchComments = useCallback(async () => {
+const fetchComments = useCallback(
+  async (pageNumber = 1, refresh = false) => {
     if (!postCard._id) return;
+
     try {
-      setLoading(true);
-      const url = `https://cast-api-zeta.vercel.app/api/${postCard._id}`;
-      // console.log("Fetching Comments from:", url);
+      if (pageNumber === 1) setLoading(true);
+      else setLoadingMore(true);
+
+      const url = `https://cast-api-zeta.vercel.app/api/${postCard._id}?page=${pageNumber}&limit=5`;
 
       const res = await axios.get(url);
-      // console.log("Comments received:", res.data);
 
-      setComments(res.data ?? []);
+      const newComments = res.data ?? [];
+
+      setHasMore(newComments.length === 5);
+
+      if (refresh || pageNumber === 1) {
+        setComments(newComments);
+      } else {
+        setComments((prev) => [...prev, ...newComments]);
+      }
     } catch (err) {
       console.error("❌ Error fetching Comments:", err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       setRefreshing(false);
     }
-  }, [postCard._id]);
+  },
+  [postCard._id],
+);
+
+const loadMoreComments = () => {
+  if (loadingMore || !hasMore) return;
+
+  const nextPage = page + 1;
+  setPage(nextPage);
+
+  fetchComments(nextPage);
+};
 
   // Fetch on mount or level change
   useEffect(() => {

@@ -49,6 +49,10 @@ export default function HomeScreen() {
   const scrollTopOpacity = useRef(new Animated.Value(0)).current;
   const levelBtnOpacity = useRef(new Animated.Value(1)).current; // starts visible
 
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+
   const handleScroll = (event: any) => {
     const offsetY = event.nativeEvent.contentOffset.y;
 
@@ -80,40 +84,63 @@ export default function HomeScreen() {
   const viewabilityConfig = { itemVisiblePercentThreshold: 80 };
 
   // ---------------- Fetch posts ----------------
-  const fetchPosts = useCallback(async () => {
-    if (!currentLevel?.type || !currentLevel?.value) {
-      console.log("Level not ready yet");
-      return;
-    }
+  const fetchPosts = useCallback(
+    async (pageNumber = 1, refresh = false) => {
+      if (!currentLevel?.type || !currentLevel?.value) return;
 
-    setLoading(true);
+      try {
+        if (pageNumber === 1) setLoading(true);
+        else setLoadingMore(true);
 
-    try {
-      const url = `${BASE_URL}/api/posts?levelType=${currentLevel.type}&levelValue=${currentLevel.value}`;
+        const url =
+          `${BASE_URL}/api/posts` +
+          `?levelType=${currentLevel.type}` +
+          `&levelValue=${currentLevel.value}` +
+          `&page=${pageNumber}` +
+          `&limit=5`;
 
-      const res = await axios.get<Post[]>(url);
-      setPosts(res.data ?? []);
-    } catch (err) {
-      console.error("❌ Error fetching posts:", err);
-    } finally {
-      setRefreshing(false);
-      setLoading(false);
-    }
-  }, [currentLevel]);
+        const res = await axios.get<Post[]>(url);
+
+        const newPosts = res.data ?? [];
+
+        setHasMore(newPosts.length === 5);
+
+        if (refresh || pageNumber === 1) {
+          setPosts(newPosts);
+        } else {
+          setPosts((prev) => [...prev, ...newPosts]);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
+      }
+    },
+    [currentLevel],
+  );
 
   useEffect(() => {
-    if (!currentLevel?.type || !currentLevel?.value) return;
-
-    setPosts([]);
-    setLoading(true);
-    fetchPosts();
-  }, [currentLevel, fetchPosts]);
+    setPage(1);
+    fetchPosts(1, true);
+  }, [currentLevel]);
 
   useFocusEffect(
     useCallback(() => {
       fetchPosts();
     }, [fetchPosts]),
   );
+
+  const loadMore = () => {
+    if (loadingMore || !hasMore) return;
+
+    const nextPage = page + 1;
+
+    setPage(nextPage);
+
+    fetchPosts(nextPage);
+  };
 
   const fetchStatuses = async () => {
     const res = await axios.get(`${BASE_URL}/api/status`);
@@ -192,11 +219,30 @@ export default function HomeScreen() {
     displayValue.charAt(0).toUpperCase() + displayValue.slice(1);
 
   // ---------------- Render ----------------
+  // {
+  //   loading && posts.length === 0 && (
+  //     <View
+  //       style={{
+  //         position: "absolute",
+  //         top: "50%",
+  //         left: 0,
+  //         right: 0,
+  //         alignItems: "center",
+  //         zIndex: 10,
+  //       }}
+  //     >
+  //       <LoaderKitView
+  //         style={{ width: 50, height: 50 }}
+  //         name="BallScaleRippleMultiple"
+  //         color={theme.text}
+  //       />
+  //     </View>
+  //   );
+  // }
+
   return (
     // <BottomSheetModalProvider>
-      <View
-          style={{ flex: 1, backgroundColor: theme.background }}
-        >
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
       <StatusBar
         translucent
         backgroundColor="transparent"
@@ -215,6 +261,8 @@ export default function HomeScreen() {
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         keyExtractor={(item) => item._id.toString()}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
         scrollEventThrottle={16}
         renderItem={({ item }) => (
           <PostCard
@@ -274,38 +322,31 @@ export default function HomeScreen() {
             <Status statuses={statuses} />
           </>
         }
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 120 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.background}
-            colors={[theme.text]}
-          />
+        ListFooterComponent={
+          loadingMore ? (
+            <LoaderKitView
+              style={{ width: 40, height: 40, alignSelf: "center" }}
+              name="BallScaleRippleMultiple"
+              color={theme.text}
+            />
+          ) : null
         }
         ListEmptyComponent={
-          loading || posts.length === 0 ? (
-            <View
-              style={{
-                flex: 1,
-                justifyContent: "center",
-                alignItems: "center",
-                backgroundColor: theme.background,
-              }}
-            >
-              {loading ? (
-                <>
-                  <LoaderKitView
-                    style={{ width: 50, height: 50 }}
-                    name="BallScaleRippleMultiple"
-                    color={theme.text}
-                  />
-                </>
-              ) : (
-                <Text style={{ color: theme.subtext }}>No posts yet</Text>
-              )}
-            </View>
-          ) : null
+          <View
+            style={{
+              flex: 1,
+              justifyContent: "center",
+              alignItems: "center",
+              backgroundColor: theme.background,
+              paddingTop: 100,
+            }}
+          >
+            {loading ? (
+              <Text> </Text>
+            ) : (
+              <Text style={{ color: theme.subtext }}>No posts yet</Text>
+            )}
+          </View>
         }
       />
       <Animated.View
