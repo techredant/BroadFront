@@ -6,8 +6,8 @@ import {
   StreamVideo,
   StreamVideoClient,
 } from "@stream-io/video-react-native-sdk";
-import { useLevel } from "@/context/LevelContext";
 
+import { useLevel } from "@/context/LevelContext";
 
 const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
 

@@ -135,7 +135,7 @@ export default function ProductDetail() {
       setChannel(channel); // 🔥 THIS IS WHAT YOU'RE MISSING
 
       await channel.sendMessage({
-        text: `${product.title}\nPrice: KES ${product.price.toLocaleString("en-KE")}\nView product: https://cast-api-zeta.vercel.app/product/${product._id}`,
+        text: `${product.title}\nPrice: KES ${product.price.toLocaleString("en-KE")}\nView product: https://play.google.com/apps/internaltest/4701524395971655343`,
         attachments: [
           {
             type: "image",
@@ -155,7 +155,7 @@ export default function ProductDetail() {
 
     try {
       await Share.share({
-        message: `${product.title} for KES ${product.price.toLocaleString("en-KE")}\n${product.description || ""}\nView it here: https://cast-api-zeta.vercel.app/product/${product._id}`,
+        message: `${product.title} for KES ${product.price.toLocaleString("en-KE")}\n${product.description || ""}\nView it here: https://play.google.com/apps/internaltest/4701524395971655343`,
       });
     } catch (error) {
       console.error("Share failed", error);

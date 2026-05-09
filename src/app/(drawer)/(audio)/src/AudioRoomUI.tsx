@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { PermissionRequestsPanel } from "./PermissionsRequestsPanel";
 import { useCall } from "@stream-io/video-react-native-sdk";
-import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import AudioRoomDescription from "./AudioRoomDescription";
 import AudioRoomParticipants from "./AudioRoomParticipants";
 import AudioRoomControlsPanel from "./AudioRoomControlsPanel";
@@ -17,14 +17,12 @@ export const AudioRoomUI = ({ goToHomeScreen }: Props) => {
 
   const leaveCall = async () => {
     try {
-      if (call?.state.callingState === "joined") {
-        await call.leave();
-      }
+      await call?.leave();
     } catch (e) {
       console.error("Leave error:", e);
+    } finally {
+      goToHomeScreen();
     }
-
-    goToHomeScreen();
   };
 
   return (
@@ -36,12 +34,11 @@ export const AudioRoomUI = ({ goToHomeScreen }: Props) => {
 
       <Animated.View entering={FadeInDown.delay(700)}>
         <Pressable
-          style={[styles.joinButton, { backgroundColor: theme.primary }]}
+          style={[styles.leaveButton, { backgroundColor: theme.primary }]}
           onPress={leaveCall}
         >
           <Ionicons name="exit-outline" size={22} color={theme.background} />
-          <Text style={[styles.joinText, { color: theme.background }]}>
-            {" "}
+          <Text style={[styles.leaveText, { color: theme.background }]}>
             Leave Quietly
           </Text>
         </Pressable>
@@ -57,25 +54,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingBottom: 20,
   },
-  joinText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  joinButton: {
+  leaveButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "blue",
     paddingVertical: 14,
     paddingHorizontal: 30,
     borderRadius: 30,
     elevation: 6,
   },
   leaveText: {
-    color: "black",
     fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontWeight: "600",
+    marginLeft: 8,
   },
 });

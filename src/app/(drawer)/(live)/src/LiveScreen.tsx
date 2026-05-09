@@ -1,12 +1,12 @@
-// livestream
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   StreamCall,
   VideoRenderer,
+  useCall,
   useCallStateHooks,
   callManager,
-  CallControls,
   useStreamVideoClient,
+  CallingState,
 } from "@stream-io/video-react-native-sdk";
 import {
   View,
@@ -17,23 +17,28 @@ import {
   FlatList,
   StatusBar,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
 } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Props = {
   goToHomeScreen: () => void;
   callId: string;
-  isHost: boolean; // ✅ IMPORTANT
+  isHost?: boolean;
 };
 
-export default function LiveScreen({ goToHomeScreen, callId, isHost }: Props) {
+export default function LiveScreen({
+  goToHomeScreen,
+  callId,
+  isHost = false,
+}: Props) {
   const client = useStreamVideoClient();
+  const insets = useSafeAreaInsets();
 
   const call = useMemo(() => {
     if (!client) return null;
@@ -41,16 +46,15 @@ export default function LiveScreen({ goToHomeScreen, callId, isHost }: Props) {
   }, [client, callId]);
 
   useEffect(() => {
-    let mounted = true;
+    if (!call) return;
 
-    const startCall = async () => {
-      if (!call) return;
-// const isHost = true;
+    let disposed = false;
+
+    const join = async () => {
       try {
         if (isHost) {
-          // 🎤 HOST
+          await call.getOrCreate();
           await call.join({ create: true });
-
           await call.camera.enable();
           await call.microphone.enable();
 
@@ -59,269 +63,398 @@ export default function LiveScreen({ goToHomeScreen, callId, isHost }: Props) {
             deviceEndpointType: "speaker",
           });
         } else {
-          // 👀 VIEWER
-          await call.join();
+          await call.join({ create: false });
         }
-      } catch (error) {
-        console.log("Error joining call:", error);
+      } catch (err) {
+        console.log("join live error:", err);
       }
     };
 
-    if (mounted) startCall();
+    join();
+
+    const handleEnded = () => {
+      if (!disposed) goToHomeScreen();
+    };
+
+    call.on("call.ended", handleEnded);
 
     return () => {
-      mounted = false;
-      call?.leave();
+      disposed = true;
+      call.off("call.ended", handleEnded);
+      call.leave().catch(() => {});
       callManager.stop();
     };
-  }, [call, isHost]);
-
-  useEffect(() => {
-    if (!call) return;
-
-    const handleCallEnd = () => {
-      router.replace("/HomeLivescreen");
-      // or goToHomeScreen();
-    };
-
-    call.on("call.ended", handleCallEnd);
-
-    return () => {
-      call.off("call.ended", handleCallEnd);
-    };
-  }, [call]);
+  }, [call, isHost, goToHomeScreen]);
 
   if (!call) return null;
 
   return (
     <StreamCall call={call}>
-      <StatusBar translucent backgroundColor="transparent" />
-
-      <TikTokLive isHost={isHost} />
-
-      {/* 🎤 Only host sees controls */}
-      {/* {isHost && <CallControls />} */}
-      <CallControls />
+      <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+      <LeaveStateHandler goToHomeScreen={goToHomeScreen} />
+      <LiveCanvas isHost={isHost} goToHomeScreen={goToHomeScreen} insetsBottom={insets.bottom} />
     </StreamCall>
   );
 }
 
-/* =========================================================
-   TIKTOK LIVE UI
-========================================================= */
-const TikTokLive = ({ isHost }: { isHost: boolean }) => {
-  const { useLocalParticipant, useParticipantCount } = useCallStateHooks();
+function LeaveStateHandler({ goToHomeScreen }: { goToHomeScreen: () => void }) {
+  const { useCallCallingState } = useCallStateHooks();
+  const callingState = useCallCallingState();
 
-  const participant = useLocalParticipant();
+  useEffect(() => {
+    if (callingState === CallingState.LEFT) goToHomeScreen();
+  }, [callingState, goToHomeScreen]);
+
+  return null;
+}
+
+function LiveCanvas({
+  isHost,
+  goToHomeScreen,
+  insetsBottom,
+}: {
+  isHost: boolean;
+  goToHomeScreen: () => void;
+  insetsBottom: number;
+}) {
+  const call = useCall();
+  const { useLocalParticipant, useParticipantCount, useMicrophoneState, useCameraState, useParticipants } =
+    useCallStateHooks();
+
+
+const localParticipant = useLocalParticipant();
+const participants = useParticipants();
+
+const remoteParticipant = participants.find(
+  (p) => p.sessionId !== localParticipant?.sessionId,
+);
+
+const videoParticipant = isHost ? localParticipant : remoteParticipant;
+
   const viewers = useParticipantCount();
+  const mic = useMicrophoneState();
+  const cam = useCameraState();
 
-  const [messages, setMessages] = useState([
-    { id: "1", text: "Welcome to the livestream!" },
-  ]);
+  const [messages, setMessages] = useState([{ id: "1", text: "Welcome to the livestream!" }]);
   const [input, setInput] = useState("");
-
-  const [reactions, setReactions] = useState<
-    { id: number; emoji: string; left: number }[]
-  >([]);
-
+  const [reactions, setReactions] = useState<{ id: number; emoji: string; left: number }[]>([]);
   const lastTap = useRef(0);
 
-  /* DOUBLE TAP */
-  const handleTap = () => {
+  const onTapVideo = () => {
     const now = Date.now();
-    if (now - lastTap.current < 300) {
-      sendReaction("❤️");
-    }
+    if (now - lastTap.current < 300) addReaction("❤️");
     lastTap.current = now;
   };
 
-  /* REACTIONS */
-  const sendReaction = (emoji: string) => {
+  const addReaction = (emoji: string) => {
     const id = Date.now();
-    const randomLeft = Math.random() * 200 + 50;
-
-    setReactions((prev) => [...prev, { id, emoji, left: randomLeft }]);
-
+    const left = Math.random() * 220 + 40;
+    setReactions((prev) => [...prev, { id, emoji, left }]);
     setTimeout(() => {
       setReactions((prev) => prev.filter((r) => r.id !== id));
     }, 1500);
   };
 
-  /* CHAT */
   const sendMessage = () => {
     if (!input.trim()) return;
-
-    setMessages((prev) => [
-      ...prev,
-      { id: Date.now().toString(), text: input },
-    ]);
+    setMessages((prev) => [...prev, { id: Date.now().toString(), text: input.trim() }]);
     setInput("");
   };
 
+  const leaveViewer = async () => {
+    try {
+      await call?.leave();
+    } finally {
+      goToHomeScreen();
+    }
+  };
+
+  const endLiveHost = async () => {
+    try {
+      await call?.endCall(); // critical: marks endedAt on the call
+    } catch (err) {
+      console.log("end live error:", err);
+    } finally {
+      goToHomeScreen();
+    }
+  };
+
   return (
-    <View style={{ flex: 1, backgroundColor: "black" }}>
-      <StatusBar
-        translucent
-        backgroundColor="transparent"
-        barStyle="light-content"
-      />
-
-      {/* VIDEO */}
-      {/* <Pressable style={{ flex: 1 }} onPress={handleTap}>
-        {participant && (
+    <View style={styles.root}>
+      <Pressable style={styles.videoTouch} onPress={onTapVideo}>
+        {videoParticipant ? (
           <VideoRenderer
-            participant={participant}
+            participant={videoParticipant}
             trackType="videoTrack"
-            style={{ flex: 1 }}
+            style={styles.video}
           />
+        ) : (
+          <View
+            style={[
+              styles.video,
+              {
+                justifyContent: "center",
+                alignItems: "center",
+              },
+            ]}
+          >
+            <Text style={{ color: "#fff" }}>Waiting for livestream...</Text>
+          </View>
         )}
-      </Pressable> */}
+      </Pressable>
 
-      {/* REACTIONS */}
       {reactions.map((r) => (
-        <AnimatedReaction key={r.id} emoji={r.emoji} left={r.left} />
+        <FloatingReaction key={r.id} emoji={r.emoji} left={r.left} />
       ))}
 
-      {/* TOP BAR */}
       <View style={styles.topBar}>
         {isHost && (
           <View style={styles.liveBadge}>
-            <Text style={styles.liveText}>LIVE</Text>
+            <View style={styles.dot} />
+            <Text style={styles.liveBadgeText}>LIVE</Text>
           </View>
         )}
-
-        <Text style={styles.viewerText}>
-          <Ionicons name="eye" color="white" size={18} /> {viewers}
-        </Text>
+        <View style={styles.viewersPill}>
+          <Ionicons name="eye" color="white" size={16} />
+          <Text style={styles.viewersText}>{viewers}</Text>
+        </View>
       </View>
 
-      {/* RIGHT SIDE */}
-      <View style={styles.rightBar}>
-        {["❤️", "👍", "👏", "🎉"].map((emoji) => (
-          <Pressable key={emoji} onPress={() => sendReaction(emoji)}>
-            <Text style={{ fontSize: 28, marginBottom: 12 }}>{emoji}</Text>
+      <View style={styles.reactionsRail}>
+        {["❤️", "👍", "👏", "🔥"].map((emoji) => (
+          <Pressable
+            key={emoji}
+            onPress={() => addReaction(emoji)}
+            style={styles.reactionBtn}
+          >
+            <Text style={styles.reactionBtnText}>{emoji}</Text>
           </Pressable>
         ))}
       </View>
 
-      {/* CHAT */}
       <LinearGradient
-        colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.6)"]}
-        style={styles.chatContainer}
+        colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.78)"]}
+        style={[
+          styles.bottomPanel,
+          { paddingBottom: Math.max(insetsBottom + 8, 14) },
+        ]}
       >
         <FlatList
           data={messages}
           keyExtractor={(item) => item.id}
           inverted
+          contentContainerStyle={styles.chatListContent}
           renderItem={({ item }) => (
-            <Text style={styles.chatMessage}>{item.text}</Text>
+            <Text style={styles.chatMsg}>{item.text}</Text>
           )}
         />
 
         <View style={styles.inputRow}>
           <TextInput
             placeholder="Say something..."
-            placeholderTextColor="#aaa"
+            placeholderTextColor="#9CA3AF"
             value={input}
             onChangeText={setInput}
             style={styles.input}
           />
-          <Pressable onPress={sendMessage}>
-            <Text style={styles.sendText}>Send</Text>
+          <Pressable onPress={sendMessage} style={styles.sendBtn}>
+            <Ionicons name="send" size={16} color="#fff" />
           </Pressable>
+        </View>
+
+        <View style={styles.controlsRow}>
+          {isHost ? (
+            <>
+              <ControlChip
+                icon={mic?.isMute ? "mic-off" : "mic"}
+                label={mic?.isMute ? "Unmute" : "Mute"}
+                onPress={() => call?.microphone.toggle()}
+              />
+              <ControlChip
+                icon={cam?.isEnabled ? "videocam" : "videocam-off"}
+                label={cam?.isEnabled ? "Camera Off" : "Camera On"}
+                onPress={() => call?.camera.toggle()}
+              />
+              <ControlChip
+                icon="sync"
+                label="Flip"
+                onPress={() => call?.camera.flip()}
+              />
+              <ControlChip
+                icon="call"
+                label="End Live"
+                danger
+                onPress={endLiveHost}
+              />
+            </>
+          ) : (
+            <ControlChip
+              icon="exit-outline"
+              label="Leave"
+              danger
+              onPress={leaveViewer}
+            />
+          )}
         </View>
       </LinearGradient>
     </View>
   );
-};
+}
 
-/* FLOATING REACTION */
-const AnimatedReaction = ({ left, emoji }: { left: number; emoji: string }) => {
+function ControlChip({
+  icon,
+  label,
+  onPress,
+  danger = false,
+}: {
+  icon: any;
+  label: string;
+  onPress: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.controlChip, danger ? styles.controlChipDanger : styles.controlChipNormal]}
+    >
+      <Ionicons name={icon} size={16} color="#fff" />
+      <Text style={styles.controlChipText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function FloatingReaction({ left, emoji }: { left: number; emoji: string }) {
   const y = useSharedValue(0);
   const opacity = useSharedValue(1);
 
   useEffect(() => {
-    y.value = withTiming(-600, { duration: 1500 });
+    y.value = withTiming(-520, { duration: 1500 });
     opacity.value = withTiming(0, { duration: 1500 });
-  }, []);
+  }, [y, opacity]);
 
   const style = useAnimatedStyle(() => ({
     position: "absolute",
-    bottom: 100,
+    bottom: 110,
     left,
     transform: [{ translateY: y.value }],
     opacity: opacity.value,
   }));
 
-  return (
-    <Animated.Text style={[style, { fontSize: 30 }]}>{emoji}</Animated.Text>
-  );
-};
+  return <Animated.Text style={[style, styles.floatingReaction]}>{emoji}</Animated.Text>;
+}
 
-/* STYLES */
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: "#000" },
+  videoTouch: { flex: 1 },
+  video: { flex: 1 },
+
   topBar: {
     position: "absolute",
-    top: 40,
-    left: 16,
+    top: 42,
+    left: 14,
+    right: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    zIndex: 20,
+  },
+  liveBadge: {
     flexDirection: "row",
     alignItems: "center",
-  },
-
-  liveBadge: {
-    backgroundColor: "#FF2D55",
+    backgroundColor: "rgba(239,68,68,0.95)",
+    borderRadius: 16,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginRight: 10,
+    paddingVertical: 6,
   },
-
-  liveText: {
-    color: "white",
-    fontWeight: "bold",
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#fff",
+    marginRight: 6,
   },
-
-  viewerText: {
-    color: "white",
+  liveBadgeText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  viewersPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(17,24,39,0.75)",
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 6,
   },
+  viewersText: { color: "#fff", fontWeight: "700" },
 
-  rightBar: {
+  reactionsRail: {
     position: "absolute",
-    right: 20,
-    bottom: 150,
+    right: 12,
+    bottom: 230,
+    zIndex: 20,
     alignItems: "center",
   },
+  reactionBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(17,24,39,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  reactionBtnText: { fontSize: 21 },
 
-  chatContainer: {
+  bottomPanel: {
     position: "absolute",
+    left: 0,
+    right: 0,
     bottom: 0,
-    width: "80%",
-    height: 300,
-    padding: 10,
+    minHeight: 260,
+    paddingTop: 10,
+    paddingHorizontal: 12,
   },
-
-  chatMessage: {
-    color: "white",
-    marginBottom: 6,
-  },
+  chatListContent: { paddingBottom: 8 },
+  chatMsg: { color: "#fff", marginBottom: 6, fontSize: 13 },
 
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
+    gap: 8,
+    marginTop: 6,
   },
-
   input: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    color: "white",
-    padding: 8,
-    borderRadius: 20,
-    marginRight: 10,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    color: "#fff",
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  sendBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  sendText: {
-    color: "#FF2D55",
-    fontWeight: "bold",
+  controlsRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
   },
+  controlChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  controlChipNormal: { backgroundColor: "rgba(17,24,39,0.82)" },
+  controlChipDanger: { backgroundColor: "rgba(220,38,38,0.92)" },
+  controlChipText: { color: "#fff", fontWeight: "700", marginLeft: 6, fontSize: 12 },
+
+  floatingReaction: { fontSize: 30 },
 });

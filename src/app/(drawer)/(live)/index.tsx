@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { ActivityIndicator, StatusBar, StyleSheet, View } from "react-native";
+import React, { useState, useEffect } from "react";
+import { ActivityIndicator, StatusBar, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   StreamVideo,
@@ -12,34 +12,41 @@ import { tokenProvider } from "@/utils/tokenProvider";
 import LiveScreen from "./src/LiveScreen";
 
 const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
-// Generate a unique call ID for each live session
+
+type Session = {
+  callId: string;
+  isHost: boolean;
+};
 
 export default function App() {
-  const { userDetails, currentLevel } = useLevel();
-  const [activeScreen, setActiveScreen] = useState<"home" | "call-screen">(
-    "home",
-  );
-  const [client, setClient] = useState<StreamVideoClient | null>(null);
-  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const { userDetails } = useLevel();
   const { isDark, theme } = useTheme();
 
-  const joinCall = (id: string) => {
-    setSelectedCallId(id);
-    setActiveScreen("call-screen");
+  const [client, setClient] = useState<StreamVideoClient | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [booting, setBooting] = useState(true);
+
+  // Host flow (create)
+  const startAsHost = (id: string) => {
+    setSession({ callId: id, isHost: true });
   };
 
-  // Create callId dynamically based on currentLevel
-  // Only compute callId if userDetails exist
-  const callId = useMemo(() => {
-    if (!userDetails) return "audio_room_national"; // fallback
-    return `audio_room_${currentLevel?.value || userDetails.county || "home"}_${userDetails.clerkId}`;
-  }, [currentLevel, userDetails]);
+  // Viewer flow (join existing)
+  const joinAsViewer = (id: string) => {
+    setSession({ callId: id, isHost: false });
+  };
 
-  // Initialize StreamVideoClient after userDetails is ready
+  const goToHomeScreen = () => setSession(null);
+
   useEffect(() => {
-    if (!userDetails) return;
+    let mounted = true;
 
     const initClient = async () => {
+      if (!userDetails) {
+        setBooting(false);
+        return;
+      }
+
       try {
         const token = await tokenProvider(userDetails.clerkId);
         if (!token) return;
@@ -47,22 +54,36 @@ export default function App() {
         const user = {
           id: userDetails.clerkId,
           name: userDetails.nickName || "Unknown",
-          image: `${userDetails.image}?id=${userDetails.clerkId}&name=${userDetails.nickName}`,
+          image: userDetails.image
+            ? `${userDetails.image}?id=${userDetails.clerkId}&name=${userDetails.nickName}`
+            : undefined,
         };
 
         const newClient = new StreamVideoClient({ apiKey, user, token });
+
+        if (!mounted) {
+          newClient.disconnectUser();
+          return;
+        }
+
         setClient(newClient);
       } catch (err) {
         console.error("Failed to initialize StreamVideoClient", err);
+      } finally {
+        if (mounted) setBooting(false);
       }
     };
 
     initClient();
+
+    return () => {
+      mounted = false;
+      setClient((prev) => {
+        prev?.disconnectUser();
+        return null;
+      });
+    };
   }, [userDetails]);
-
-  const goToHomeScreen = () => setActiveScreen("home");
-
-  if (!client) return null; // wait until token & client are ready
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
@@ -71,25 +92,24 @@ export default function App() {
         backgroundColor="transparent"
         barStyle={isDark ? "light-content" : "dark-content"}
       />
-      {!client ? (
-        <View
-          style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: theme.background }}
-        >
-          <ActivityIndicator size="small" />
+
+      {booting || !client ? (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="small" color={theme.text} />
         </View>
       ) : (
         <StreamVideo client={client}>
-          {activeScreen === "call-screen" && selectedCallId ? (
+          {session ? (
             <LiveScreen
               goToHomeScreen={goToHomeScreen}
-              callId={selectedCallId}
+              callId={session.callId}
+              isHost={session.isHost}
             />
           ) : (
-            // <HomeScreen client={client} joinCall={joinCall} />
             <HomeScreen
               client={client}
-              joinCall={joinCall}
-              liveScreen={joinCall}
+              joinCall={joinAsViewer}
+              liveScreen={startAsHost}
             />
           )}
         </StreamVideo>
@@ -97,12 +117,3 @@ export default function App() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    textAlign: "center",
-    backgroundColor: "#F9FAFB", // clean light background
-  },
-});

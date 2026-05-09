@@ -85,7 +85,7 @@ const CallScreen = () => {
     return (
       <SafeAreaView className="flex-1 bg-background">
         <View className="flex-1 items-center justify-center gap-4">
-          <ActivityIndicator size="small" color="white" />
+          <ActivityIndicator size="small" color={theme.text} />
 
           <Text className="mt-2 text-base text-foreground-muted">
             Starting call...
