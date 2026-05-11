@@ -1,6 +1,7 @@
+// layout.tsx
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 
 import {
   StreamVideo,
@@ -14,52 +15,76 @@ const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
 export default function AppLayout() {
   const { userDetails } = useLevel();
 
-  const [client, setClient] = useState<StreamVideoClient | null>(null);
+  const router = useRouter();
+
+  const [videoClient, setVideoClient] = useState<StreamVideoClient | null>(null);
 
   useEffect(() => {
     if (!userDetails) return;
 
+    let unsubscribe: any;
+
     const init = async () => {
-      const res = await fetch(
-        "https://cast-api-zeta.vercel.app/api/stream/token",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+      try {
+        const res = await fetch(
+          "https://cast-api-zeta.vercel.app/api/stream/token",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              userId: userDetails.clerkId,
+              name: `${userDetails.firstName} ${userDetails.lastName} ${userDetails.companyName} ${userDetails.nickName ?? ""}`.trim(),
+              image: userDetails.image,
+            }),
           },
-          body: JSON.stringify({
-            userId: userDetails.clerkId,
-            name: `${userDetails.firstName} ${userDetails.lastName} ${userDetails.companyName}`,
+        );
+
+        const data = await res.json();
+
+        const videoClient = StreamVideoClient.getOrCreateInstance({
+          apiKey,
+
+          user: {
+            id: userDetails.clerkId,
+            name: `${userDetails.firstName} ${userDetails.lastName} ${userDetails.companyName} ${userDetails.nickName ?? ""}`.trim(),
             image: userDetails.image,
-          }),
-        },
-      );
+          },
 
-      const data = await res.json();
+          token: data.token,
+        });
 
-      const videoClient = StreamVideoClient.getOrCreateInstance({
-        apiKey,
+        // LISTEN FOR INCOMING CALLS
+        unsubscribe = videoClient.on("call.ring", (event) => {
+          const callId = event.call_cid?.split(":")[1];
 
-        user: {
-          id: userDetails.clerkId,
-          name: `${userDetails.firstName} ${userDetails.lastName} ${userDetails.companyName}`,
-          image: userDetails.image,
-        },
+          if (!callId) return;
 
-        token: data.token,
-      });
+          router.push({
+            pathname: "/(drawer)/(stream)/call/[callId]",
+            params: {
+              callId,
+              isCaller: "false",
+            },
+          });
+        });
 
-      setClient(videoClient);
+        setVideoClient(videoClient);
+      } catch (err) {
+        console.error("Failed to initialize Stream Video:", err);
+      }
     };
 
     init();
 
-    return () => {
-      client?.disconnectUser();
-    };
+return () => {
+  unsubscribe?.();
+  videoClient?.disconnectUser();
+};
   }, [userDetails]);
 
-  if (!client) {
+  if (!videoClient) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator />
@@ -68,7 +93,7 @@ export default function AppLayout() {
   }
 
   return (
-    <StreamVideo client={client}>
+    <StreamVideo client={videoClient}>
       <Stack screenOptions={{ headerShown: false }} />
     </StreamVideo>
   );

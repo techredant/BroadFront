@@ -6,7 +6,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { Image } from "expo-image";
 import { useNavigation, useRouter } from "expo-router";
 import { useLayoutEffect } from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Channel,
@@ -27,6 +27,7 @@ const ChannelScreen = () => {
 
   let displayName = "";
   let avatarUrl = "";
+  let otherUserId = "";
 
   if (channel) {
     const members = Object.values(channel.state.members);
@@ -35,6 +36,7 @@ const ChannelScreen = () => {
     );
     displayName = otherMember?.user?.name!;
     avatarUrl = otherMember?.user?.image || "";
+    otherUserId = otherMember?.user?.id!;
   }
 
   // ? useLayoutEffect vs useEffect
@@ -52,13 +54,16 @@ const ChannelScreen = () => {
       headerLeft: () => (
         <TouchableOpacity
           onPress={() => router.back()}
-          className="ml-2 flex-row items-center p-2"
+          className="flex-row items-center p-3"
         >
           <Ionicons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
       ),
       headerTitle: () => (
-        <View className="flex-row items-center">
+        <Pressable
+          onPress={() => router.push(`/(profileId)/${otherUserId}`)}
+          className="flex-row items-center"
+        >
           {avatarUrl ? (
             <Image
               source={avatarUrl}
@@ -88,14 +93,17 @@ const ChannelScreen = () => {
           >
             {displayName}
           </Text>
-        </View>
+        </Pressable>
       ),
       headerRight: () => (
         <TouchableOpacity
           onPress={() => {
             router.push({
               pathname: "/(drawer)/(stream)/call/[callId]",
-              params: { callId: channel?.id! },
+              params: {
+                callId: channel?.id!,
+                isCaller: "true",
+              },
             });
           }}
         >

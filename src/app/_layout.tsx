@@ -7,7 +7,7 @@ import { AppProvider } from "@/contexts/AppProvider";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ActivityIndicator, View } from "react-native";
 import { MenuProvider } from "react-native-popup-menu";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { LevelProvider } from "@/context/LevelContext";
@@ -40,6 +40,7 @@ function useNotificationObserver() {
   useEffect(() => {
     const redirect = (notification: Notifications.Notification) => {
       const data = notification.request.content.data as any;
+
       const url = data?.url;
 
       if (typeof url === "string" && url.startsWith("/")) {
@@ -48,6 +49,7 @@ function useNotificationObserver() {
     };
 
     const last = Notifications.getLastNotificationResponse();
+
     if (last?.notification) {
       redirect(last.notification);
     }
@@ -87,65 +89,27 @@ export default function RootLayout() {
    =========================== */
 function RootInnerLayout() {
   const { isLoaded, isSignedIn } = useAuth();
+
   const { user } = useUser();
+
   const router = useRouter();
+
   const segments = useSegments();
+
   const { theme } = useTheme();
 
-  /* ===========================
-     PUSH NOTIFICATION SETUP
-     =========================== */
-  useEffect(() => {
-    const registerPush = async () => {
-      if (!isSignedIn || !user?.id) return;
-      if (!Device.isDevice) return;
-
-      try {
-        const { status: existingStatus } =
-          await Notifications.getPermissionsAsync();
-
-        let finalStatus = existingStatus;
-
-        if (existingStatus !== "granted") {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-
-        if (finalStatus !== "granted") return;
-
-        const token = (
-          await Notifications.getExpoPushTokenAsync({
-            projectId: "e693fdcd-e810-4cf4-ae07-e5218d8032c1", // 🔴 FIX THIS
-          })
-        ).data;
-
-        console.log("🔥 PUSH TOKEN:", token);
-
-        const storedToken = await AsyncStorage.getItem("pushToken");
-
-        if (storedToken !== token) {
-          await axios.post("https://cast-api-zeta.vercel.app/api/notification-token/token", {
-            userId: user.id,
-            token,
-          });
-
-          await AsyncStorage.setItem("pushToken", token);
-        }
-      } catch (err) {
-        console.log("Push setup error:", err);
-      }
-    };
-
-    registerPush();
-  }, [isSignedIn, user?.id]);
+  const [appReady, setAppReady] = useState(false);
 
   /* ===========================
-     ROUTING LOGIC
+     PREVENT SPLASH AUTO HIDE
      =========================== */
   useEffect(() => {
     SplashScreen.preventAutoHideAsync();
   }, []);
 
+  /* ===========================
+     ROUTING LOGIC
+     =========================== */
   useEffect(() => {
     if (!isLoaded) return;
 
@@ -154,8 +118,11 @@ function RootInnerLayout() {
     const inDrawerGroup = segments[0] === "(drawer)";
 
     const hasCompletedName = user?.unsafeMetadata?.hasCompletedName;
+
     const onboardingComplete = user?.unsafeMetadata?.onboardingComplete;
+
     const accountType = user?.unsafeMetadata?.myAccountType;
+
     const isPersonal = accountType === "Personal Account";
 
     if (!isSignedIn && !inAuthGroup) {
@@ -174,8 +141,71 @@ function RootInnerLayout() {
       router.replace("/(drawer)/(tabs)");
     }
 
-    SplashScreen.hideAsync();
+    const prepare = async () => {
+      await SplashScreen.hideAsync();
+
+      // 🔥 wait until app fully renders
+      setTimeout(() => {
+        setAppReady(true);
+      }, 1500);
+    };
+
+    prepare();
   }, [isLoaded, isSignedIn, user?.unsafeMetadata, segments]);
+
+  /* ===========================
+     PUSH NOTIFICATIONS
+     =========================== */
+  useEffect(() => {
+    if (!appReady) return;
+
+    const registerPush = async () => {
+      if (!isSignedIn || !user?.id) return;
+
+      if (!Device.isDevice) return;
+
+      try {
+        const { status: existingStatus } =
+          await Notifications.getPermissionsAsync();
+
+        let finalStatus = existingStatus;
+
+        if (existingStatus !== "granted") {
+          const { status } = await Notifications.requestPermissionsAsync();
+
+          finalStatus = status;
+        }
+
+        if (finalStatus !== "granted") return;
+
+        const token = (
+          await Notifications.getExpoPushTokenAsync({
+            projectId: "e693fdcd-e810-4cf4-ae07-e5218d8032c1",
+          })
+        ).data;
+
+        console.log("🔥 PUSH TOKEN:", token);
+
+        const storedToken = await AsyncStorage.getItem("pushToken");
+
+        if (storedToken !== token) {
+          await axios.post(
+            "https://cast-api-zeta.vercel.app/api/notification-token/token",
+            {
+              userId: user.id,
+              token,
+            },
+          );
+
+          await AsyncStorage.setItem("pushToken", token);
+        }
+      } catch (err) {
+        console.log("Push setup error:", err);
+      }
+    };
+
+    registerPush();
+  }, [appReady, isSignedIn, user?.id]);
 
   /* ===========================
      LOADING STATE

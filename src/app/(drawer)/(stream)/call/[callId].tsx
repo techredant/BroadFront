@@ -1,7 +1,10 @@
+
 import { useTheme } from "@/context/ThemeContext";
+import { useCallRingtone } from "@/hooks/useCallRingtone";
 import { Ionicons } from "@expo/vector-icons";
 import {
   Call,
+  CallContent,
   CallingState,
   IncomingCall,
   OutgoingCall,
@@ -9,30 +12,23 @@ import {
   useCall,
   useCallStateHooks,
   useStreamVideoClient,
-  CallContent,
 } from "@stream-io/video-react-native-sdk";
-
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useChatContext } from "stream-chat-expo";
 
 const CallScreen = () => {
-  const { callId } = useLocalSearchParams<{ callId: string }>();
-
+    const { callId, isCaller: callerParam } = useLocalSearchParams<{
+      callId: string;
+      isCaller: string;
+    }>();
+     const isCaller = callerParam === "true";
   const videoClient = useStreamVideoClient();
-
   const { client: chatClient } = useChatContext();
-
   const [call, setCall] = useState<Call | null>(null);
-
   const [error, setError] = useState<string | null>(null);
-
-  const [isCaller, setIsCaller] = useState(false);
-
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -40,97 +36,90 @@ const CallScreen = () => {
 
     const startCall = async () => {
       try {
-        // chat channel
+        // find channel by ID to find its members
         const channel = chatClient.channel("messaging", callId);
-
         await channel.watch();
 
-        // create call
         const _call = videoClient.call("default", callId);
 
-        // exclude current user from ringing users
         const members = Object.values(channel.state.members)
           .filter((member) => member.user?.id !== chatClient.user?.id)
           .map((member) => ({
             user_id: member.user?.id as string,
           }));
 
-        // mark THIS device as caller immediately
-        setIsCaller(true);
-
         await _call.getOrCreate({
           ring: true,
-
           data: {
             members,
+            custom: {
+              triggeredBy: chatClient.user?.id,
+            },
           },
         });
 
         setCall(_call);
-      } catch (err) {
-        console.error("Failed to start call:", err);
-
+      } catch (error) {
+        console.error("Failed to start call:", error);
         setError("Failed to start the call. Try again");
       }
     };
-
     startCall();
-  }, [videoClient, callId]);
+    // eslint-disable-next-line
+  }, []);
 
-  if (error) {
-    return <ErrorCallUI error={error} />;
-  }
+  if (error) return <ErrorCallUI error={error} />;
 
-  if (!call) {
+  if (!call) return null;
+
+  return (
+    <StreamCall call={call}>
+      <CallUI isCaller={isCaller} />
+    </StreamCall>
+  );
+};
+
+function CallUI({ isCaller }: { isCaller: boolean }) {
+  const call = useCall();
+  const router = useRouter();
+  const { useCallCallingState } = useCallStateHooks();
+
+  const callingState = useCallCallingState();
+
+  // RINGTONES
+  useCallRingtone(
+    callingState !== CallingState.JOINED && callingState !== CallingState.LEFT,
+    !isCaller,
+  );
+
+  //   // CLOSE WHEN CALL ENDS
+    useEffect(() => {
+      if (callingState === CallingState.LEFT) {
+        router.back();
+      }
+    }, [callingState]);
+
+  if (
+    [CallingState.RINGING, CallingState.JOINING, CallingState.IDLE].includes(
+      callingState,
+    )
+  ) {
     return (
       <SafeAreaView className="flex-1 bg-background">
-        <View className="flex-1 items-center justify-center gap-4">
-          <ActivityIndicator size="small" color={theme.text} />
-
-          <Text className="mt-2 text-base text-foreground-muted">
-            Starting call...
-          </Text>
-        </View>
+        {isCaller ? <OutgoingCall /> : <IncomingCall />}
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <StreamCall call={call}>
-        <CallUI isCaller={isCaller} />
-      </StreamCall>
+    <SafeAreaView className="flex-1">
+      <CallContent
+        onHangupCallHandler={async () => {
+          await call?.endCall();
+        }}
+        layout="spotlight"
+      />
     </SafeAreaView>
-  );
-};
-
-function CallUI({ isCaller }: { isCaller: boolean }) {
-  const router = useRouter();
-
-  const { useCallCallingState } = useCallStateHooks();
-
-  const callingState = useCallCallingState();
-
-  useEffect(() => {
-    if (callingState === CallingState.LEFT) {
-      router.back();
-    }
-  }, [callingState]);
-
-  // 👇 RECEIVER only
-  if (callingState === CallingState.RINGING && !isCaller) {
-    return <IncomingCall />;
-  }
-
-  // 👇 CALLER NEVER sees ringing
-  if (isCaller && callingState !== CallingState.JOINED) {
-    return <OutgoingCall />;
-  }
-
-  return (
-    <View style={{ flex: 1 }}>
-      <CallContent />
-    </View>
   );
 }
 
@@ -138,23 +127,15 @@ export default CallScreen;
 
 function ErrorCallUI({ error }: { error: string }) {
   const router = useRouter();
-
   const { theme } = useTheme();
 
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="flex-1 items-center justify-center gap-4">
         <Ionicons name="alert-circle-outline" size={48} color={theme.danger} />
-
         <Text className="mt-2 text-base text-foreground">{error}</Text>
-
-        <Pressable
-          className="mt-4 rounded-xl bg-primary px-6 py-3"
-          onPress={() => router.back()}
-        >
-          <Text className="text-[15px] font-semibold text-foreground">
-            Go Back
-          </Text>
+        <Pressable className="mt-4 rounded-xl bg-primary px-6 py-3" onPress={() => router.back()}>
+          <Text className="text-[15px] font-semibold text-foreground">Go Back</Text>
         </Pressable>
       </View>
     </SafeAreaView>
