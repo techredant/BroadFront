@@ -99,8 +99,8 @@ export default Notifications;
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
-  header: { fontSize: 22, fontWeight: "700", textAlign: "center" },
-  subtitle: { fontSize: 14, textAlign: "center", marginBottom: 20 },
+  header: { fontSize: 21, fontWeight: "700", textAlign: "center" },
+  subtitle: { fontSize: 13, textAlign: "center", marginBottom: 20 },
   card: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -108,5 +108,5 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderRadius: 12,
   },
-  label: { fontSize: 16, fontWeight: "600" },
+  label: { fontSize: 15, fontWeight: "600" },
 });

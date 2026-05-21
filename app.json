@@ -2,7 +2,7 @@
   "expo": {
     "name": "Broadcast",
     "slug": "broadcast",
-    "version": "2.1.75",
+    "version": "2.1.90",
     "orientation": "portrait",
     "icon": "./assets/images/icon.jpg",
     "scheme": "broadcast",
@@ -15,6 +15,7 @@
       "bitcode": false
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.jpg",
         "backgroundColor": "#000000"
@@ -32,7 +33,10 @@
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.CAMERA",
         "android.permission.INTERNET",
-        "android.permission.SYSTEM_ALERT_WINDOW"
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.VIBRATE"
       ],
       "package": "com.ant_apps.BroadCast",
       "googleServicesFile": "./google-services.json"
@@ -49,7 +53,7 @@
             "./assets/notifications/notification_sound.wav",
             "./assets/notifications/notification_sound_other.wav"
           ],
-          "enableBackgroundRemoteNotifications": false
+          "enableBackgroundRemoteNotifications": true
         }
       ],
       [
@@ -73,7 +77,12 @@
           }
         }
       ],
-      "@stream-io/video-react-native-sdk",
+      [
+        "@stream-io/video-react-native-sdk",
+        {
+          "ringing": true
+        }
+      ],
       [
         "@config-plugins/react-native-webrtc",
         {
@@ -91,7 +100,8 @@
           }
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "react-native-compressor"
     ],
     "experiments": {
       "typedRoutes": true,

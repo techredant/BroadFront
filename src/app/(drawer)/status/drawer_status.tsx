@@ -1,127 +1,55 @@
-import { View, Text, Image, Pressable, StyleSheet } from "react-native";
-import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import moment from "moment";
-import Video from "react-native-video";
 import { useTheme } from "@/context/ThemeContext";
+import { StatusRing } from "@/app/(drawer)/(status)/StatusRing";
+import { StatusStoryThumb } from "@/app/(drawer)/(status)/StatusStoryThumb";
+import { STATUS_RING_SIZE } from "@/constants/statusTheme";
+import { getLatestStatus, statusDisplayName } from "@/utils/statusUser";
 
-function Ring({ count, viewed }: any) {
-  const size = 60;
-  const radius = 28;
-  const circumference = 2 * Math.PI * radius;
-  const segment = circumference / Math.max(count, 1);
+type Props = {
+  userStatus: any;
+  currentUserId?: string | null;
+};
 
-  return (
-    <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
-      <Defs>
-        {/* WhatsApp green gradient */}
-        <LinearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0%" stopColor="#E5E7EB" />
-          <Stop offset="100%" stopColor="#128C7E" />
-        </LinearGradient>
-      </Defs>
-
-      {/* base ring (seen = gray, unseen = green) */}
-      <Circle
-        cx={30}
-        cy={30}
-        r={radius}
-        stroke={viewed ? "#D1D5DB" : "#E5E7EB"}
-        strokeWidth={3}
-        fill="none"
-      />
-
-      {Array.from({ length: count }).map((_, i) => (
-        <Circle
-          key={i}
-          cx={30}
-          cy={30}
-          r={radius}
-          stroke="url(#g)"
-          strokeWidth={3}
-          fill="none"
-          strokeDasharray={`${segment - 3} ${circumference}`}
-          strokeDashoffset={-i * segment}
-          transform="rotate(-90 30 30)"
-        />
-      ))}
-    </Svg>
-  );
-}
-
-export default function StatusItem({ userStatus }: any) {
+export default function StatusListRow({ userStatus, currentUserId }: Props) {
   const router = useRouter();
+  const { theme } = useTheme();
 
-  const latest = userStatus.statuses?.[0];
+  const latest = getLatestStatus(userStatus.statuses);
+  const displayName = statusDisplayName(latest, userStatus);
 
-  const viewed = latest?.views?.length > 0;
-
-   const hasMedia = latest?.media?.length > 0;
-
-  const firstMedia = latest?.media?.[0];
-
-  const { theme } = useTheme()
-
+  const latestTime = latest?.createdAt;
+  const allViewed = (userStatus.statuses ?? []).every((s: any) =>
+    (s.views ?? []).some(
+      (v: any) => String(v.userId) === String(currentUserId),
+    ),
+  );
 
   return (
     <Pressable
-      style={styles.row}
+      style={[styles.row, { backgroundColor: theme.background }]}
       onPress={() => router.push(`/(status)/Viewer?user=${userStatus.userId}`)}
     >
-      {/* LEFT: Avatar + Ring */}
-      <View style={styles.avatarWrap}>
-        {latest ? (
-          hasMedia ? (
-            firstMedia?.includes(".mp4") ? (
-              <Video
-                source={{ uri: firstMedia }}
-                style={styles.media}
-                resizeMode="cover"
-                muted
-                repeat
-              />
-            ) : (
-              <Image source={{ uri: firstMedia }} style={styles.media} />
-            )
-          ) : (
-            <View
-              style={[
-                styles.textBackground,
-                {
-                  backgroundColor: latest.backgroundColor || "#1e293b",
-                },
-              ]}
-            >
-              <Text
-                style={[styles.textOnly, { color: theme.text }]}
-                numberOfLines={2}
-              >
-                {latest.caption}
-              </Text>
-            </View>
-          )
-        ) : null}
-        <Ring count={userStatus.statuses.length} viewed={viewed} />
+      <View style={{ width: STATUS_RING_SIZE, height: STATUS_RING_SIZE }}>
+        <StatusRing
+          size={STATUS_RING_SIZE}
+          statuses={userStatus.statuses ?? []}
+          currentUserId={currentUserId}
+        />
+        <StatusStoryThumb status={latest} ringSize={STATUS_RING_SIZE} />
       </View>
 
-      {/* MIDDLE: TEXT */}
       <View style={styles.middle}>
-        <Text style={[styles.name, { color: theme.text }]}>
-          {userStatus.firstName || "Unknown"}
-        </Text>
-
-        <Text style={[styles.caption, { color: theme.text }]} numberOfLines={1}>
-          {latest?.caption || "No status updates"}
-        </Text>
-      </View>
-
-      {/* RIGHT: TIME */}
-      <View>
-        <Text style={[styles.time, { color: theme.subtext }]}>
-          {moment(userStatus.createdAt).fromNow()}
-        </Text>
-        <Text style={[styles.time, { color: theme.text }]}>
-          {userStatus.statuses.length} status
+        <Text style={[styles.name, { color: theme.text }]}>{displayName}</Text>
+        <Text
+          style={[
+            styles.caption,
+            { color: allViewed ? theme.subtext : theme.text },
+          ]}
+          numberOfLines={1}
+        >
+          {latestTime ? moment(latestTime).fromNow() : "Just now"}
         </Text>
       </View>
     </Pressable>
@@ -135,73 +63,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
-
-  avatarWrap: {
-    width: 60,
-    height: 60,
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative", // IMPORTANT
-  },
-
-  textOnly: {
-    color: "#fff",
-    fontSize: 10,
-    textAlign: "center",
-    paddingHorizontal: 4,
-    fontWeight: "600",
-  },
-
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    position: "absolute",
-  },
-
-  textBackground: {
-    width: 49,
-    height: 49,
-    borderRadius: 29,
-    justifyContent: "center",
-    alignItems: "center",
-    position: "absolute",
-  },
-
-  placeholder: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "#E5E7EB",
-    position: "absolute",
-  },
-
   middle: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 14,
   },
-
   name: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "600",
-    color: "#111827",
   },
-
   caption: {
     fontSize: 13,
-    color: "#6B7280",
     marginTop: 2,
-  },
-
-  media: {
-    width: 49,
-    height: 49,
-    borderRadius: 29,
-    position: "absolute",
-  },
-
-  time: {
-    fontSize: 11,
-    color: "#9CA3AF",
   },
 });

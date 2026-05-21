@@ -1,197 +1,166 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
-  FlatList,
-  TextInput,
-  Pressable,
   ActivityIndicator,
   StyleSheet,
+  TouchableOpacity,
 } from "react-native";
 import axios from "axios";
+import { Ionicons } from "@expo/vector-icons";
+import { useHeaderHeight } from "@react-navigation/elements";
+import type { Channel as ChannelType } from "stream-chat";
+import {
+  AITypingIndicatorView,
+  Channel,
+  MessageList,
+  useChatContext,
+} from "stream-chat-expo";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { EmptyState } from "@/app/components/EmptyState";
+import { ChatGallery } from "@/app/components/ChatGallery";
+import { ChatMessageInput } from "@/app/components/ChatMessageInput";
+import { ChatVideoThumbnail } from "@/app/components/ChatVideoThumbnail";
+import { ChatKeyboardCompatibleView } from "@/app/components/ChatKeyboardCompatibleView";
+import { ChatWallpaper } from "@/app/components/ChatWallpaper";
+import { useStreamChannelLayout } from "@/utils/chatLayout";
+import { AI_MODEL, AI_PLATFORM } from "@/constants/ai";
 
-const BASE_URL = "https://cast-api-zeta.vercel.app";
+const BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ?? "https://cast-api-zeta.vercel.app";
+
+function getAiChannelId(clerkId: string) {
+  return `ai-assistant-${clerkId}`;
+}
 
 export default function AIChatScreen() {
   const { theme } = useTheme();
   const { userDetails } = useLevel();
+  const { client } = useChatContext();
+  const headerHeight = useHeaderHeight();
+  const channelLayout = useStreamChannelLayout(headerHeight);
 
-  const channelId = userDetails?.clerkId;
+  const clerkId = userDetails?.clerkId;
+  const streamChannelId = clerkId ? getAiChannelId(clerkId) : null;
 
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [agentReady, setAgentReady] = useState(false);
+  const [channel, setChannel] = useState<ChannelType | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [booting, setBooting] = useState(true);
 
-  const [messages, setMessages] = useState([
-    {
-      id: "ai-welcome",
-      role: "ai",
-      text: "Hello 👋 I'm your AI assistant. Ask me anything.",
-    },
-  ]);
+  const initAiChannel = useCallback(async () => {
+    if (!client || !clerkId || !streamChannelId) return;
 
-  const flatListRef = useRef<FlatList>(null);
-  const inputRef = useRef<TextInput>(null);
-
-  useEffect(() => {
-    const startAgent = async () => {
-      if (!channelId) return;
-
-      try {
-        await axios.post(`${BASE_URL}/api/ai/start-ai-agent`, {
-          channel_id: channelId,
-          channel_type: "messaging",
-          platform: "mobile",
-        });
-        setAgentReady(true);
-      } catch (error) {
-        console.log("❌ AI Agent start failed", error);
-        setAgentReady(false);
-      }
-    };
-
-    startAgent();
-  }, [channelId]);
-
-  /* ---------------- SEND MESSAGE ---------------- */
-  const sendMessage = async () => {
-    if (!input.trim() || !channelId) return;
-
-    const userMsg = {
-      id: Date.now().toString(),
-      role: "user",
-      text: input,
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setLoading(true);
-
-    if (!agentReady) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `error-${Date.now()}`,
-          role: "ai",
-          text: "The AI agent is not ready yet. Please wait a moment and try again.",
-        },
-      ]);
-      setLoading(false);
-      return;
-    }
+    setBooting(true);
+    setError(null);
 
     try {
-      const res = await axios.post(`${BASE_URL}/api/ai/chat`, {
-        channel_id: channelId,
-        message: userMsg.text,
+      await axios.post(`${BASE_URL}/api/ai/start-ai-agent`, {
+        channel_id: streamChannelId,
+        channel_type: "messaging",
+        user_id: clerkId,
+        platform: AI_PLATFORM,
+        model: AI_MODEL,
       });
 
-      const aiMsg = {
-        id: Date.now().toString() + "-ai",
-        role: "ai",
-        text: res.data?.reply || "No response",
-      };
-
-      setMessages((prev) => [...prev, aiMsg]);
+      const ch = client.channel("messaging", streamChannelId);
+      await ch.watch();
+      setChannel(ch);
     } catch (err: any) {
-      console.log("❌ AI CHAT ERROR:", err?.response?.data);
-      console.log("STATUS:", err?.response?.status);
-      console.log("MESSAGE:", err?.message);
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `error-${Date.now()}`,
-          role: "ai",
-          text:
-            err?.response?.data?.error ||
-            err?.response?.data?.message ||
-            "AI error occurred",
-        },
-      ]);
+      console.error("AI channel init failed:", err?.response?.data || err);
+      setError(
+        err?.response?.data?.reason ||
+          err?.response?.data?.error ||
+          "Could not start AI assistant",
+      );
     } finally {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-      setLoading(false);
+      setBooting(false);
     }
-  };
+  }, [client, clerkId, streamChannelId]);
+
+  useEffect(() => {
+    initAiChannel();
+  }, [initAiChannel]);
+
+  if (!clerkId) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.background }]}>
+        <Text style={{ color: theme.subtext }}>Sign in to use AI chat</Text>
+      </View>
+    );
+  }
+
+  if (booting) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color="#3797F0" />
+        <Text style={[styles.bootText, { color: theme.subtext }]}>
+          Connecting to AI…
+        </Text>
+      </View>
+    );
+  }
+
+  if (error || !channel) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.background }]}>
+        <Ionicons name="cloud-offline-outline" size={48} color={theme.subtext} />
+        <Text style={[styles.errorText, { color: theme.text }]}>{error}</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={initAiChannel}>
+          <Text style={styles.retryText}>Try again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
-      {/* CHAT */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View
-            style={{
-              alignSelf: item.role === "user" ? "flex-end" : "flex-start",
-              backgroundColor: item.role === "user" ? "#4f46e5" : theme.card,
-              padding: 10,
-              margin: 5,
-              borderRadius: 10,
-              maxWidth: "80%",
-            }}
-          >
-            <Text style={{ color: item.role === "user" ? "#fff" : theme.text }}>
-              {item.text}
-            </Text>
-          </View>
+    <View style={styles.root}>
+      <ChatWallpaper />
+      <Channel
+        channel={channel}
+        {...channelLayout}
+        KeyboardCompatibleView={ChatKeyboardCompatibleView}
+        hasCameraPicker={false}
+        audioRecordingEnabled={false}
+        Gallery={ChatGallery}
+        VideoThumbnail={ChatVideoThumbnail}
+        EmptyStateIndicator={() => (
+          <EmptyState
+            icon="sparkles-outline"
+            title="Ask me anything"
+            subtitle="Messages stream in real time with typing indicators."
+          />
         )}
-        contentContainerStyle={{ padding: 12 }}
-      />
-
-      {/* INPUT */}
-      <View style={styles.inputBar}>
-        <TextInput
-          ref={inputRef}
-          value={input}
-          onChangeText={setInput}
-          placeholder="Message AI..."
-          placeholderTextColor={theme.subtext}
-          style={[styles.input, { color: theme.text }]}
-        />
-
-        <Pressable
-          onPress={sendMessage}
-          style={styles.sendBtn}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={{ color: "#fff", fontWeight: "700" }}>Send</Text>
-          )}
-        </Pressable>
-      </View>
-    </SafeAreaView>
+      >
+        <MessageList />
+        <AITypingIndicatorView channel={channel} />
+        <ChatMessageInput />
+      </Channel>
+    </View>
   );
 }
 
-/* ---------------- STYLES ---------------- */
 const styles = StyleSheet.create({
-  inputBar: {
-    flexDirection: "row",
-    padding: 10,
-    borderTopWidth: 1,
-    borderColor: "#ddd",
-    alignItems: "center",
-  },
-  input: {
+  root: { flex: 1 },
+  centered: {
     flex: 1,
-    padding: 10,
-    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    gap: 12,
   },
-  sendBtn: {
-    backgroundColor: "#4f46e5",
-    paddingHorizontal: 16,
+  bootText: { marginTop: 12, fontSize: 14 },
+  errorText: {
+    textAlign: "center",
+    fontSize: 14,
+    marginTop: 12,
+  },
+  retryBtn: {
+    marginTop: 16,
+    backgroundColor: "#3797F0",
+    paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 10,
-    marginLeft: 10,
+    borderRadius: 20,
   },
+  retryText: { color: "#fff", fontWeight: "700" },
 });

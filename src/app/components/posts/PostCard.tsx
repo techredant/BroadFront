@@ -6,20 +6,10 @@ import React, {
   use,
   useMemo,
 } from "react";
-import {
-  Alert,
-  Animated,
-  FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  TextInput,
-} from "react-native";
+import { Alert, Animated, Image, Modal } from "react-native";
 import {
   View,
   Text,
-  Image,
   Pressable,
   Dimensions,
   StyleSheet,
@@ -36,6 +26,12 @@ import { Gesture } from "react-native-gesture-handler";
 import moment from "moment";
 import { Link, router } from "expo-router";
 import { MediaViewerModal } from "./MediaViewModal";
+import { VerifiedBadge } from "@/app/components/VerifiedBadge";
+import { LightMediaTile } from "@/app/components/posts/LightMediaTile";
+import { PostMediaGrid } from "@/app/components/posts/PostMediaGrid";
+import { uploadLocalMedia } from "@/utils/mediaUpload";
+import { isVideoMedia, resolveMediaUrls } from "@/utils/mediaUtils";
+import { buildOptimisticSharePost } from "@/utils/buildSharePost";
 import axios from "axios";
 import {
   FadeIn,
@@ -43,19 +39,19 @@ import {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import {
-  Menu,
-  MenuOptions,
-  MenuOption,
-  MenuTrigger,
-} from "react-native-popup-menu";
-import Video from "react-native-video";
 import { ReciteModal } from "./ReciteModal";
 import CommentModal from "./CommentModal";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
 import { EditModal } from "./EditModal";
 import { Linking } from "react-native";
+import {
+  formatConstituency,
+  getPoliticalColors,
+  PoliticalPalette,
+} from "@/constants/politicalTheme";
+import { formatNickHandle, stripNickPrefix } from "@/utils/nickName";
+import { API_PUBLIC_URL } from "@/constants/api";
 
 interface Member {
   id: string;
@@ -73,66 +69,51 @@ const urlRegex = /(https?:\/\/[^\s]+)/g;
 const extractUrls = (text: any = "") =>
   typeof text === "string" ? text.match(urlRegex) || [] : [];
 
-/* ---------------- FACEBOOK STYLE LINK CARD ---------------- */
-function LinkPreviewCard({ preview, theme }: any) {
+/* ---------------- BRIEFING LINK CARD (political press style) ---------------- */
+function LinkPreviewCard({
+  preview,
+  theme,
+  isDark,
+}: {
+  preview: any;
+  theme: any;
+  isDark: boolean;
+}) {
   if (!preview?.url) return null;
+  const civic = getPoliticalColors(isDark);
 
   return (
     <Pressable
       onPress={() => Linking.openURL(preview.url)}
-      style={{
-        marginHorizontal: 12,
-        marginTop: 10,
-        borderRadius: 14,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: theme.border,
-        backgroundColor: theme.card,
-      }}
+      style={[
+        styles.briefingCard,
+        { borderColor: civic.cardBorder, backgroundColor: theme.card },
+      ]}
     >
       {!!preview.image && (
-        <Image
-          source={{ uri: preview.image }}
-          style={{
-            width: "100%",
-            height: 180,
-          }}
-        />
+        <Image source={{ uri: preview.image }} style={styles.briefingImage} />
       )}
-
-      <View style={{ padding: 12 }}>
+      <View style={styles.briefingBody}>
+        <Text style={[styles.briefingLabel, { color: civic.chipText }]}>
+          BRIEFING
+        </Text>
         <Text
           numberOfLines={2}
-          style={{
-            fontWeight: "700",
-            fontSize: 14,
-            color: theme.text,
-          }}
+          style={[styles.briefingTitle, { color: theme.text }]}
         >
-          {preview.title || "Link preview"}
+          {preview.title || "External source"}
         </Text>
-
         {!!preview.description && (
           <Text
             numberOfLines={2}
-            style={{
-              color: theme.subtext,
-              marginTop: 4,
-              fontSize: 12,
-              lineHeight: 16,
-            }}
+            style={[styles.briefingDesc, { color: theme.subtext }]}
           >
             {preview.description}
           </Text>
         )}
-
         <Text
           numberOfLines={1}
-          style={{
-            color: theme.primary,
-            marginTop: 6,
-            fontSize: 11,
-          }}
+          style={[styles.briefingUrl, { color: civic.chipText }]}
         >
           {preview.url.replace(/^https?:\/\//, "")}
         </Text>
@@ -142,6 +123,7 @@ function LinkPreviewCard({ preview, theme }: any) {
 }
 
 const { width } = Dimensions.get("window");
+const MEDIA_GAP = 4;
 
 export function PostCard({
   post,
@@ -150,10 +132,13 @@ export function PostCard({
   socket,
   allPosts,
   onUpdatePost,
+  onPrependPost,
+  onRemovePost,
   onRefresh,
   ...otherProps
 }: any) {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
+  const civic = useMemo(() => getPoliticalColors(isDark), [isDark]);
   const { userDetails } = useLevel();
 
   if (!post) return null;
@@ -171,21 +156,25 @@ export function PostCard({
     [key: string]: boolean;
   }>({});
 
-const onOpenComments = (postId: string) => {
-  setCommentModalVisible(true);
-  setPage(1); // reset pagination
-};
+  const onOpenComments = (postId: string) => {
+    setCommentModalVisible(true);
+    setPage(1); // reset pagination
+  };
+  const { updatePost, prependPost, replacePost, removePost } = useLevel();
 
-useEffect(() => {
-  if (!commentModalVisible) return;
+  useEffect(() => {
+    if (!commentModalVisible) return;
 
-  setPage(1);
-  fetchComments(1, true); // ✅ always first 5
-}, [commentModalVisible]);
+    setPage(1);
+    fetchComments(1, true); // ✅ always first 5
+  }, [commentModalVisible]);
 
   const LIKE_COLOR = "#E0245E";
 
-  const mediaList = Array.isArray(post.media) ? post.media : [];
+  const mediaList = useMemo(
+    () => resolveMediaUrls(Array.isArray(post.media) ? post.media : []),
+    [post.media],
+  );
   const reciteMediaList = Array.isArray(post.reciteMedia)
     ? post.reciteMedia
     : [];
@@ -201,8 +190,8 @@ useEffect(() => {
   const [editVisible, setEditVisible] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
 
-  const gridWidth = width - 24;
-  const itemSize = gridWidth / 2 - 4;
+  const gridWidth = width - 20;
+  const itemSize = gridWidth / 2 - MEDIA_GAP;
 
   const isLiked = userDetails?.clerkId
     ? postCard.likes?.includes(userDetails.clerkId)
@@ -212,11 +201,17 @@ useEffect(() => {
     : false;
 
   const [deleteVisible, setDeleteVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
   const [loadingDelete, setLoadingDelete] = useState(false);
+
+  const closeMenu = () => setMenuVisible(false);
+  const runMenuAction = (action: () => void) => {
+    closeMenu();
+    action();
+  };
 
   const [reciteVisible, setReciteVisible] = useState(false);
   // const [loadingRecite, setLoadingRecite] = useState(false);
-  
 
   const openMedia = (index: number) => {
     setSelectedIndex(index);
@@ -268,46 +263,37 @@ useEffect(() => {
     outputRange: ["0deg", "360deg"],
   });
 
-const fetchComments = useCallback(
-  async (pageNumber = 1, refresh = false) => {
-    if (!postCard._id) return;
+  const fetchComments = useCallback(
+    async (pageNumber = 1, refresh = false) => {
+      if (!postCard._id) return;
 
-    try {
-      if (pageNumber === 1) setLoading(true);
-      else setLoadingMore(true);
+      try {
+        if (pageNumber === 1) setLoading(true);
+        else setLoadingMore(true);
 
-      const url = `https://cast-api-zeta.vercel.app/api/${postCard._id}?page=${pageNumber}&limit=5`;
+        const url = `https://cast-api-zeta.vercel.app/api/comments/${postCard._id}?page=${pageNumber}&limit=5`;
 
-      const res = await axios.get(url);
+        const res = await axios.get(url);
 
-      const newComments = res.data ?? [];
+        const newComments = res.data ?? [];
 
-      setHasMore(newComments.length === 5);
+        setHasMore(newComments.length === 5);
 
-      if (refresh || pageNumber === 1) {
-        setComments(newComments);
-      } else {
-        setComments((prev) => [...prev, ...newComments]);
+        if (refresh || pageNumber === 1) {
+          setComments(newComments);
+        } else {
+          setComments((prev) => [...prev, ...newComments]);
+        }
+      } catch (err) {
+        console.error("❌ Error fetching Comments:", err);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
       }
-    } catch (err) {
-      console.error("❌ Error fetching Comments:", err);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-      setRefreshing(false);
-    }
-  },
-  [postCard._id],
-);
-
-const loadMoreComments = () => {
-  if (loadingMore || !hasMore) return;
-
-  const nextPage = page + 1;
-  setPage(nextPage);
-
-  fetchComments(nextPage);
-};
+    },
+    [postCard._id],
+  );
 
   // Fetch on mount or level change
   useEffect(() => {
@@ -339,11 +325,16 @@ const loadMoreComments = () => {
       await axios.post(
         `https://cast-api-zeta.vercel.app/api/posts/${postCard._id}/view`,
       );
-      setPostCard((prev: any) => ({ ...prev, views: prev.views + 1 }));
+      setPostCard((prev: any) => ({ ...prev, views: (prev.views || 0) + 1 }));
     } catch (err) {
       console.error("View increment failed:", err);
     }
   };
+
+  const openReciteModal = useCallback(() => {
+    setQuoteVisible(true);
+    incrementViews();
+  }, [postCard._id]);
 
   const incrementRecasts = async () => {
     try {
@@ -404,33 +395,6 @@ const loadMoreComments = () => {
     }
   };
 
-  /* ---------------- UPLOAD ---------------- */
-  const uploadToCloudinary = async (uri: string) => {
-    const data = new FormData();
-
-    const isVideo = uri.includes(".mp4") || uri.includes(".mov");
-
-    data.append("file", {
-      uri,
-      type: isVideo ? "video/mp4" : "image/jpeg",
-      name: isVideo ? "video.mp4" : "image.jpg",
-    } as any);
-
-    data.append("upload_preset", "MediaCast");
-
-    const endpoint = isVideo
-      ? "https://api.cloudinary.com/v1_1/ds25oyyqo/video/upload"
-      : "https://api.cloudinary.com/v1_1/ds25oyyqo/image/upload";
-
-    const res = await fetch(endpoint, {
-      method: "POST",
-      body: data,
-    });
-
-    const result = await res.json();
-    return result.secure_url;
-  };
-
   const handleEdit = async (data: {
     caption?: string;
     quote?: string;
@@ -445,10 +409,11 @@ const loadMoreComments = () => {
       // Upload only new files
       const uploadedMedia = await Promise.all(
         data.media.map(async (item) => {
-          if (item.startsWith("file://")) {
-            return await uploadToCloudinary(item);
-          }
-          return item; // already uploaded
+          const uploaded = await uploadLocalMedia(
+            item,
+            isVideoMedia(item) ? "video" : "image",
+          );
+          return uploaded ?? item;
         }),
       );
 
@@ -478,39 +443,56 @@ const loadMoreComments = () => {
   };
 
   const handleRecite = async (text: string) => {
-    if (!userDetails.clerkId) return;
+    if (!userDetails?.clerkId || !postCard) return;
+
+    const tempId = `temp-recite-${Date.now()}`;
+    const optimistic = buildOptimisticSharePost({
+      type: "recite",
+      tempId,
+      userDetails,
+      sourcePost: postCard,
+      quote: text,
+    });
+
+    prependPost(optimistic);
+    onPrependPost?.(optimistic);
+    setRecited(true);
+    setQuoteVisible(false);
+    setReciteVisible(false);
     setLoadingRecite(true);
 
-    const newRecite = {
+    const payload = {
       userId: userDetails.clerkId,
-      reciteUserId: postCard.user.clerkId, // original author
+      reciteUserId: postCard.user?.clerkId || postCard.userId,
       reciteImage: postCard.user?.image,
-      reciteFirstName: postCard.user.firstName || postCard.user?.companyName,
-      reciteLastName: postCard.user.lastName,
-      reciteNickName: postCard.user.nickName || "Anonymous",
+      reciteFirstName: postCard.user?.firstName || postCard.user?.companyName,
+      reciteLastName: postCard.user?.lastName,
+      reciteNickName: postCard.user?.nickName || "Anonymous",
       caption: postCard.caption,
       reciteMedia: postCard.media,
       levelType: postCard.levelType,
       levelValue: postCard.levelValue,
-      quote: text, // ✅ use the argument directly
+      quote: text,
       originalPostId: postCard._id || null,
+      type: "recite",
     };
 
-    setRecited(true);
-
     try {
-      await axios.post(`https://cast-api-zeta.vercel.app/api/posts`, {
-        ...newRecite,
-        type: "recite",
-      });
+      const res = await axios.post(
+        `https://cast-api-zeta.vercel.app/api/posts`,
+        payload,
+      );
+
+      const created = res.data;
+      replacePost(tempId, created);
+      onPrependPost?.(created);
 
       await incrementViews();
       await incrementRecite();
-      onRefresh?.();
-
-      setQuoteVisible(false);
     } catch (err) {
       console.error(err);
+      removePost(tempId);
+      onRemovePost?.(tempId);
       setRecited(false);
     } finally {
       setLoadingRecite(false);
@@ -522,24 +504,44 @@ const loadMoreComments = () => {
   const handleRecast = async (text: string) => {
     if (!userDetails?.clerkId || !postCard) return;
 
+    const tempId = `temp-recast-${Date.now()}`;
+    const optimistic = buildOptimisticSharePost({
+      type: "recast",
+      tempId,
+      userDetails,
+      sourcePost: postCard,
+      quote: text || null,
+    });
+
+    prependPost(optimistic);
+    onPrependPost?.(optimistic);
+    setReposted(true);
+    setQuoteVisible(false);
     setLoadingRecast(true);
-    const newRecast = {
+
+    const payload = {
       userId: userDetails.clerkId,
-      originalPostId: postCard._id, // required for backend to copy
+      originalPostId: postCard._id,
       caption: postCard.caption || "",
       quote: text || null,
       levelType: postCard.levelType,
       levelValue: postCard.levelValue,
-
-      type: "recast", // marks it as a recast/recite
+      type: "recast",
       reciteUserId: postCard?.user?.clerkId || "",
       reciteFirstName: postCard?.user?.firstName || postCard?.user?.companyName,
       reciteLastName: postCard?.user?.lastName || "",
       reciteNickName: postCard?.user?.nickName || "",
       reciteImage: postCard?.user?.image || "",
     };
+
     try {
-      await axios.post(`https://cast-api-zeta.vercel.app/api/posts`, newRecast);
+      const res = await axios.post(
+        `https://cast-api-zeta.vercel.app/api/posts`,
+        payload,
+      );
+
+      replacePost(tempId, res.data);
+      onPrependPost?.(res.data);
 
       const updated = {
         ...postCard,
@@ -547,33 +549,39 @@ const loadMoreComments = () => {
       };
 
       setPostCard(updated);
+      updatePost(updated);
+      onUpdatePost?.(updated);
 
-      onUpdatePost?.(updated); // 🔥 IMPORTANT
-      // ✅ THIS is what you missed
-      onRefresh?.();
       await incrementRecasts();
+      await incrementViews();
     } catch (err) {
       console.error("❌ Error reposting:", err);
+      removePost(tempId);
+      onRemovePost?.(tempId);
+      setReposted(false);
     } finally {
       setLoadingRecast(false);
     }
   };
 
   const confirmDeletePost = async () => {
+    const postId = postCard._id;
     setLoadingDelete(true);
+    setDeleteVisible(false);
+
+    removePost(postId);
+    onDeletePost?.(postId);
+
     try {
       await axios.delete(
-        `https://cast-api-zeta.vercel.app/api/posts/${postCard._id}`,
+        `https://cast-api-zeta.vercel.app/api/posts/${postId}`,
         {
           data: { userId: userDetails.clerkId },
         },
       );
-
-      onDeletePost?.(postCard._id); // remove from feed
-      setDeleteVisible(false);
     } catch (err) {
       console.error("❌ Delete failed:", err);
-      setDeleteVisible(false);
+      onRefresh?.();
     } finally {
       setLoadingDelete(false);
     }
@@ -586,6 +594,10 @@ const loadMoreComments = () => {
   const isOwner = userDetails?.clerkId === postCard.userId;
 
   const isRecite = postCard.type === "recite";
+  const constituency = formatConstituency(
+    postCard.levelValue,
+    postCard.levelType,
+  );
 
   /* ---------------- LINK DETECTION ---------------- */
   const detectedUrl = extractUrls(text)[0];
@@ -596,31 +608,66 @@ const loadMoreComments = () => {
 
   const topLinkPreview = isRecite ? null : linkPreview;
 
-  const renderCaptionWithMentions = (
-    text: string,
-    mentions: any[],
-    onMentionPress: (userId: string) => void,
-  ) => {
-    const parts = text.split(/(@[A-Za-z0-9_]+)/g);
+  const findMentionEntry = (handle: string, mentions: any[]) => {
+    const h = stripNickPrefix(handle).toLowerCase();
+    if (!h || !mentions?.length) return null;
 
-    let mentionIndex = 0; // 👈 track order
+    for (const m of mentions) {
+      if (typeof m === "string") {
+        if (stripNickPrefix(m).toLowerCase() === h) {
+          return { nickName: stripNickPrefix(m) };
+        }
+        continue;
+      }
+      const nick = stripNickPrefix(m?.nickName || m?.nickname).toLowerCase();
+      if (nick === h) return m;
+    }
+    return null;
+  };
+
+  const openMentionProfile = useCallback(
+    async (rawHandle: string, mentions: any[]) => {
+      const handle = stripNickPrefix(rawHandle);
+      if (!handle) return;
+
+      const entry = findMentionEntry(handle, mentions);
+      const userId = entry?.userId || entry?.clerkId;
+      if (userId) {
+        router.push(`/(profileId)/${userId}`);
+        return;
+      }
+
+      try {
+        const { data } = await axios.get(
+          `${API_PUBLIC_URL}/api/users/by-nick/${encodeURIComponent(handle)}`,
+        );
+        if (data?.clerkId) {
+          router.push(`/(profileId)/${data.clerkId}`);
+        }
+      } catch {
+        Alert.alert(
+          "Profile not found",
+          `No user found for @${handle}.`,
+        );
+      }
+    },
+    [],
+  );
+
+  const renderCaptionWithMentions = (text: string, mentions: any[]) => {
+    const parts = text.split(/(@+[A-Za-z0-9_]+)/g);
 
     return parts.map((part, index) => {
-      if (part.startsWith("@")) {
-        const mentionedUser = mentions?.find((m: any) => m.userId);
+      if (/^@+/.test(part)) {
+        const handle = stripNickPrefix(part);
 
         return (
           <Text
             key={index}
-            onPress={() => {
-              console.log("MENTION CLICKED:", mentionedUser);
-              if (mentionedUser?.userId) {
-                onMentionPress(mentionedUser);
-              }
-            }}
-            style={{ color: theme.primary, fontWeight: "600" }}
+            onPress={() => openMentionProfile(handle, mentions)}
+            style={{ color: civic.mention, fontWeight: "700" }}
           >
-            {part}
+            {formatNickHandle(handle)}
           </Text>
         );
       }
@@ -633,250 +680,110 @@ const loadMoreComments = () => {
     });
   };
 
-  const handleMentionPress = (userId: string) => {
-    // console.log("MENTION CLICKED:", text);
-    router.push(`/(profileId)/${userId}`);
-  };
+  const displayName =
+    postCard.userId === userDetails?.clerkId
+      ? userDetails?.firstName || userDetails?.companyName
+      : postCard.user?.firstName || postCard.user?.companyName;
+  const avatarUri =
+    postCard.userId === userDetails?.clerkId
+      ? userDetails?.image
+      : postCard.user?.image;
+  const isVerifiedUser =
+    postCard.userId === userDetails?.clerkId
+      ? userDetails?.isVerified
+      : postCard.user?.isVerified;
 
   return (
     <>
       <View
-        style={{
-          backgroundColor: theme.background,
-          paddingVertical: 2,
-          marginBottom: 4,
-          borderRadius: 12,
-        }}
+        style={[
+          styles.card,
+          { backgroundColor: civic.cardBg, borderColor: civic.cardBorder },
+        ]}
       >
         {/* HEADER */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 10,
-            paddingHorizontal: 12,
-          }}
-        >
+        <View style={styles.header}>
           <Pressable
             onPress={() => router.push(`/(profileId)/${postCard.userId}`)}
-            style={{ flex: 1, flexDirection: "row", gap: 10, zIndex: 10 }}
+            style={styles.headerLeft}
           >
-            <Image
-              source={{
-                uri:
-                  postCard.userId === userDetails?.clerkId
-                    ? userDetails?.image
-                    : postCard.user?.image,
-              }}
-              style={{ width: 30, height: 30, borderRadius: 15 }}
-            />
-            <View>
+            <View
+              style={[
+                styles.avatarRing,
+                isVerifiedUser && styles.avatarRingVerified,
+              ]}
+            >
+              <Image source={{ uri: avatarUri }} style={styles.avatar} />
+            </View>
+            <View style={styles.headerMeta}>
+              <View style={styles.nameRow}>
+                <Text
+                  style={[styles.displayName, { color: theme.text }]}
+                  numberOfLines={1}
+                >
+                  {displayName}
+                </Text>
+                <VerifiedBadge isVerified={isVerifiedUser} size={13} />
+              </View>
               <Text
-                style={{ color: theme.text, fontWeight: "bold", fontSize: 12 }}
+                style={[styles.handle, { color: theme.subtext }]}
+                numberOfLines={1}
               >
-                {postCard.userId === userDetails?.clerkId
-                  ? userDetails?.firstName || userDetails?.companyName
-                  : postCard.user?.firstName || postCard.user?.companyName}
+                {formatNickHandle(postCard.user?.nickName)}
               </Text>
-              <Text
-                style={{
-                  color: theme.subtext,
-                  fontSize: 10,
-                  fontWeight: "bold",
-                }}
-              >
-                {postCard.user?.nickName}
-              </Text>
-              <Text
-                style={{
-                  fontSize: 10,
-                  fontWeight: "bold",
-                  fontStyle: "italic",
-                  color: theme.subtext,
-                }}
-              >
-                {postCard?.levelValue?.toLowerCase() === "home"
-                  ? ""
-                  : `#${postCard.levelValue} ${postCard.levelType}`}
-              </Text>
+              {constituency ? (
+                <View
+                  style={[
+                    styles.constituencyChip,
+                    {
+                      backgroundColor: civic.chipBg,
+                      borderColor: civic.chipText,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="location-outline"
+                    size={10}
+                    color={civic.chipText}
+                  />
+                  <Text
+                    style={[styles.constituencyText, { color: civic.chipText }]}
+                  >
+                    {constituency.toUpperCase()}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </Pressable>
 
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.2,
-              shadowRadius: 3,
-              elevation: 4,
-              backgroundColor: theme.background,
-              borderRadius: 50,
-              padding: 4,
-            }}
-          >
-            <Ionicons name="time-outline" size={14} color="gray" />
-            <Text
-              style={{
-                color: theme.subtext,
-                fontWeight: "600",
-                fontSize: 10,
-                fontStyle: "italic",
-              }}
+          <View style={styles.headerRight}>
+            <View
+              style={[styles.timePill, { backgroundColor: civic.actionBar }]}
             >
-              {moment(postCard.createdAt).fromNow()}
-            </Text>
+              <Text style={[styles.timeText, { color: theme.subtext }]}>
+                {moment(postCard.createdAt).fromNow().toUpperCase()}
+              </Text>
+            </View>
+
+            <Pressable onPress={() => setMenuVisible(true)} hitSlop={10}>
+              <Feather name="more-vertical" size={20} color={theme.subtext} />
+            </Pressable>
           </View>
-
-          <Menu>
-            <MenuTrigger>
-              <Feather name="more-vertical" size={20} color="gray" />
-            </MenuTrigger>
-
-            <MenuOptions
-              customStyles={{
-                optionsContainer: {
-                  borderRadius: 12,
-                  paddingVertical: 6,
-                  width: 180,
-                  backgroundColor: theme.card, // ✅ THIS is what matters
-
-                  borderColor: theme.border || "#00000020",
-                },
-              }}
-            >
-              {isOwner && (
-                <MenuOption onSelect={() => setEditVisible(true)}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: 8,
-                    }}
-                  >
-                    <Feather name="edit-2" size={16} color={theme.text} />
-                    <Text style={{ color: theme.text, fontWeight: "600" }}>
-                      Edit Post
-                    </Text>
-                  </View>
-                </MenuOption>
-              )}
-              {/* Save */}
-              <MenuOption onSelect={() => alert("Save post")}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: 8,
-                  }}
-                >
-                  <Feather name="bookmark" size={16} color={theme.text} />
-                  <Text style={{ color: theme.text }}>Save</Text>
-                </View>
-              </MenuOption>
-
-              {/* Share */}
-              <MenuOption onSelect={() => alert("Share post")}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: 8,
-                  }}
-                >
-                  <Feather name="share-2" size={16} color={theme.text} />
-                  <Text style={{ color: theme.text }}>Share</Text>
-                </View>
-              </MenuOption>
-
-              {/* Report */}
-              <MenuOption onSelect={() => alert("Report post")}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: 8,
-                  }}
-                >
-                  <Feather name="flag" size={16} color="#9E9505" />
-                  <Text style={{ color: "#9E9505" }}>Report</Text>
-                </View>
-              </MenuOption>
-
-              {/* Block */}
-              <MenuOption onSelect={() => alert("Block user")}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: 8,
-                  }}
-                >
-                  <Feather name="slash" size={16} color="#DC2626" />
-                  <Text style={{ color: "#DC2626", fontWeight: "600" }}>
-                    Block
-                  </Text>
-                </View>
-              </MenuOption>
-
-              {/* Delete (only show if owner) */}
-              {isOwner && (
-                <MenuOption onSelect={() => setDeleteVisible(true)}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: 8,
-                    }}
-                  >
-                    <Feather name="trash-2" size={16} color="#DC2626" />
-                    <Text style={{ color: "#DC2626", fontWeight: "600" }}>
-                      Delete
-                    </Text>
-                  </View>
-                </MenuOption>
-              )}
-            </MenuOptions>
-          </Menu>
         </View>
         {/* COLLAPSIBLE CAPTION */}
         {text ? (
-          <View style={{ paddingHorizontal: 12, marginTop: 4 }}>
+          <View style={styles.captionBlock}>
             <Text
-              numberOfLines={isExpanded ? undefined : 3}
-              style={{
-                color: theme.text,
-                fontSize: 14,
-                lineHeight: 20,
-              }}
+              numberOfLines={isExpanded ? undefined : 4}
+              style={[styles.captionText, { color: theme.text }]}
             >
-              <Text style={{ fontSize: 14, lineHeight: 20 }}>
-                {renderCaptionWithMentions(
-                  text,
-                  postCard.mentions || [],
-                  handleMentionPress,
-                )}
-              </Text>
+              {renderCaptionWithMentions(text, postCard.mentions || [])}
             </Text>
 
             {text.length > 80 && (
               <TouchableOpacity onPress={() => toggleExpand(postCard._id)}>
-                <Text
-                  style={{
-                    color: theme.primary,
-                    marginTop: 4,
-                    fontWeight: "600",
-                  }}
-                >
-                  {isExpanded ? "Show less" : "Show more"}
+                <Text style={[styles.readMore, { color: civic.chipText }]}>
+                  {isExpanded ? "Collapse" : "Read full statement"}
                 </Text>
               </TouchableOpacity>
             )}
@@ -885,26 +792,23 @@ const loadMoreComments = () => {
 
         {/* LINK PREVIEW (ALWAYS OUTSIDE TEXT) */}
         {topLinkPreview ? (
-          <LinkPreviewCard preview={topLinkPreview} theme={theme} />
+          <LinkPreviewCard
+            preview={topLinkPreview}
+            theme={theme}
+            isDark={isDark}
+          />
         ) : !isRecite && detectedUrl ? (
           <Pressable
             onPress={() => Linking.openURL(detectedUrl)}
-            style={{
-              marginHorizontal: 12,
-              marginTop: 10,
-              padding: 12,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: theme.border,
-              backgroundColor: theme.card,
-            }}
+            style={[
+              styles.urlFallback,
+              { borderColor: civic.cardBorder, backgroundColor: theme.card },
+            ]}
           >
+            <Feather name="external-link" size={14} color={civic.chipText} />
             <Text
               numberOfLines={1}
-              style={{
-                color: theme.primary,
-                fontWeight: "500",
-              }}
+              style={[styles.urlFallbackText, { color: civic.chipText }]}
             >
               {detectedUrl}
             </Text>
@@ -913,15 +817,13 @@ const loadMoreComments = () => {
 
         {postCard.type === "recite" ? (
           <View
-            style={{
-              backgroundColor: theme.badge,
-              padding: 12,
-              marginHorizontal: 12,
-              marginTop: 6,
-              // borderLeftWidth: 1,
-              // borderLeftColor: "#4B9CE2",
-              borderRadius: 8,
-            }}
+            style={[
+              styles.chamberQuote,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+              },
+            ]}
           >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Image
@@ -935,14 +837,14 @@ const loadMoreComments = () => {
               />
               <View style={{ flexDirection: "column" }}>
                 <Text
-                  style={{ fontWeight: "700", fontSize: 11, color: theme.text }}
+                  style={{ fontWeight: "700", fontSize: 10, color: theme.text }}
                 >
                   {postCard?.reciteFirstName || postCard?.reciteCompanyName}
                 </Text>
                 <Text
                   style={{
                     fontWeight: "700",
-                    fontSize: 10,
+                    fontSize: 9,
                     color: theme.subtext,
                   }}
                 >
@@ -950,116 +852,19 @@ const loadMoreComments = () => {
                 </Text>
               </View>
             </View>
-            {/* RECITE MEDIA GRID */}
-            <View
-              style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 4 }}
-            >
-              {reciteMediaList.slice(0, 4).map((uri: string, idx: number) => {
-                const count = reciteMediaList.length;
-                const remaining = count - 4;
-
-                const gridWidth = width - 48; // match padding
-                const half = gridWidth / 2;
-
-                const isSingle = count === 1;
-                const isLast = idx === 3 && remaining > 0;
-
-                const containerWidth = isSingle ? gridWidth : half;
-                const containerHeight = isSingle ? gridWidth * 0.75 : half;
-
-                const isVideo =
-                  uri?.toLowerCase().includes(".mp4") ||
-                  uri?.toLowerCase().includes(".mov");
-
-                return (
-                  <Pressable
-                    key={`${uri}-${idx}`}
-                    onPress={() => openMedia(idx)}
-                    style={{
-                      width: containerWidth,
-                      height: containerHeight,
-                      padding: 2,
-                    }}
-                  >
-                    <View
-                      style={{
-                        flex: 1,
-                        borderRadius: 12,
-                        overflow: "hidden",
-                        backgroundColor: "#000",
-                      }}
-                    >
-                      {isVideo ? (
-                        <>
-                          <Video
-                            source={{ uri }}
-                            style={{ width: "100%", height: "100%" }}
-                            resizeMode="cover"
-                            paused={!isVisible}
-                            muted={isMuted}
-                            repeat
-                          />
-
-                          <TouchableOpacity
-                            style={StyleSheet.absoluteFillObject}
-                            onPress={() => openMedia(idx)}
-                          />
-
-                          <TouchableOpacity
-                            style={{
-                              position: "absolute",
-                              top: 8,
-                              right: 8,
-                              backgroundColor: "rgba(0,0,0,0.5)",
-                              borderRadius: 20,
-                              padding: 5,
-                            }}
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              setIsMuted((prev) => !prev);
-                            }}
-                          >
-                            <Ionicons
-                              name={isMuted ? "volume-mute" : "volume-high"}
-                              size={16}
-                              color="#fff"
-                            />
-                          </TouchableOpacity>
-                        </>
-                      ) : (
-                        <Image
-                          source={{ uri }}
-                          style={{ width: "100%", height: "100%" }}
-                          resizeMode="cover"
-                        />
-                      )}
-                    </View>
-
-                    {isLast && (
-                      <View
-                        style={{
-                          ...StyleSheet.absoluteFillObject,
-                          backgroundColor: "rgba(0,0,0,0.6)",
-                          justifyContent: "center",
-                          alignItems: "center",
-                          borderRadius: 12,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: "#fff",
-                            fontSize: 26,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          +{remaining}
-                        </Text>
-                      </View>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
+            {reciteMediaList.length > 0 && (
+              <View style={{ marginTop: 8 }}>
+                <PostMediaGrid
+                  uris={reciteMediaList}
+                  containerWidth={width - 48}
+                  onPressItem={openMedia}
+                  isVisible={isVisible}
+                  useInlineVideo
+                  isMuted={isMuted}
+                  onToggleMute={() => setIsMuted((p) => !p)}
+                />
+              </View>
+            )}
 
             <Text
               style={{ fontStyle: "italic", marginTop: 2, color: theme.text }}
@@ -1073,7 +878,7 @@ const loadMoreComments = () => {
                     style={{
                       fontStyle: "italic",
                       color: theme.text,
-                      fontSize: 13,
+                      fontSize: 12,
                       lineHeight: 18,
                     }}
                   >
@@ -1100,7 +905,11 @@ const loadMoreComments = () => {
 
               {/* RECITE LINK PREVIEW */}
               {linkPreview ? (
-                <LinkPreviewCard preview={linkPreview} theme={theme} />
+                <LinkPreviewCard
+                  preview={linkPreview}
+                  theme={theme}
+                  isDark={isDark}
+                />
               ) : detectedUrl ? (
                 <Pressable
                   onPress={() => Linking.openURL(detectedUrl)}
@@ -1118,330 +927,219 @@ const loadMoreComments = () => {
                 </Pressable>
               ) : null}
             </Text>
-         
           </View>
         ) : (
-          <View
-            style={{
-              flexDirection: "row",
-              flexWrap: "wrap",
-              // marginHorizontal: 12,
-            }}
-          >
-            {mediaList.slice(0, 4).map((uri: string, idx: number) => {
-              const currentMediaCount = mediaList.length;
-              const remaining = currentMediaCount - 4;
-              const isSingle = currentMediaCount === 1;
-              const isLast = idx === 3 && remaining > 0;
-              const containerWidth = isSingle ? width : width / 2;
-              const containerHeight = isSingle ? width * 0.75 : width / 2;
-
-              const isVideo = uri.includes(".mp4") || uri.includes(".mov");
-
-              return (
-                <Pressable
-                  key={uri}
-                  onPress={() => openMedia(idx)}
-                  style={{
-                    width: containerWidth,
-                    height: containerHeight,
-                    padding: 2,
-                    zIndex: 10,
-                  }}
-                >
-                  <View
-                    style={{
-                      flex: 1,
-                      borderRadius: 12,
-                      overflow: "hidden",
-                      backgroundColor: "#000",
-                    }}
-                  >
-                    {isVideo ? (
-                      <>
-                        <Video
-                          source={{ uri }}
-                          style={{ width: "100%", height: "100%" }}
-                          resizeMode="cover"
-                          paused={!isVisible}
-                          muted={isMuted}
-                          repeat
-                        />
-
-                        <TouchableOpacity
-                          style={{
-                            ...StyleSheet.absoluteFillObject,
-                            backgroundColor: "rgba(0,0,0,0.0)",
-                            justifyContent: "center",
-                            alignItems: "center",
-                            borderRadius: 12,
-                            overflow: "hidden",
-                          }}
-                          onPress={() => openMedia(idx)}
-                        ></TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={{
-                            position: "absolute",
-                            top: 10,
-                            right: 10,
-                            backgroundColor: "rgba(0,0,0,0.4)",
-                            borderRadius: 20,
-                            padding: 6,
-                          }}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            setIsMuted((prev) => !prev);
-                          }}
-                        >
-                          <Ionicons
-                            name={isMuted ? "volume-mute" : "volume-high"}
-                            size={20}
-                            color="#fff"
-                          />
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      <Image
-                        source={{ uri }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="cover"
-                      />
-                    )}
-                  </View>
-                  {isLast && (
-                    <View
-                      pointerEvents="none"
-                      style={{
-                        ...StyleSheet.absoluteFillObject,
-                        backgroundColor: "rgba(0,0,0,0.55)",
-                        justifyContent: "center",
-                        alignItems: "center",
-                        borderRadius: 12,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: "#fff",
-                          fontSize: 32,
-                          fontWeight: "bold",
-                        }}
-                      >
-                        +{remaining}
-                      </Text>
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
+          mediaList.length > 0 && (
+            <View style={styles.mainMediaWrap}>
+              <PostMediaGrid
+                uris={mediaList}
+                containerWidth={gridWidth}
+                onPressItem={openMedia}
+                isVisible={isVisible}
+              />
+            </View>
+          )
         )}
 
         {postCard.type == "recite" && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              paddingHorizontal: 12,
-              paddingBottom: 6,
-            }}
-          >
-            {/* <Feather name="repeat" size={14} color={theme.text} /> */}
-            <Text
-              style={{
-                color: theme.text,
-                fontSize: 12,
-                fontWeight: "600",
-                zIndex: 10,
-                padding: 4,
-              }}
-            >
-              {" "}
+          <View style={styles.attributionBar}>
+            <MaterialCommunityIcons
+              name="account-voice"
+              size={14}
+              color={civic.chipText}
+            />
+            <Text style={[styles.attributionText, { color: theme.subtext }]}>
               Recited by{" "}
               <Link
                 href={`/(profileId)/${postCard?.user.clerkId}`}
-                style={{ color: theme.primary, fontWeight: "600" }}
+                style={{ color: civic.mention, fontWeight: "700" }}
               >
                 {postCard?.user.nickName}
               </Link>
-              <Text style={{ fontSize: 12, color: theme.text }}> from </Text>
-              {postCard?.reciteUserId && (
-                <Link
-                  href={`/(profileId)/${postCard?.reciteUserId}`}
-                  style={{ color: theme.primary, fontWeight: "600" }}
-                  asChild
-                >
-                  <Text>{postCard?.reciteNickName}</Text>
-                </Link>
-              )}
             </Text>
           </View>
         )}
-        {/* RECAST BANNER */}
         {postCard.type == "recast" && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              paddingHorizontal: 12,
-              paddingBottom: 6,
-            }}
-          >
-            {/* <Feather name="repeat" size={14} color={theme.text} /> */}
-            <Text
-              style={{
-                color: theme.text,
-                fontSize: 12,
-                fontWeight: "600",
-              }}
-            >
-              {" "}
+          <View style={styles.attributionBar}>
+            <MaterialCommunityIcons
+              name="bullhorn"
+              size={14}
+              color={civic.chipText}
+            />
+            <Text style={[styles.attributionText, { color: theme.subtext }]}>
               Recasted by{" "}
               <Link
                 href={`/(profileId)/${postCard?.user.clerkId}`}
-                style={{ color: theme.primary, fontWeight: "600" }}
+                style={{ color: civic.mention, fontWeight: "700" }}
               >
                 {postCard?.user.nickName}
-              </Link>
-              <Text style={{ fontSize: 12, color: theme.text }}> from </Text>
-              <Link
-                href={`/(profileId)/${postCard?.reciteUserId}`}
-                style={{ color: theme.primary, fontWeight: "600" }}
-                asChild
-              >
-                <Text>{postCard?.reciteNickName}</Text>
-              </Link>
+              </Link>{" "}
             </Text>
           </View>
         )}
-        {/* MEDIA GRID */}
 
-        {/* ACTIONS */}
+        {/* CIVIC ENGAGEMENT BAR */}
         <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            marginTop: 4,
-            alignItems: "center",
-            paddingHorizontal: 20,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderRadius: 50,
-            borderColor: theme.border,
-            marginBottom: 8,
-            padding: 2,
-            marginHorizontal: 12,
-          }}
+          style={[
+            styles.actionBar,
+            { backgroundColor: civic.actionBar, borderColor: civic.cardBorder },
+          ]}
         >
-          {/* Comments */}
           <Pressable
             onPress={() => onOpenComments(postCard._id)}
-            style={styles.commentBtn}
+            style={styles.actionItem}
           >
-            <Feather name="message-circle" size={18} color={theme.subtext} />
-            <Text style={{ color: theme.subtext, fontWeight: "bold" }}>
-              {comments.length > 0 ? comments.length : " "}
+            <Feather name="message-circle" size={17} color={theme.subtext} />
+            <Text style={[styles.actionCount, { color: theme.subtext }]}>
+              {comments.length > 0 ? comments.length : ""}
             </Text>
           </Pressable>
 
-          <Pressable
-            onPress={async () => {
-              (await incrementViews(), setQuoteVisible(true));
-            }}
-            style={styles.commentBtn}
-          >
+          <Pressable onPress={openReciteModal} style={styles.actionItem}>
             <MaterialCommunityIcons
               name="comment-quote-outline"
-              size={20}
-              color={recited ? theme.text : theme.subtext}
+              size={18}
+              color={recited ? civic.chipText : theme.subtext}
             />
-            <Text style={{ color: theme.subtext, fontWeight: "bold" }}>
-              {postCard.quoteCount > 0 ? postCard.quoteCount : " "}
+            <Text style={[styles.actionCount, { color: theme.subtext }]}>
+              {postCard.quoteCount > 0 ? postCard.quoteCount : ""}
             </Text>
           </Pressable>
 
-          {/* Repost */}
-          <Animated.View style={[animatedRepost, { padding: 4 }]}>
+          <Animated.View style={animatedRepost}>
             <Pressable
               onPress={() => {
                 if (!reposted) handleRecast("");
               }}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                padding: 4,
-                margin: 2,
-              }}
+              style={styles.actionItem}
             >
               <Animated.View style={{ transform: [{ rotate: spin }] }}>
                 <Entypo
                   name="cycle"
-                  size={18}
-                  color={reposted ? theme.text : theme.subtext}
+                  size={17}
+                  color={reposted ? civic.chipText : theme.subtext}
                 />
               </Animated.View>
-
               <Text
-                style={{
-                  color: reposted ? theme.text : theme.subtext,
-                  fontWeight: "bold",
-                  minWidth: 8,
-                }}
+                style={[
+                  styles.actionCount,
+                  { color: reposted ? civic.chipText : theme.subtext },
+                ]}
               >
-                {postCard.recastCount > 0 ? postCard.recastCount : " "}
+                {postCard.recastCount > 0 ? postCard.recastCount : ""}
               </Text>
             </Pressable>
           </Animated.View>
 
-          {/* Like */}
-          <Animated.View style={[animatedLike, { padding: 4 }]}>
-            <Pressable
-              onPress={handleLike}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                padding: 4,
-                margin: 2,
-              }}
-            >
+          <Animated.View style={animatedLike}>
+            <Pressable onPress={handleLike} style={styles.actionItem}>
               {isLiked ? (
-                <AntDesign name="heart" size={18} color={LIKE_COLOR} /> // solid heart
+                <AntDesign name="heart" size={17} color={LIKE_COLOR} />
               ) : (
-                <Feather name="heart" size={18} color={theme.subtext} /> // outline heart
+                <Feather name="heart" size={17} color={theme.subtext} />
               )}
               <Text
-                style={{
-                  color: isLiked ? LIKE_COLOR : theme.subtext,
-                  minWidth: 8,
-                  fontWeight: "bold",
-                }}
+                style={[
+                  styles.actionCount,
+                  { color: isLiked ? LIKE_COLOR : theme.subtext },
+                ]}
               >
-                {postCard.likes?.length > 0 ? postCard.likes.length : " "}
+                {postCard.likes?.length > 0 ? postCard.likes.length : ""}
               </Text>
             </Pressable>
           </Animated.View>
 
-          {/* Views */}
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-              padding: 4,
-              margin: 2,
-            }}
-          >
-            <Feather name="eye" size={18} color={theme.subtext} />
-            <Text style={{ color: theme.subtext, fontWeight: "bold" }}>
-              {postCard.views}
+          <View style={styles.actionItem}>
+            <Feather name="eye" size={17} color={theme.subtext} />
+            <Text style={[styles.actionCount, { color: theme.subtext }]}>
+              {postCard.views ?? 0}
             </Text>
           </View>
         </View>
       </View>
+
+      {/* POST OPTIONS BOTTOM SHEET */}
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={closeMenu}
+      >
+        <Pressable style={styles.menuBackdrop} onPress={closeMenu}>
+          <Pressable
+            style={[styles.menuSheet, { backgroundColor: theme.card }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View
+              style={[
+                styles.sheetHandle,
+                { backgroundColor: theme.border },
+              ]}
+            />
+            <Text style={[styles.menuSheetTitle, { color: theme.text }]}>
+              Post options
+            </Text>
+
+            {isOwner && (
+              <PostMenuRow
+                icon="edit-2"
+                label="Edit post"
+                color={theme.text}
+                borderColor={theme.border}
+                onPress={() => runMenuAction(() => setEditVisible(true))}
+              />
+            )}
+            <PostMenuRow
+              icon="bookmark"
+              label="Save"
+              color={theme.text}
+              borderColor={theme.border}
+              onPress={() => runMenuAction(() => alert("Save post"))}
+            />
+            <PostMenuRow
+              icon="share-2"
+              label="Share"
+              color={theme.text}
+              borderColor={theme.border}
+              onPress={() => runMenuAction(() => alert("Share post"))}
+            />
+            <PostMenuRow
+              icon="flag"
+              label="Report"
+              color="#9E9505"
+              borderColor={theme.border}
+              onPress={() => runMenuAction(() => alert("Report post"))}
+            />
+            <PostMenuRow
+              icon="slash"
+              label="Block"
+              color="#DC2626"
+              borderColor={theme.border}
+              onPress={() => runMenuAction(() => alert("Block user"))}
+            />
+            {isOwner && (
+              <PostMenuRow
+                icon="trash-2"
+                label="Delete"
+                color="#DC2626"
+                borderColor={theme.border}
+                showBorder={false}
+                onPress={() => runMenuAction(() => setDeleteVisible(true))}
+              />
+            )}
+
+            <Pressable
+              style={[styles.menuCancelBtn, { backgroundColor: theme.background }]}
+              onPress={closeMenu}
+            >
+              <Text style={[styles.menuCancelText, { color: theme.subtext }]}>
+                Cancel
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* DELETE CONFIRMATION MODAL */}
       <Modal
@@ -1471,7 +1169,7 @@ const loadMoreComments = () => {
           >
             <Text
               style={{
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: "700",
                 color: theme.text,
                 textAlign: "center",
@@ -1549,21 +1247,19 @@ const loadMoreComments = () => {
         userImage={userDetails?.image}
       />
 
-      {/* reciteModal */}
-      {quoteVisible && (
-        <ReciteModal
-          quoteVisible={quoteVisible}
-          setQuoteVisible={setQuoteVisible}
-          loadingRecite={loadingRecite}
-          postCard={postCard}
-          theme={theme}
-          mediaList={mediaList}
-          mediaCount={mediaCount}
-          width={width}
-          itemSize={itemSize}
-          handleRecite={handleRecite}
-        />
-      )}
+      {/* reciteModal — always mounted; visibility via prop (same as CommentModal) */}
+      <ReciteModal
+        quoteVisible={quoteVisible}
+        setQuoteVisible={setQuoteVisible}
+        loadingRecite={loadingRecite}
+        postCard={postCard}
+        theme={theme}
+        mediaList={mediaList}
+        mediaCount={mediaCount}
+        width={width}
+        itemSize={itemSize}
+        handleRecite={handleRecite}
+      />
 
       {/* //Edit Modal */}
       <EditModal
@@ -1586,6 +1282,22 @@ const loadMoreComments = () => {
         mediaList={mediaList}
         selectedIndex={selectedIndex}
         post={postCard}
+        engagement={{
+          commentsCount: comments.length,
+          quoteCount: postCard.quoteCount,
+          recastCount: postCard.recastCount,
+          likesCount: postCard.likes?.length ?? 0,
+          views: postCard.views ?? 0,
+          isLiked,
+          recited,
+          reposted,
+          onComment: () => onOpenComments(postCard._id),
+          onRecite: openReciteModal,
+          onRecast: () => {
+            if (!reposted) handleRecast("");
+          },
+          onLike: handleLike,
+        }}
         pinchGesture={pinchGesture}
         pinchStyle={pinchStyle}
       />
@@ -1593,7 +1305,220 @@ const loadMoreComments = () => {
   );
 }
 
+function PostMenuRow({
+  icon,
+  label,
+  color,
+  borderColor,
+  onPress,
+  showBorder = true,
+}: {
+  icon: React.ComponentProps<typeof Feather>["name"];
+  label: string;
+  color: string;
+  borderColor: string;
+  onPress: () => void;
+  showBorder?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.menuRow,
+        showBorder && {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: borderColor,
+        },
+      ]}
+    >
+      <Feather name={icon} size={20} color={color} />
+      <Text style={[styles.menuRowLabel, { color }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  card: {
+    // marginHorizontal: 10,
+    marginBottom: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  mainMediaWrap: {
+    paddingHorizontal: 10,
+    marginTop: 6,
+    zIndex: 10,
+  },
+  typeRibbon: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginHorizontal: 12,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+  },
+  typeRibbonText: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    gap: 8,
+  },
+  headerLeft: {
+    flex: 1,
+    flexDirection: "row",
+    gap: 10,
+    zIndex: 10,
+  },
+  headerRight: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  avatarRing: {
+    padding: 2,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  avatarRingVerified: {
+    borderColor: PoliticalPalette.gold,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  headerMeta: { flex: 1, gap: 2 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  displayName: { fontSize: 13, fontWeight: "800", flexShrink: 1 },
+  handle: { fontSize: 11, fontWeight: "600" },
+  constituencyChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  constituencyText: {
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  timePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  timeText: {
+    fontSize: 8,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+  captionBlock: {
+    paddingHorizontal: 14,
+    marginTop: 10,
+    paddingBottom: 4,
+  },
+  captionText: {
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: "500",
+  },
+  readMore: {
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  briefingCard: {
+    marginHorizontal: 12,
+    marginTop: 10,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+  },
+  briefingImage: { width: "100%", height: 160 },
+  briefingBody: { padding: 12 },
+  briefingLabel: {
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  briefingTitle: { fontSize: 14, fontWeight: "800" },
+  briefingDesc: { marginTop: 4, fontSize: 11, lineHeight: 17 },
+  briefingUrl: { marginTop: 6, fontSize: 10, fontWeight: "600" },
+  urlFallback: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 12,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  urlFallbackText: { flex: 1, fontSize: 11, fontWeight: "600" },
+  chamberQuote: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+  },
+  attributionBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  attributionText: { fontSize: 11, fontWeight: "600", flex: 1, lineHeight: 18 },
+  actionBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  actionItem: {
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 52,
+    paddingVertical: 2,
+    flexDirection: "row",
+    gap: 4,
+  },
+  actionCount: {
+    fontSize: 10,
+    fontWeight: "800",
+    minHeight: 14,
+  },
+  actionLabel: {
+    fontSize: 8,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
   commentBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1619,19 +1544,66 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   linkTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     marginBottom: 4,
   },
   linkDesc: {
-    fontSize: 12,
+    fontSize: 11,
     marginBottom: 4,
   },
   linkUrl: {
-    fontSize: 11,
+    fontSize: 10,
   },
   linkClose: {
     padding: 8,
     justifyContent: "center",
+  },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  menuSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 28,
+    paddingTop: 8,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 14,
+  },
+  menuSheetTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  menuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+  },
+  menuRowLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  menuCancelBtn: {
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  menuCancelText: {
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

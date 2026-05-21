@@ -16,7 +16,14 @@ import {
 declare module "stream-chat" {
   /* eslint-disable @typescript-eslint/no-empty-object-type */
 
-  interface CustomAttachmentData extends DefaultAttachmentData {}
+  interface CustomAttachmentData extends DefaultAttachmentData {
+    call_missed?: boolean;
+    call_type?: "video" | "audio";
+    call_id?: string;
+    productId?: string;
+    title?: string;
+    price?: number;
+  }
 
   interface CustomChannelData extends DefaultChannelData {}
 
@@ -28,12 +35,17 @@ declare module "stream-chat" {
 
   interface CustomUserData extends DefaultUserData {}
 
-   interface CustomMessageData extends DefaultMessageData {
-     ai_generated?: boolean;
-   }
-
-
-  interface CustomMessageData extends DefaultMessageData {}
+  interface CustomMessageData extends DefaultMessageData {
+    ai_generated?: boolean;
+    productId?: string;
+    product?: {
+      id?: string;
+      title?: string;
+      price?: number;
+      image?: string;
+      category?: string;
+    };
+  }
 
   interface CustomPollOptionData extends DefaultPollOptionData {}
 

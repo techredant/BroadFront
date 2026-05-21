@@ -13,7 +13,12 @@ import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import { PostCard } from "@/app/components/posts/PostCard";
+import { upsertPostInList } from "@/utils/buildSharePost";
 import { useIsFocused } from "@react-navigation/native";
+import {
+  useShowTabBarOnFocus,
+  useTabBarScrollHandler,
+} from "@/context/TabBarVisibilityContext";
 import { Socket } from "socket.io-client";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
@@ -36,6 +41,8 @@ export default function TrendFeed() {
   const { title, keyword } = useLocalSearchParams();
   const { currentLevel } = useLevel();
   const { theme } = useTheme();
+  const onTabBarScroll = useTabBarScrollHandler();
+  useShowTabBarOnFocus();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -125,7 +132,7 @@ export default function TrendFeed() {
 
         <Text
           style={{
-            fontSize: 20,
+            fontSize: 19,
             fontWeight: "700",
             marginLeft: 30,
             color: theme.text,
@@ -140,6 +147,8 @@ export default function TrendFeed() {
       <FlatList
         data={posts}
         keyExtractor={(item) => item._id}
+        onScroll={onTabBarScroll}
+        scrollEventThrottle={16}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         renderItem={({ item }) => (
@@ -155,6 +164,12 @@ export default function TrendFeed() {
               );
             }}
             onDeletePost={(postId: any) =>
+              setPosts((prev) => prev.filter((p) => p._id !== postId))
+            }
+            onPrependPost={(newPost) =>
+              setPosts((prev) => upsertPostInList(prev, newPost))
+            }
+            onRemovePost={(postId) =>
               setPosts((prev) => prev.filter((p) => p._id !== postId))
             }
           />

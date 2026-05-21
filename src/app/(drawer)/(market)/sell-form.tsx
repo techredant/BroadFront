@@ -14,6 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router"; // ✅ Expo Router
 import * as ImagePicker from "expo-image-picker";
+import { uploadMediaItems } from "@/utils/mediaUpload";
+import { imagePickerMediaOptions } from "@/utils/mediaUtils";
 import { useUser } from "@clerk/clerk-expo";
 import { useTheme } from "@/context/ThemeContext";
 import Video from "react-native-video";
@@ -77,7 +79,7 @@ const SellFormScreen = () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
-      quality: 1,
+      ...imagePickerMediaOptions,
     });
 
     if (!result.canceled) {
@@ -93,7 +95,7 @@ const SellFormScreen = () => {
   const takePhotoOrVideo = async () => {
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
-      quality: 1,
+      ...imagePickerMediaOptions,
     });
 
     if (!result.canceled) {
@@ -110,26 +112,6 @@ const SellFormScreen = () => {
 
   const removeMedia = (uri: string) => {
     setMedia((prev) => prev.filter((m) => m.uri !== uri));
-  };
-
-  const uploadToCloudinary = async (uri: string, type: "image" | "video") => {
-    const data = new FormData();
-    data.append("file", {
-      uri,
-      type: type === "video" ? "video/mp4" : "image/jpeg",
-      name: type === "video" ? "upload.mp4" : "upload.jpg",
-    } as any);
-
-    data.append("upload_preset", "MediaCast");
-    data.append("cloud_name", "ds25oyyqo");
-
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/ds25oyyqo/${type}/upload`,
-      { method: "POST", body: data },
-    );
-
-    const result = await res.json();
-    return result.secure_url;
   };
 
   const handleSubmit = async () => {
@@ -169,26 +151,27 @@ const SellFormScreen = () => {
       }
 
       if (hasError || !user) return;
-      // Upload media
-      const uploadedMedia: string[] = [];
-      for (let item of media) {
-        const url = await uploadToCloudinary(item.uri, item.type);
-        if (url) uploadedMedia.push(url);
-      }
+      const uploadedMedia = await uploadMediaItems(media);
 
-      await fetch(`https://cast-api-zeta.vercel.app/api/products`, {
+      const { API_PUBLIC_URL } = await import("@/constants/api");
+      const res = await fetch(`${API_PUBLIC_URL}/api/products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
-          price,
+          price: Number(price),
           description,
           category,
           media: uploadedMedia,
           userId: user.id,
           phoneNumber,
+          condition: "used",
         }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to create listing");
+      }
 
       setTitle("");
       setPrice("");
@@ -475,13 +458,13 @@ export default SellFormScreen;
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9f9f9", paddingBottom: 40 },
   form: { padding: 16, marginBottom: 30, paddingTop: 40 },
-  label: { fontSize: 14, fontWeight: "600", marginTop: 12, marginBottom: 6 },
+  label: { fontSize: 13, fontWeight: "600", marginTop: 12, marginBottom: 6 },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  headerText: { fontSize: 20, fontWeight: "700", textAlign: "center" },
+  headerText: { fontSize: 19, fontWeight: "700", textAlign: "center" },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "#ddd",
@@ -502,7 +485,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#fff",
   },
-  errorText: { color: "red", fontSize: 12, marginTop: 4 },
+  errorText: { color: "red", fontSize: 11, marginTop: 4 },
   submitButton: {
     backgroundColor: "#4caf50",
     padding: 14,
@@ -518,7 +501,7 @@ const styles = StyleSheet.create({
   },
   submitText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
   },
   imagePreview: { width: 120, height: 120, borderRadius: 10 },
@@ -552,7 +535,7 @@ const styles = StyleSheet.create({
   },
 
   modalTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     marginBottom: 10,
   },

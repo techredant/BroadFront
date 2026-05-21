@@ -62,7 +62,7 @@ export function setPushConfig() {
         name: `${userDetails?.firstName ?? ""} ${userDetails?.lastName ?? ""} ${userDetails?.nickName ?? ""}`.trim(),
         image: userDetails?.imageUrl,
       };
-      return new StreamVideoClient({
+      return StreamVideoClient.getOrCreateInstance({
         apiKey: process.env.EXPO_PUBLIC_STREAM_API_KEY!, // pass your stream api key
         user,
         tokenProvider,

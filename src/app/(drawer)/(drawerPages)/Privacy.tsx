@@ -114,28 +114,28 @@ const styles = StyleSheet.create({
     paddingBottom: 80,
   },
   title: {
-    fontSize: 24,
+    fontSize: 23,
     fontWeight: "700",
     marginBottom: 6,
   },
   updated: {
-    fontSize: 13,
+    fontSize: 12,
     marginBottom: 20,
   },
   section: {
     marginBottom: 25,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "600",
     marginBottom: 8,
   },
   paragraph: {
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 22,
   },
   link: {
-    fontSize: 15,
+    fontSize: 14,
     marginTop: 6,
   },
 });

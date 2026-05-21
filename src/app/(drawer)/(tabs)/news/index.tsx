@@ -15,8 +15,13 @@ import { useTheme } from "@/context/ThemeContext";
 
 import { FloatingLevelButton } from "@/modals/LevelFloatingAction";
 import { PostCard } from "@/app/components/posts/PostCard";
+import { upsertPostInList } from "@/utils/buildSharePost";
 import { LevelHeader } from "@/app/components/level/NewsHeader";
 import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import {
+  useShowTabBarOnFocus,
+  useTabBarScrollHandler,
+} from "@/context/TabBarVisibilityContext";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -37,6 +42,8 @@ interface Post {
 export default function NewsScreen() {
   const { currentLevel, isLoadingUser } = useLevel();
   const { theme, isDark } = useTheme();
+  const onTabBarScroll = useTabBarScrollHandler();
+  useShowTabBarOnFocus();
 
   const isFocused = useIsFocused();
 
@@ -119,12 +126,11 @@ export default function NewsScreen() {
     socket.emit("joinRoom", room);
 
     socket.on("newPost", (post: Post) => {
-      if (post.accountType !== "Personal Account") return;
+      const accountType =
+        (post as any).user?.accountType || (post as any).accountType;
+      if (accountType === "Personal Account") return;
 
-      setNews((prev) => {
-        if (prev.find((p) => p._id === post._id)) return prev;
-        return [post, ...prev];
-      });
+      setNews((prev) => upsertPostInList(prev, post));
     });
 
     socket.on("deletePost", (deletedPostId: string) => {
@@ -147,6 +153,17 @@ export default function NewsScreen() {
           isVisible={visiblePostId === item._id && isFocused}
           socket={socketRef.current}
           allPosts={news}
+          onPrependPost={(newPost) =>
+            setNews((prev) => upsertPostInList(prev, newPost))
+          }
+          onRemovePost={(postId) =>
+            setNews((prev) => prev.filter((p) => p._id !== postId))
+          }
+          onUpdatePost={(updated) =>
+            setNews((prev) =>
+              prev.map((p) => (p._id === updated._id ? updated : p)),
+            )
+          }
           onDeletePost={(postId: string) =>
             setNews((prev) => prev.filter((p) => p._id !== postId))
           }
@@ -175,6 +192,7 @@ export default function NewsScreen() {
         maxToRenderPerBatch={5}
         windowSize={5}
         removeClippedSubviews
+        onScroll={onTabBarScroll}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         scrollEventThrottle={16}

@@ -1,6 +1,4 @@
-// reciteModal.tsx
-
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   View,
@@ -8,16 +6,14 @@ import {
   Pressable,
   TextInput,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
-  Image,
   TouchableOpacity,
   Linking,
+  ActivityIndicator,
 } from "react-native";
-import { Feather, Ionicons } from "@expo/vector-icons";
-import Video from "react-native-video";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { MediaViewerModal } from "./MediaViewModal";
+import { PostMediaGrid } from "./PostMediaGrid";
 import {
   useAnimatedStyle,
   useSharedValue,
@@ -25,6 +21,9 @@ import {
 } from "react-native-reanimated";
 import { Gesture } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
+import { formatNickHandle } from "@/utils/nickName";
+import { PoliticalPalette } from "@/constants/politicalTheme";
 
 const MAX_CHARS = 280;
 
@@ -42,56 +41,39 @@ interface ReciteModalProps {
 }
 
 const urlRegex = /(https?:\/\/[^\s]+)/g;
-
 const extractUrls = (text: any = "") =>
   typeof text === "string" ? text.match(urlRegex) || [] : [];
 
-/* ---------------- FACEBOOK STYLE LINK CARD ---------------- */
-function LinkPreviewCard({ preview, theme }: any) {
+function BriefingLinkCard({ preview, theme }: any) {
   if (!preview?.url) return null;
 
   return (
     <Pressable
       onPress={() => Linking.openURL(preview.url)}
-      style={{
-        marginHorizontal: 12,
-        marginTop: 10,
-        borderRadius: 12,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: theme.border || "#ddd",
-        backgroundColor: theme.card,
-      }}
+      style={[styles.briefingCard, { borderColor: theme.border, backgroundColor: theme.background }]}
     >
       {!!preview.image && (
         <Image
           source={{ uri: preview.image }}
-          style={{ width: "100%", height: 180 }}
+          style={styles.briefingImage}
+          cachePolicy="memory-disk"
+          contentFit="cover"
         />
       )}
-
-      <View style={{ padding: 10 }}>
-        <Text
-          numberOfLines={2}
-          style={{ fontWeight: "700", color: theme.text }}
-        >
-          {preview.title || "Link"}
+      <View style={styles.briefingBody}>
+        <Text style={[styles.briefingLabel, { color: PoliticalPalette.navy }]}>
+          BRIEFING
         </Text>
-
+        <Text numberOfLines={2} style={[styles.briefingTitle, { color: theme.text }]}>
+          {preview.title || "External source"}
+        </Text>
         {!!preview.description && (
-          <Text
-            numberOfLines={2}
-            style={{ color: theme.subtext, marginTop: 4 }}
-          >
+          <Text numberOfLines={2} style={{ color: theme.subtext, marginTop: 4, fontSize: 11 }}>
             {preview.description}
           </Text>
         )}
-
-        <Text
-          numberOfLines={1}
-          style={{ color: theme.primary, marginTop: 6, fontSize: 12 }}
-        >
-          {preview.url}
+        <Text numberOfLines={1} style={[styles.briefingUrl, { color: PoliticalPalette.navy }]}>
+          {preview.url.replace(/^https?:\/\//, "")}
         </Text>
       </View>
     </Pressable>
@@ -108,27 +90,17 @@ export function ReciteModal({
   mediaList,
   mediaCount,
   width,
-  itemSize,
 }: ReciteModalProps) {
-  const styles = createStyles(theme);
-
   const [quoteText, setQuoteText] = useState("");
-  const [inputHeight, setInputHeight] = useState(80);
-  const [isMuted, setIsMuted] = useState(true); // default mute
-
-  const isDisabled = quoteText.trim().length === 0;
-  const charsLeft = MAX_CHARS - quoteText.length;
-
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [expandedStates, setExpandedStates] = useState<Record<string, boolean>>({});
 
-  const [expandedStates, setExpandedStates] = useState<{
-    [key: string]: boolean;
-  }>({});
+  const isDisabled = quoteText.trim().length === 0;
+  const charCount = quoteText.length;
+  const gridWidth = width - 48;
 
-  // /* ---------------- PINCH ZOOM ---------------- */
   const pinchScale = useSharedValue(1);
-
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
       pinchScale.value = e.scale;
@@ -136,7 +108,6 @@ export function ReciteModal({
     .onEnd(() => {
       pinchScale.value = withSpring(1);
     });
-
   const pinchStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pinchScale.value }],
   }));
@@ -145,21 +116,40 @@ export function ReciteModal({
     setSelectedIndex(index);
     setModalVisible(true);
   };
-  const text = postCard.quote ? postCard.quote : postCard.caption;
-  const isExpanded = expandedStates[postCard._id];
 
-  const toggleExpand = (postId: string) => {
-    setExpandedStates((prev) => ({
-      ...prev,
-      [postId]: !prev[postId],
-    }));
+  const originalText = postCard?.quote || postCard?.caption || "";
+  const isExpanded = expandedStates[postCard._id];
+  const toggleExpand = (id: string) => {
+    setExpandedStates((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const detectedUrl = extractUrls(postCard.linkPreview)[0];
+  const linkPreview = Array.isArray(postCard?.linkPreview)
+    ? postCard.linkPreview[0]
+    : postCard?.linkPreview || null;
+  const detectedUrl = !linkPreview ? extractUrls(originalText)[0] : null;
 
-    const linkPreview = Array.isArray(postCard.linkPreview)
-      ? postCard.linkPreview[0]
-      : postCard.linkPreview || null;
+  const authorName =
+    postCard?.reciteFirstName && postCard?.reciteLastName
+      ? `${postCard.reciteFirstName} ${postCard.reciteLastName}`
+      : postCard?.reciteCompanyName ||
+        postCard?.user?.firstName ||
+        "Original author";
+  const authorHandle = formatNickHandle(
+    postCard?.reciteNickName || postCard?.user?.nickName,
+  );
+  const authorImage = postCard?.reciteImage || postCard?.user?.image;
+
+  useEffect(() => {
+    if (!quoteVisible) {
+      setQuoteText("");
+    }
+  }, [quoteVisible]);
+
+  const onRecite = () => {
+    if (!isDisabled && !loadingRecite) {
+      handleRecite(quoteText.trim());
+    }
+  };
 
   return (
     <>
@@ -169,231 +159,184 @@ export function ReciteModal({
         presentationStyle="pageSheet"
         onRequestClose={() => setQuoteVisible(false)}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
-          {/* HEADER */}
-          <View style={styles.header}>
-            <Pressable onPress={() => setQuoteVisible(false)}>
-              <Feather name="x" size={28} color={theme.text} />
-            </Pressable>
-
-            <Text style={styles.headerTitle}>Recite</Text>
-
-            <Pressable
-              onPress={() => handleRecite(quoteText)}
-              disabled={isDisabled || loadingRecite}
-              style={{ marginLeft: "auto" }}
-            >
-              <Text
-                style={[
-                  styles.postBtn,
-                  (isDisabled || loadingRecite) && { opacity: 0.4 },
-                ]}
-              >
-                {loadingRecite ? "Reciting..." : "Recite"}
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* STICKY INPUT */}
-          <View style={styles.inputWrapper}>
-            <TextInput
-              value={quoteText}
-              onChangeText={(text) => {
-                setQuoteText(text);
-              }}
-              placeholder="Add your thoughts…"
-              placeholderTextColor={theme.subtext}
-              multiline
-              autoFocus
-              onContentSizeChange={(e) =>
-                setInputHeight(Math.max(80, e.nativeEvent.contentSize.height))
-              }
-              style={[styles.input, { height: inputHeight }]}
-            />
-
-            <View style={styles.counterRow}>
-              <Text
-                style={{
-                  color: charsLeft < 20 ? "#DC2626" : theme.subtext,
-                  fontSize: 12,
-                }}
-              >
-                {charsLeft}
-              </Text>
+        <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={["top"]}>
+          {/* Header */}
+          <View style={[styles.topBar, { borderBottomColor: theme.border }]}>
+            <View style={styles.handleBar} />
+            <View style={styles.topBarRow}>
+              <Pressable onPress={() => setQuoteVisible(false)} style={styles.iconBtn} hitSlop={12}>
+                <Feather name="x" size={22} color={theme.text} />
+              </Pressable>
+              <View style={styles.topBarCenter}>
+                <Text style={[styles.topTitle, { color: theme.text }]}>Recite</Text>
+                <Text style={[styles.topSub, { color: theme.subtext }]}>
+                  Share a statement with your audience
+                </Text>
+              </View>
+              <View style={styles.iconBtn} />
             </View>
           </View>
 
-          {/* CONTENT */}
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-            style={{ flex: 1 }}
+          {/* Top composer */}
+          <View
+            style={[
+              styles.composerTop,
+              { backgroundColor: theme.card, borderColor: theme.border },
+            ]}
           >
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <View style={styles.previewCard}>
-                <View style={styles.userRow}>
-                  <Image
-                    source={{
-                      uri: postCard.reciteImage || postCard.user?.image,
-                    }}
-                    style={styles.avatar}
+            <View style={styles.composerAccent} />
+            <View style={styles.composerInner}>
+              <View style={styles.composerMeta}>
+                <View style={styles.reciteBadge}>
+                  <MaterialCommunityIcons
+                    name="format-quote-close"
+                    size={14}
+                    color={PoliticalPalette.navy}
                   />
-                  <View>
-                    <Text style={styles.name}>
-                      {postCard.reciteFirstName || postCard.user?.firstName}
-                    </Text>
-                    <Text style={styles.username}>
-                      {postCard.reciteNickName || postCard.user?.nickName}
-                    </Text>
-                  </View>
+                  <Text style={styles.reciteBadgeText}>YOUR RECITE</Text>
                 </View>
-
                 <Text
-                  numberOfLines={isExpanded ? undefined : 3}
-                  style={{
-                    color: theme.text,
-                    paddingHorizontal: 12,
-                    marginTop: 6,
-                  }}
+                  style={[
+                    styles.charCount,
+                    {
+                      color:
+                        MAX_CHARS - charCount < 20
+                          ? PoliticalPalette.crimson
+                          : theme.subtext,
+                    },
+                  ]}
                 >
-                  {text}
+                  {charCount}/{MAX_CHARS}
                 </Text>
-                {text && text.length > 80 && (
-                  <TouchableOpacity
-                    onPress={() => toggleExpand(postCard._id)}
-                    style={{ zIndex: 20, padding: 4 }}
-                  >
-                    <Text
-                      style={{
-                        color: theme.primary,
-                        paddingHorizontal: 12,
-                        marginTop: 4,
-                        fontWeight: "600",
-                      }}
-                    >
-                      {isExpanded ? "Show less" : "Show more"}
-                    </Text>
-                  </TouchableOpacity>
+              </View>
+
+              <View
+                style={[
+                  styles.inputShell,
+                  { backgroundColor: theme.background, borderColor: theme.border },
+                ]}
+              >
+                <TextInput
+                  value={quoteText}
+                  onChangeText={setQuoteText}
+                  placeholder="Add context to this statement…"
+                  placeholderTextColor={theme.subtext}
+                  multiline
+                  autoFocus
+                  maxLength={MAX_CHARS}
+                  style={[styles.input, { color: theme.text }]}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <Pressable
+                onPress={onRecite}
+                disabled={isDisabled || loadingRecite}
+                style={[
+                  styles.reciteBtn,
+                  {
+                    backgroundColor:
+                      isDisabled || loadingRecite
+                        ? theme.border
+                        : PoliticalPalette.navy,
+                  },
+                ]}
+              >
+                {loadingRecite ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="repeat" size={18} color="#fff" />
+                    <Text style={styles.reciteBtnText}>Publish recite</Text>
+                  </>
                 )}
-                {linkPreview && (
-                  <LinkPreviewCard preview={linkPreview} theme={theme} />
-                )}
+              </Pressable>
+            </View>
+          </View>
 
-                {/* 2. fallback: just URL (Facebook behavior) */}
-                {!linkPreview && detectedUrl && (
-                  <Pressable
-                    onPress={() => Linking.openURL(detectedUrl)}
-                    style={{
-                      marginHorizontal: 12,
-                      marginTop: 10,
-                      padding: 10,
-                      borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: theme.border,
-                      backgroundColor: theme.card,
-                    }}
-                  >
-                    <Text style={{ color: theme.primary }}>{detectedUrl}</Text>
-                  </Pressable>
-                )}
+          <ScrollView
+            style={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={styles.scrollContent}
+          >
+            <Text style={[styles.sectionLabel, { color: theme.subtext }]}>
+              ORIGINAL STATEMENT
+            </Text>
 
-                <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                  {mediaList.slice(0, 4).map((uri: string, idx: number) => {
-                    const remaining = mediaCount - 4;
-                    const isLast = idx === 3 && remaining > 0;
-
-                    const isSingle = mediaCount === 1;
-                    const widthStyle = isSingle ? width - 28 : itemSize;
-                    const heightStyle = isSingle ? 400 : itemSize;
-
-                    const isVideo =
-                      uri.endsWith(".mp4") || uri.endsWith(".mov");
-
-                    return (
-                      <Pressable
-                        key={uri}
-                        onPress={() => openMedia(idx)}
-                        style={{
-                          width: widthStyle,
-                          height: heightStyle,
-                          margin: 2,
-                          borderRadius: 12,
-                          overflow: "hidden",
-                          position: "relative",
-                          backgroundColor: "#000",
-                        }}
-                      >
-                        {isVideo ? (
-                          <>
-                            <Video
-                              source={{ uri }}
-                              style={{ width: "100%", height: "100%" }}
-                              resizeMode="cover"
-                              muted={isMuted}
-                              controls
-                              pointerEvents="none" // ✅ allows touches to go through
-                            />
-                            {/* Transparent overlay to catch press */}
-                            <TouchableOpacity
-                              style={{
-                                position: "absolute",
-                                top: 10,
-                                right: 10,
-                                backgroundColor: "rgba(0,0,0,0.4)",
-                                borderRadius: 20,
-                                padding: 6,
-                              }}
-                              onPress={() => setIsMuted((prev) => !prev)}
-                            >
-                              <Ionicons
-                                name={isMuted ? "volume-mute" : "volume-high"}
-                                size={20}
-                                color="#fff"
-                              />
-                            </TouchableOpacity>
-                            <View
-                              style={{
-                                ...StyleSheet.absoluteFillObject,
-                              }}
-                            />
-                          </>
-                        ) : (
-                          <Image
-                            source={{ uri }}
-                            style={{ width: "100%", height: "100%" }}
-                          />
-                        )}
-
-                        {isLast && (
-                          <View
-                            style={{
-                              ...StyleSheet.absoluteFillObject,
-                              backgroundColor: "rgba(0,0,0,0.55)",
-                              justifyContent: "center",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color: "#fff",
-                                fontSize: 32,
-                                fontWeight: "bold",
-                              }}
-                            >
-                              +{remaining}
-                            </Text>
-                          </View>
-                        )}
-                      </Pressable>
-                    );
-                  })}
+            <View
+              style={[
+                styles.quoteCard,
+                { borderColor: theme.border, backgroundColor: theme.card },
+              ]}
+            >
+              <View style={styles.quoteHeader}>
+                <Image
+                  source={{ uri: authorImage }}
+                  style={styles.avatar}
+                  cachePolicy="memory-disk"
+                  contentFit="cover"
+                />
+                <View style={styles.authorMeta}>
+                  <Text style={[styles.authorName, { color: theme.text }]} numberOfLines={1}>
+                    {authorName}
+                  </Text>
+                  <Text style={[styles.authorHandle, { color: theme.subtext }]}>
+                    {authorHandle}
+                  </Text>
                 </View>
               </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
+
+              {!!originalText && (
+                <>
+                  <Text
+                    numberOfLines={isExpanded ? undefined : 5}
+                    style={[styles.quoteBody, { color: theme.text }]}
+                  >
+                    {originalText}
+                  </Text>
+                  {originalText.length > 120 && (
+                    <TouchableOpacity onPress={() => toggleExpand(postCard._id)}>
+                      <Text style={[styles.readMore, { color: PoliticalPalette.navy }]}>
+                        {isExpanded ? "Show less" : "Read full statement"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+
+              {linkPreview && <BriefingLinkCard preview={linkPreview} theme={theme} />}
+
+              {!linkPreview && detectedUrl && (
+                <Pressable
+                  onPress={() => Linking.openURL(detectedUrl)}
+                  style={[styles.urlChip, { borderColor: theme.border }]}
+                >
+                  <Feather name="external-link" size={14} color={PoliticalPalette.navy} />
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.urlText, { color: PoliticalPalette.navy }]}
+                  >
+                    {detectedUrl}
+                  </Text>
+                </Pressable>
+              )}
+
+              {mediaCount > 0 && (
+                <View style={styles.mediaWrap}>
+                  <PostMediaGrid
+                    uris={mediaList}
+                    containerWidth={gridWidth}
+                    onPressItem={openMedia}
+                    tileRadius={10}
+                  />
+                </View>
+              )}
+            </View>
+          </ScrollView>
         </SafeAreaView>
       </Modal>
 
-      {/* MEDIA MODAL */}
       <MediaViewerModal
         modalVisible={modalVisible}
         setModalVisible={setModalVisible}
@@ -407,89 +350,159 @@ export function ReciteModal({
   );
 }
 
-const createStyles = (theme: {
-  border: any;
-  text: any;
-  primary: any;
-  subtext: any;
-  card: any;
-}) =>
-  StyleSheet.create({
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      padding: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.border,
-    },
-
-    headerTitle: {
-      color: theme.text,
-      fontSize: 16,
-      fontWeight: "600",
-      marginLeft: 12,
-    },
-
-    postBtn: {
-      color: theme.primary,
-      fontWeight: "700",
-      fontSize: 15,
-    },
-
-    inputWrapper: {
-      paddingHorizontal: 16,
-      paddingTop: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: theme.border,
-    },
-
-    replyingTo: {
-      fontSize: 12,
-      color: theme.subtext,
-      marginBottom: 6,
-    },
-
-    input: {
-      fontSize: 16,
-      color: theme.text,
-      textAlignVertical: "top",
-    },
-
-    counterRow: {
-      alignItems: "flex-end",
-      paddingVertical: 4,
-    },
-
-    previewCard: {
-      padding: 12,
-      backgroundColor: theme.card,
-    },
-
-    userRow: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-
-    avatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      marginRight: 10,
-    },
-
-    name: {
-      color: theme.text,
-      fontWeight: "600",
-    },
-
-    username: {
-      color: theme.subtext,
-      fontSize: 13,
-    },
-
-    caption: {
-      marginTop: 10,
-      color: theme.text,
-      lineHeight: 20,
-    },
-  });
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  topBar: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 8,
+  },
+  handleBar: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(128,128,128,0.45)",
+    alignSelf: "center",
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  topBarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+  },
+  topBarCenter: { flex: 1, alignItems: "center" },
+  topTitle: { fontSize: 16, fontWeight: "800" },
+  topSub: { fontSize: 11, marginTop: 2, fontWeight: "600", textAlign: "center" },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  composerTop: {
+    marginHorizontal: 12,
+    marginTop: 4,
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: "hidden",
+    flexDirection: "row",
+  },
+  composerAccent: {
+    width: 4,
+    backgroundColor: PoliticalPalette.gold,
+  },
+  composerInner: { flex: 1, padding: 12 },
+  composerMeta: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  reciteBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: PoliticalPalette.goldSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  reciteBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: PoliticalPalette.navy,
+  },
+  charCount: { fontSize: 10, fontWeight: "600" },
+  inputShell: {
+    borderRadius: 14,
+    borderWidth: 1,
+    minHeight: 88,
+    maxHeight: 140,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  input: {
+    fontSize: 15,
+    lineHeight: 22,
+    minHeight: 68,
+    maxHeight: 120,
+  },
+  reciteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 12,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  reciteBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 12, paddingBottom: 32 },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  quoteCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    overflow: "hidden",
+  },
+  quoteHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  avatar: { width: 42, height: 42, borderRadius: 21 },
+  authorMeta: { flex: 1 },
+  authorName: { fontSize: 14, fontWeight: "800" },
+  authorHandle: { fontSize: 11, marginTop: 2, fontWeight: "600" },
+  quoteBody: {
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: "500",
+  },
+  readMore: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  briefingCard: {
+    marginTop: 12,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+  },
+  briefingImage: { width: "100%", height: 140 },
+  briefingBody: { padding: 10 },
+  briefingLabel: {
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  briefingTitle: { fontSize: 13, fontWeight: "800" },
+  briefingUrl: { marginTop: 6, fontSize: 10, fontWeight: "600" },
+  urlChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  urlText: { flex: 1, fontSize: 11, fontWeight: "600" },
+  mediaWrap: { marginTop: 12 },
+});

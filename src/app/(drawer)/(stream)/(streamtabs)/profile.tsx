@@ -27,7 +27,7 @@ const ProfileScreen = () => {
     >
       {/* HEADER */}
       {/* <View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
-        <Text style={{ fontSize: 26, fontWeight: "700", color: theme.text }}>
+        <Text style={{ fontSize: 25, fontWeight: "700", color: theme.text }}>
           Profile
         </Text>
       </View> */}
@@ -57,11 +57,11 @@ const ProfileScreen = () => {
           />
         </View>
 
-        <Text style={{ fontSize: 20, fontWeight: "700", color: theme.text }}>
+        <Text style={{ fontSize: 19, fontWeight: "700", color: theme.text }}>
           {userDetails?.firstName || userDetails?.companyName || "user"}
         </Text>
 
-        <Text style={{ fontSize: 13, marginTop: 4, color: theme.subtext }}>
+        <Text style={{ fontSize: 12, marginTop: 4, color: theme.subtext }}>
           {userDetails?.nickName}
         </Text>
 
@@ -80,7 +80,7 @@ const ProfileScreen = () => {
         >
           <Ionicons name="flame" size={16} color={theme.primary} />
           <Text
-            style={{ fontSize: 13, fontWeight: "600", color: theme.primary }}
+            style={{ fontSize: 12, fontWeight: "600", color: theme.primary }}
           >
             7 day streak
           </Text>
@@ -114,11 +114,11 @@ const ProfileScreen = () => {
             }}
           >
             <Text
-              style={{ fontSize: 20, fontWeight: "700", color: theme.primary }}
+              style={{ fontSize: 19, fontWeight: "700", color: theme.primary }}
             >
               {item.value}
             </Text>
-            <Text style={{ fontSize: 11, marginTop: 4, color: theme.subtext }}>
+            <Text style={{ fontSize: 10, marginTop: 4, color: theme.subtext }}>
               {item.label}
             </Text>
           </View>
@@ -158,7 +158,7 @@ const ProfileScreen = () => {
               style={{
                 flex: 1,
                 marginLeft: 12,
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: "500",
                 color: theme.text,
               }}
@@ -197,7 +197,7 @@ const ProfileScreen = () => {
         }}
       >
         <Ionicons name="log-out-outline" size={20} color="#ff4d4f" />
-        <Text style={{ fontSize: 15, fontWeight: "600", color: "#ff4d4f" }}>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: "#ff4d4f" }}>
           Sign Out
         </Text>
       </Pressable>

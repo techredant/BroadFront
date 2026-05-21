@@ -1,21 +1,22 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Dimensions,
   RefreshControl,
+  Animated,
 } from "react-native";
 import axios from "axios";
-import Video from "react-native-video";
 import LoaderKitView from "react-native-loader-kit";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { DrawerMenuButton } from "../../components/Button/DrawerMenuButton";
 import { useFocusEffect, useRouter } from "expo-router";
+import { Post } from "@/types/post";
+import { LightMediaTile } from "@/app/components/posts/LightMediaTile";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -29,40 +30,82 @@ export default function MediaScreen() {
   const [mediaPosts, setMediaPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
 
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true)
+  const listRef = useRef<FlatList>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const scrollTopOpacity = useRef(new Animated.Value(0)).current;
+  const levelBtnOpacity = useRef(new Animated.Value(1)).current; // starts visible
+  
+  const handleScroll = (event: any) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+
+    const shouldShow = offsetY > 400;
+
+    setShowScrollTop(shouldShow);
+
+    // 🔥 Fade Top Button
+    Animated.timing(scrollTopOpacity, {
+      toValue: shouldShow ? 1 : 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+
+    // 🔥 Fade FloatingLevelButton (opposite behavior)
+    Animated.timing(levelBtnOpacity, {
+      toValue: shouldShow ? 0 : 1,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  // ---------------- FlatList viewability ----------------
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setVisiblePostId(viewableItems[0].item._id);
+    }
+  }).current;
+  const viewabilityConfig = { itemVisiblePercentThreshold: 80 };
   // -------------------- Fetch --------------------
-  const fetchMedia = useCallback(async () => {
-    // 🚫 wait for level
-    if (!currentLevel?.type || !currentLevel?.value) {
-      console.log("Level not ready yet");
-      return;
-    }
+  const fetchMedia = useCallback(
+    async (pageNumber = 1, refresh = false) => {
+      if (!currentLevel?.type || !currentLevel?.value) return;
 
-    try {
-      setLoading(true);
+      try {
+        if (pageNumber === 1) setLoading(true);
+        else setLoadingMore(true);
 
-      const res = await axios.get(`${BASE_URL}/api/posts/media`, {
-        params: {
-          levelType: currentLevel.type,
-          levelValue: currentLevel.value,
-        },
-      });
+        const url =
+          `${BASE_URL}/api/posts/media` +
+          `?levelType=${currentLevel.type}` +
+          `&levelValue=${currentLevel.value}` +
+          `&page=${pageNumber}` +
+          `&limit=10`;
 
-      const posts = res.data.posts || res.data || [];
+        const res = await axios.get<Post[]>(url);
 
-      // ✅ GROUPED POSTS (no flatMap)
-      const grouped = posts.filter(
-        (post: any) => post.media && post.media.length > 0,
-      );
+        const newPosts = res.data ?? [];
 
-      setMediaPosts(grouped);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [currentLevel]);
+        setHasMore(newPosts.length === 10);
+
+        if (refresh || pageNumber === 1) {
+          setMediaPosts(newPosts);
+        } else {
+          setMediaPosts((prev) => [...prev, ...newPosts]);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
+      }
+    },
+    [currentLevel],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -75,60 +118,32 @@ export default function MediaScreen() {
     fetchMedia();
   };
 
-  // -------------------- Helpers --------------------
-  const isVideoFile = (uri: string) => /\.(mp4|mov|webm)$/i.test(uri);
-
   const numColumns = 3;
   const ITEM_SIZE =
     (SCREEN_WIDTH - POST_MARGIN * (numColumns * 2)) / numColumns;
 
   // -------------------- Render Item --------------------
-  const renderItem = ({ item }: any) => {
-    const firstMedia = item.media[0];
-    const isVideo = isVideoFile(firstMedia);
+  const renderItem = ({ item }: { item: Post }) => {
+    const firstMedia = item.media?.[0];
+    if (!firstMedia) return null;
 
     return (
       <Pressable
         onPress={() =>
           router.push({
-            pathname: "/media/[id]", // ✅ FIXED route
+            pathname: "/media/[id]",
             params: { id: item._id },
           })
         }
       >
-        <View>
-          {isVideo ? (
-            <View
-              style={{
-                width: ITEM_SIZE,
-                height: ITEM_SIZE,
-                margin: POST_MARGIN,
-                borderRadius: 10,
-                backgroundColor: "#000",
-              }}
-            >
-              <Video
-                source={{ uri: firstMedia }}
-                resizeMode="cover"
-                muted
-                repeat
-                paused
-              />
-            </View>
-          ) : (
-            <Image
-              source={{ uri: firstMedia }}
-              style={{
-                width: ITEM_SIZE,
-                height: ITEM_SIZE,
-                margin: POST_MARGIN,
-                borderRadius: 10,
-              }}
-              resizeMode="cover"
-            />
-          )}
+        <View style={[styles.tileWrap, { width: ITEM_SIZE, height: ITEM_SIZE }]}>
+          <LightMediaTile
+            uri={firstMedia}
+            width={ITEM_SIZE}
+            height={ITEM_SIZE}
+            borderRadius={10}
+          />
 
-          {/* 🔥 MULTI MEDIA COUNT BADGE */}
           {item.media.length > 1 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{item.media.length}</Text>
@@ -141,7 +156,7 @@ export default function MediaScreen() {
 
   // -------------------- UI --------------------
   return (
-    <View style={{ flex: 1, backgroundColor: theme.background, marginTop: 10 }}>
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
       <DrawerMenuButton />
 
       {/* HEADER */}
@@ -155,9 +170,10 @@ export default function MediaScreen() {
         keyExtractor={(item) => item._id}
         renderItem={renderItem}
         numColumns={numColumns}
-        initialNumToRender={5}
-        maxToRenderPerBatch={5}
-        windowSize={5}
+        viewabilityConfig={viewabilityConfig}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={10}
         removeClippedSubviews
         contentContainerStyle={{
           flexGrow: 1,
@@ -195,7 +211,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 23,
     fontWeight: "700",
     textAlign: "center",
   },
@@ -203,6 +219,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  tileWrap: {
+    margin: POST_MARGIN,
+    position: "relative",
   },
   badge: {
     position: "absolute",
@@ -215,7 +235,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     color: "#fff",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "600",
   },
 });

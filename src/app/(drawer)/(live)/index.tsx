@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ActivityIndicator, StatusBar, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   StreamVideo,
@@ -8,7 +9,7 @@ import {
 import { HomeScreen } from "./src/HomeLivescreen";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
-import { tokenProvider } from "@/utils/tokenProvider";
+import { fetchStreamToken } from "@/utils/streamToken";
 import LiveScreen from "./src/LiveScreen";
 
 const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
@@ -16,77 +17,100 @@ const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
 type Session = {
   callId: string;
   isHost: boolean;
+  roomTitle?: string;
+  level?: string;
 };
 
 export default function App() {
   const { userDetails } = useLevel();
   const { isDark, theme } = useTheme();
+  const { callId: deepCallId } = useLocalSearchParams<{ callId?: string }>();
 
   const [client, setClient] = useState<StreamVideoClient | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [booting, setBooting] = useState(true);
+  const clientRef = useRef<StreamVideoClient | null>(null);
+  const deepLinkHandledRef = useRef<string | null>(null);
 
-  // Host flow (create)
-  const startAsHost = (id: string) => {
-    setSession({ callId: id, isHost: true });
-  };
+  const goToHomeScreen = useCallback(() => setSession(null), []);
 
-  // Viewer flow (join existing)
-  const joinAsViewer = (id: string) => {
+  const startAsHost = useCallback(
+    (id: string, meta?: { roomTitle?: string; level?: string }) => {
+      setSession({ callId: id, isHost: true, ...meta });
+    },
+    [],
+  );
+
+  const joinAsViewer = useCallback((id: string) => {
     setSession({ callId: id, isHost: false });
-  };
-
-  const goToHomeScreen = () => setSession(null);
+  }, []);
 
   useEffect(() => {
-    let mounted = true;
+    const id =
+      typeof deepCallId === "string"
+        ? deepCallId
+        : Array.isArray(deepCallId)
+          ? deepCallId[0]
+          : undefined;
+    if (!id || !client || session) return;
+    if (deepLinkHandledRef.current === id) return;
+    deepLinkHandledRef.current = id;
+    joinAsViewer(id);
+  }, [deepCallId, client, session, joinAsViewer]);
+
+  useEffect(() => {
+    const clerkId = userDetails?.clerkId;
+    if (!clerkId) {
+      setBooting(false);
+      return;
+    }
+
+    let cancelled = false;
 
     const initClient = async () => {
-      if (!userDetails) {
-        setBooting(false);
-        return;
-      }
-
       try {
-        const token = await tokenProvider(userDetails.clerkId);
-        if (!token) return;
+        const displayName =
+          `${userDetails.firstName ?? ""} ${userDetails.lastName ?? ""} ${userDetails.nickName ?? ""}`.trim() ||
+          clerkId;
 
-        const user = {
-          id: userDetails.clerkId,
-          name: userDetails.nickName || "Unknown",
-          image: userDetails.image
-            ? `${userDetails.image}?id=${userDetails.clerkId}&name=${userDetails.nickName}`
-            : undefined,
-        };
+        const videoClient = StreamVideoClient.getOrCreateInstance({
+          apiKey,
+          user: {
+            id: clerkId,
+            name: displayName,
+            image: userDetails.image,
+          },
+          tokenProvider: () =>
+            fetchStreamToken({
+              userId: clerkId,
+              name: displayName,
+              image: userDetails.image,
+            }),
+        });
 
-        const newClient = new StreamVideoClient({ apiKey, user, token });
-
-        if (!mounted) {
-          newClient.disconnectUser();
-          return;
+        if (!cancelled) {
+          clientRef.current = videoClient;
+          setClient(videoClient);
         }
-
-        setClient(newClient);
       } catch (err) {
         console.error("Failed to initialize StreamVideoClient", err);
       } finally {
-        if (mounted) setBooting(false);
+        if (!cancelled) setBooting(false);
       }
     };
 
     initClient();
 
     return () => {
-      mounted = false;
-      setClient((prev) => {
-        prev?.disconnectUser();
-        return null;
-      });
+      cancelled = true;
+      clientRef.current?.disconnectUser().catch(() => {});
+      clientRef.current = null;
+      setClient(null);
     };
-  }, [userDetails]);
+  }, [userDetails?.clerkId]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }} edges={["top"]}>
       <StatusBar
         translucent
         backgroundColor="transparent"
@@ -104,6 +128,8 @@ export default function App() {
               goToHomeScreen={goToHomeScreen}
               callId={session.callId}
               isHost={session.isHost}
+              roomTitle={session.roomTitle}
+              level={session.level}
             />
           ) : (
             <HomeScreen

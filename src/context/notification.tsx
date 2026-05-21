@@ -1,26 +1,63 @@
 import { useUser } from "@clerk/clerk-expo";
-import { useEffect, useState, createContext } from "react";
-import { io } from "socket.io-client";
+import React, {
+  useEffect,
+  useState,
+  createContext,
+  useContext,
+  useCallback,
+} from "react";
+import { io, type Socket } from "socket.io-client";
 
-const BASE_URL = "https://cast-api-zeta.vercel.app";
+const BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ?? "https://cast-api-zeta.vercel.app";
 
-export const NotificationContext = createContext(null);
+export type AppNotification = {
+  type?: string;
+  title?: string;
+  body?: string;
+  actor?: { userId?: string; name?: string; image?: string };
+  entityId?: string;
+  postId?: string;
+  callId?: string;
+  authorId?: string;
+  createdAt?: string;
+};
 
-export const NotificationProvider = ({ children }) => {
+type NotificationContextValue = {
+  notifications: AppNotification[];
+  unreadCount: number;
+  markAllRead: () => void;
+};
+
+export const NotificationContext =
+  createContext<NotificationContextValue | null>(null);
+
+export const NotificationProvider = ({
+  children,
+}: {
+  children: React.ReactNode;
+}) => {
   const { user } = useUser();
-  const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const markAllRead = useCallback(() => {
+    setUnreadCount(0);
+  }, []);
 
   useEffect(() => {
-    if (!user?.id) return;
+    const clerkId = user?.id;
+    if (!clerkId) return;
 
-    const socket = io(BASE_URL, { transports: ["websocket"] });
+    const socket: Socket = io(BASE_URL, { transports: ["websocket"] });
 
     socket.on("connect", () => {
-      socket.emit("join", user.id);
+      socket.emit("join", clerkId);
     });
 
-    socket.on("newNotification", (data) => {
-      setNotifications((prev) => [data, ...prev]);
+    socket.on("newNotification", (data: AppNotification) => {
+      setNotifications((prev) => [data, ...prev].slice(0, 100));
+      setUnreadCount((c) => c + 1);
     });
 
     return () => {
@@ -30,8 +67,18 @@ export const NotificationProvider = ({ children }) => {
   }, [user?.id]);
 
   return (
-    <NotificationContext.Provider value={{ notifications }}>
+    <NotificationContext.Provider
+      value={{ notifications, unreadCount, markAllRead }}
+    >
       {children}
     </NotificationContext.Provider>
   );
 };
+
+export function useNotifications() {
+  const ctx = useContext(NotificationContext);
+  if (!ctx) {
+    throw new Error("useNotifications must be used inside NotificationProvider");
+  }
+  return ctx;
+}

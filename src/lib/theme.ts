@@ -1,99 +1,155 @@
-// streamTheme.ts
-import { DeepPartial, Theme } from "stream-chat-expo";
+// Stream Chat theme — must be passed as OverlayProvider value={{ style: ... }}
+import type { DeepPartial, Theme } from "stream-chat-expo";
 
-export const getStreamTheme = (isDark: boolean): DeepPartial<Theme> => {
-  const bg = isDark ? "#0b0b0f" : "#ffffff";
-  const surface = isDark ? "#15151c" : "#f2f2f7";
-  const text = isDark ? "#ffffff" : "#000000";
-  const muted = isDark ? "#9aa0a6" : "#6b7280";
-  const primary = "#3797F0"; // Instagram blue
+type AppTheme = {
+  background: string;
+  text: string;
+  card: string;
+  border: string;
+  primary: string;
+  subtext: string;
+};
+
+export const getStreamTheme = (
+  isDark: boolean,
+  app?: AppTheme,
+): DeepPartial<Theme> => {
+  const bg = app?.background ?? (isDark ? "#000000" : "#ffffff");
+  const surface = app?.card ?? (isDark ? "#111111" : "#f2f2f7");
+  const text = app?.text ?? (isDark ? "#ffffff" : "#000000");
+  const muted = app?.subtext ?? (isDark ? "#aaaaaa" : "#6b7280");
+  const primary = app?.primary ?? (isDark ? "#0A84FF" : "#3797F0");
+  const borderColor =
+    app?.border ?? (isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)");
+
+  const senderBubble = app?.card ?? surface;
+  const receiverBubble = isDark ? "#1F2C34" : "#FFFFFF";
+  const linkColor = isDark ? "#6eb6ff" : primary;
 
   return {
     colors: {
-      white: "#fff",
-      black: "#000",
       accent_blue: primary,
+      accent_dark_blue: primary,
+      accent_green: "#20E070",
+      accent_red: "#FF3742",
+      // Markdown + labels read `black`; map to readable text on bubbles
+      black: text,
+      white: "#ffffff",
+      white_snow: bg,
+      white_smoke: surface,
       grey: muted,
-    },
-
-    // ================= CHANNEL LIST =================
-    channelList: {
-      container: { backgroundColor: bg },
+      grey_dark: muted,
+      grey_gainsboro: borderColor,
+      grey_whisper: isDark ? "#1a1a1a" : "#ECEBEB",
+      text_high_emphasis: text,
+      text_low_emphasis: muted,
+      border: borderColor,
+      bg_gradient_start: bg,
+      bg_gradient_end: bg,
+      bg_user: surface,
+      icon_background: surface,
+      // Bubble fallbacks used by MessageSimple when custom bg colors are unset
+      light_blue: senderBubble,
+      light_gray: receiverBubble,
+      blue_alice: isDark ? "#1a2a3a" : "#E9F2FF",
+      code_block: isDark ? "#2a2a32" : "#DDDDDD",
+      static_black: "#000000",
+      static_white: "#ffffff",
+      overlay: isDark ? "rgba(0,0,0,0.85)" : "rgba(0,0,0,0.6)",
+      targetedMessageBackground: isDark ? "#1a1a22" : "#FBF4DD",
     },
 
     channelListMessenger: {
       flatList: { backgroundColor: bg },
-      contentContainer: { backgroundColor: bg },
+      flatListContent: { backgroundColor: bg },
+    },
+
+    channelListSkeleton: {
+      background: { backgroundColor: surface },
+      maskFillColor: bg,
     },
 
     channelPreview: {
       container: {
         backgroundColor: bg,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderBottomWidth: 1,
       },
-      title: { color: text, fontWeight: "600" },
-      subtitle: { color: muted },
+      contentContainer: { backgroundColor: bg },
+      row: { backgroundColor: bg },
+      title: { color: text, fontWeight: "600", fontSize: 14 },
+      date: { color: muted, fontSize: 11 },
+      message: { container: { backgroundColor: bg } },
+      unreadText: { color: "#ffffff" },
     },
 
-    // ================= MESSAGE LIST =================
+    messagePreview: {
+      message: { color: muted },
+    },
+
     messageList: {
-      container: { backgroundColor: bg },
+      container: { backgroundColor: "transparent" },
+      listContainer: { backgroundColor: "transparent" },
     },
 
-    // ================= MESSAGE BUBBLES (INSTAGRAM STYLE) =================
     messageSimple: {
       content: {
+        senderMessageBackgroundColor: senderBubble,
+        receiverMessageBackgroundColor: receiverBubble,
         container: {
           borderRadius: 18,
+          paddingVertical: 0,
+          paddingHorizontal: 0,
+        },
+        containerInner: {
+          overflow: "hidden",
+          alignSelf: "flex-start",
+        },
+        wrapper: {
+          alignSelf: "flex-start",
+        },
+        textContainer: {
           paddingVertical: 8,
           paddingHorizontal: 12,
+          backgroundColor: "transparent",
         },
-        text: {
-          color: text,
-          fontSize: 15,
+        markdown: {
+          text: { color: text },
+          autolink: { color: linkColor },
+          mentions: { color: linkColor },
+          blockQuoteText: { color: text },
+          codeBlock: {
+            backgroundColor: isDark ? "#2a2a32" : "#DDDDDD",
+            color: text,
+          },
+          inlineCode: {
+            backgroundColor: isDark ? "#1e1e26" : surface,
+            borderColor: borderColor,
+            color: isDark ? "#ff9f9f" : "#FF3742",
+          },
         },
+      },
+      gallery: {
+        galleryContainer: { overflow: "hidden" },
+        imageContainer: { overflow: "hidden" },
+        imageContainerStyle: { overflow: "hidden" },
+      },
+      videoThumbnail: {
+        container: { overflow: "hidden" },
       },
     },
 
     messageSimpleStatus: {
-      container: {
-        color: muted,
-      },
+      container: { color: muted },
     },
 
-    // Sent messages (right side)
-    messageSimpleRight: {
-      content: {
-        container: {
-          backgroundColor: primary,
-          borderBottomRightRadius: 4,
-        },
-        text: {
-          color: "#fff",
-        },
-      },
-    },
-
-    // Received messages (left side)
-    messageSimpleLeft: {
-      content: {
-        container: {
-          backgroundColor: surface,
-          borderBottomLeftRadius: 4,
-        },
-        text: {
-          color: text,
-        },
-      },
-    },
-
-    // ================= INPUT BAR =================
     messageInput: {
       container: {
         backgroundColor: bg,
         borderTopWidth: 1,
-        borderTopColor: isDark ? "#222" : "#e5e7eb",
+        borderTopColor: borderColor,
+        paddingBottom: 10,
       },
       inputBox: {
         backgroundColor: surface,
@@ -101,9 +157,24 @@ export const getStreamTheme = (isDark: boolean): DeepPartial<Theme> => {
         color: text,
         paddingHorizontal: 14,
       },
+      inputBoxContainer: {
+        backgroundColor: surface,
+      },
     },
 
-    // ================= REACTIONS =================
+    emptyStateIndicator: {
+      channelContainer: { backgroundColor: bg },
+      channelTitle: { color: text },
+      channelDetails: { color: muted },
+      messageContainer: { backgroundColor: "transparent" },
+      messageTitle: { color: text },
+    },
+
+    dateHeader: {
+      container: { backgroundColor: "transparent" },
+      text: { color: muted },
+    },
+
     reactionList: {
       container: {
         backgroundColor: isDark ? "#1c1c24" : "#ffffff",

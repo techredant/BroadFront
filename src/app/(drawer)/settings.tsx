@@ -85,7 +85,7 @@ const Section = ({ title, children }: SectionProps) => {
       {title && (
         <Text
           style={{
-            fontSize: 18,
+            fontSize: 17,
             fontWeight: "700",
             color: theme.text,
             paddingHorizontal: 16,
@@ -137,7 +137,7 @@ const SettingsScreen = () => {
       >
         <Text
           style={{
-            fontSize: 22,
+            fontSize: 21,
             fontWeight: "700",
             textAlign: "center",
             paddingBottom: 20,
@@ -299,12 +299,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   title: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "bold",
     marginBottom: 10,
   },
   message: {
-    fontSize: 15,
+    fontSize: 14,
     textAlign: "center",
     marginBottom: 20,
   },

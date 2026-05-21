@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -8,148 +8,91 @@ import {
   StatusBar,
   ActivityIndicator,
   ScrollView,
-  Image,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useTheme } from "@/context/ThemeContext";
-import axios from "axios";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLevel } from "@/context/LevelContext";
 import * as ImagePicker from "expo-image-picker";
+import { uploadMediaItems } from "@/utils/mediaUpload";
+import { imagePickerMediaOptions } from "@/utils/mediaUtils";
 import Video from "react-native-video";
+import { Image } from "expo-image";
+import { WA_GREEN } from "@/constants/statusTheme";
+import axios from "axios";
 
-/* =======================
-   CONFIG
-======================= */
 const BASE_URL = "https://cast-api-zeta.vercel.app";
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+
+const TEXT_BACKGROUNDS = [
+  "#075E54",
+  "#128C7E",
+  "#25D366",
+  "#34B7F1",
+  "#9C27B0",
+  "#E91E63",
+  "#FF5722",
+  "#795548",
+  "#607D8B",
+  "#1a1a2e",
+];
 
 export default function StatusInput() {
   const [status, setStatus] = useState("");
   const [bgIndex, setBgIndex] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   const { userDetails } = useLevel();
-  const { theme, isDark } = useTheme();
-  const [linkData, setLinkData] = useState<any>(null);
-  const [linkLoading, setLinkLoading] = useState(false);
-  const [cast, setCast] = useState("");
+  const insets = useSafeAreaInsets();
   const [media, setMedia] = useState<
     { uri: string; type: "image" | "video" }[]
   >([]);
 
-  const backgrounds = [
-    "#1e293b",
-    "#2563eb",
-    "#16a34a",
-    "#dc2626",
-    "#7c3aed",
-    "#ea580c",
-  ];
+  const hasMedia = media.length > 0;
+  const canPost = status.trim().length > 0 || hasMedia;
+  const bgColor = hasMedia ? "#000" : TEXT_BACKGROUNDS[bgIndex];
 
-  /* =======================
-     🚀 POST STATUS
-  ======================= */
   const handlePostStatus = async () => {
-    if ((!status.trim() && media.length === 0) || loading) return;
+    if (!canPost || loading) return;
 
     try {
       setLoading(true);
+      const uploaded = await uploadMediaItems(media);
 
-      // ✅ upload all media first
-      const uploadedMedia = [];
-
-      for (const item of media) {
-        const url = await uploadToCloudinary(item.uri, item.type);
-        if (url) uploadedMedia.push(url);
-      }
-
-      const payload = {
+      await axios.post(`${BASE_URL}/api/status`, {
         userId: userDetails?.clerkId,
         lastName: userDetails?.lastName,
         firstName: userDetails?.firstName,
-        nickname: userDetails?.nickname,
-        caption: status,
-        media: uploadedMedia, // ✅ REAL DATA NOW
-        backgroundColor: backgrounds[bgIndex],
-      };
-
-      await axios.post(`${BASE_URL}/api/status`, payload);
+        companyName: userDetails?.companyName,
+        nickName: userDetails?.nickName,
+        image: userDetails?.image,
+        caption: status.trim(),
+        media: uploaded,
+        backgroundColor: TEXT_BACKGROUNDS[bgIndex],
+      });
 
       setStatus("");
-      setMedia([]); // reset
-      router.push("/(drawer)/(tabs)");
+      setMedia([]);
+      router.replace("/(drawer)/(tabs)");
     } catch (err: any) {
       console.log("POST STATUS ERROR:", err?.message);
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const urls = cast.match(urlRegex);
 
-    if (!urls?.length) {
-      setLinkData(null);
-      return;
-    }
-
-    const url = urls[0];
-    setLinkLoading(true);
-
-    fetch(url)
-      .then((res) => res.text())
-      .then((html) => {
-        const title = html.match(/<title>(.*?)<\/title>/i)?.[1];
-        const desc = html.match(
-          /<meta\s+name=["']description["']\s+content=["'](.*?)["']/i,
-        )?.[1];
-        const img = html.match(
-          /<meta\s+property=["']og:image["']\s+content=["'](.*?)["']/i,
-        )?.[1];
-
-        setLinkData({
-          url,
-          title: title || "No title",
-          description: desc || "",
-          images: img ? [img] : [],
-        });
-      })
-      .catch(() =>
-        setLinkData({ url, title: "Preview unavailable", images: [] }),
-      )
-      .finally(() => setLinkLoading(false));
-  }, [cast]);
-
-  /* =======================
-         MEDIA PICKERS
-      ======================= */
   const pickMedia = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images", "videos"],
-      allowsMultipleSelection: true,
-      quality: 1,
+      allowsMultipleSelection: false,
+      ...imagePickerMediaOptions,
     });
 
-    if (!result.canceled) {
-      setMedia((prev) => [
-        ...prev,
-        ...result.assets.map((a) => ({
-          uri: a.uri,
-          type: a.type as "image" | "video",
-        })),
-      ]);
-    }
-  };
-
-  const takePhotoOrVideo = async () => {
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images", "videos"],
-      quality: 1,
-    });
-
-    if (!result.canceled) {
-      setMedia((prev) => [
-        ...prev,
+    if (!result.canceled && result.assets[0]) {
+      setMedia([
         {
           uri: result.assets[0].uri,
           type: result.assets[0].type as "image" | "video",
@@ -158,188 +101,265 @@ export default function StatusInput() {
     }
   };
 
-  const removeMedia = (uri: string) =>
-    setMedia((prev) => prev.filter((m) => m.uri !== uri));
+  const takePhotoOrVideo = async () => {
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images", "videos"],
+      ...imagePickerMediaOptions,
+    });
 
-  const uploadToCloudinary = async (uri: string, type: "image" | "video") => {
-    const data = new FormData();
-    data.append("file", {
-      uri,
-      type: type === "video" ? "video/mp4" : "image/jpeg",
-      name: type === "video" ? "upload.mp4" : "upload.jpg",
-    } as any);
-    data.append("upload_preset", "MediaCast");
-    data.append("cloud_name", "ds25oyyqo");
-
-    try {
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_1/ds25oyyqo/${type}/upload`,
-        { method: "POST", body: data },
-      );
-      const result = await res.json();
-      return result.secure_url;
-    } catch (err) {
-      console.error("Cloudinary Upload Error:", err);
-      return null;
+    if (!result.canceled && result.assets[0]) {
+      setMedia([
+        {
+          uri: result.assets[0].uri,
+          type: result.assets[0].type as "image" | "video",
+        },
+      ]);
     }
   };
 
+  const removeMedia = () => setMedia([]);
+
   return (
-    <View style={[styles.container, { backgroundColor: backgrounds[bgIndex] }]}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
+    <View style={[styles.root, { backgroundColor: bgColor }]}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push("/(drawer)/(tabs)")}>
-          <Ionicons name="close" size={28} color="#fff" />
-        </TouchableOpacity>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        {/* Top bar */}
+        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.iconBtn}
+            hitSlop={12}
+          >
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>Status</Text>
-
-        <TouchableOpacity
-          disabled={!status.trim() || loading}
-          onPress={handlePostStatus}
-          style={{ opacity: status.trim() && !loading ? 1 : 0.5 }}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Ionicons name="send" size={26} color="#fff" />
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* INPUT */}
-      <View style={styles.center}>
-        <TextInput
-          value={status}
-          onChangeText={setStatus}
-          placeholder="What's on your mind?"
-          placeholderTextColor="rgba(255,255,255,0.6)"
-          style={styles.input}
-          multiline
-          autoFocus
-        />
-      </View>
-      {/* MEDIA PREVIEW */}
-      {media.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {media.map((item, i) => (
-            <View key={i} style={styles.preview}>
-              {item.type === "image" ? (
-                <Image
-                  source={{ uri: item.uri }}
-                  style={styles.media}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Video source={{ uri: item.uri }} style={styles.media} />
-              )}
+          <View style={styles.topActions}>
+            {!hasMedia && (
               <TouchableOpacity
-                style={styles.removeButton}
-                onPress={() => removeMedia(item.uri)}
+                onPress={() => setShowPalette((p) => !p)}
+                style={styles.iconBtn}
               >
-                <Ionicons name="close-circle" size={24} color="red" />
+                <Ionicons name="color-palette-outline" size={24} color="#fff" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              disabled={!canPost || loading}
+              onPress={handlePostStatus}
+              style={[styles.sendBtn, { opacity: canPost ? 1 : 0.4 }]}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="send" size={22} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Content */}
+        {hasMedia ? (
+          <View style={styles.mediaStage}>
+            {media[0].type === "image" ? (
+              <Image
+                source={{ uri: media[0].uri }}
+                style={styles.fullMedia}
+                contentFit="contain"
+              />
+            ) : (
+              <Video
+                source={{ uri: media[0].uri }}
+                style={styles.fullMedia}
+                resizeMode="contain"
+                repeat
+                muted={false}
+              />
+            )}
+            <TouchableOpacity style={styles.mediaClose} onPress={removeMedia}>
+              <Ionicons name="close" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.textStage}>
+            <TextInput
+              value={status}
+              onChangeText={setStatus}
+              placeholder="Type a status"
+              placeholderTextColor="rgba(255,255,255,0.55)"
+              style={styles.textInput}
+              multiline
+              autoFocus
+              maxLength={700}
+            />
+          </View>
+        )}
+
+        {/* Color palette (text status) */}
+        {showPalette && !hasMedia && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.palette}
+          >
+            {TEXT_BACKGROUNDS.map((color, index) => (
+              <TouchableOpacity
+                key={color}
+                onPress={() => {
+                  setBgIndex(index);
+                  setShowPalette(false);
+                }}
+                style={[
+                  styles.colorDot,
+                  {
+                    backgroundColor: color,
+                    borderWidth: bgIndex === index ? 3 : 0,
+                    borderColor: "#fff",
+                  },
+                ]}
+              />
+            ))}
+          </ScrollView>
+        )}
+
+        {/* Bottom tools */}
+        <View
+          style={[
+            styles.bottomBar,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ]}
+        >
+          {hasMedia ? (
+            <TextInput
+              value={status}
+              onChangeText={setStatus}
+              placeholder="Add a caption…"
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              style={styles.captionInput}
+              multiline
+            />
+          ) : (
+            <View style={styles.tools}>
+              <TouchableOpacity style={styles.tool} onPress={pickMedia}>
+                <Ionicons name="images-outline" size={26} color="#fff" />
+                <Text style={styles.toolLabel}>Gallery</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.tool} onPress={takePhotoOrVideo}>
+                <Ionicons name="camera-outline" size={26} color="#fff" />
+                <Text style={styles.toolLabel}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.tool}
+                onPress={() => setShowPalette((p) => !p)}
+              >
+                <Ionicons name="text-outline" size={26} color="#fff" />
+                <Text style={styles.toolLabel}>Text</Text>
               </TouchableOpacity>
             </View>
-          ))}
-        </ScrollView>
-      )}
-      {/* MEDIA ACTIONS */}
-      <View style={styles.mediaActions}>
-        <TouchableOpacity style={styles.mediaBtn} onPress={pickMedia}>
-          <Ionicons name="image-outline" size={26} color="#fff" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.mediaBtn} onPress={takePhotoOrVideo}>
-          <Ionicons name="camera-outline" size={26} color="#fff" />
-        </TouchableOpacity>
-      </View>
-
-      {/* COLORS */}
-      <View style={styles.colors}>
-        {backgrounds.map((color, index) => (
-          <TouchableOpacity
-            key={index}
-            onPress={() => setBgIndex(index)}
-            style={[
-              styles.colorDot,
-              {
-                backgroundColor: color,
-                borderWidth: bgIndex === index ? 2 : 0,
-              },
-            ]}
-          />
-        ))}
-      </View>
+          )}
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
-/* =======================
-   STYLES
-======================= */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingVertical: 30,
-  },
-
-  header: {
+  root: { flex: 1 },
+  flex: { flex: 1 },
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
+    zIndex: 10,
   },
-
-  headerTitle: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
-  },
-
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-
-  input: {
-    color: "#fff",
-    fontSize: 28,
-    textAlign: "center",
-    lineHeight: 38,
-  },
-
-  colors: {
+  topActions: {
     flexDirection: "row",
-    justifyContent: "center",
-    gap: 10,
-    paddingBottom: 30,
+    alignItems: "center",
+    gap: 4,
   },
-
-  colorDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderColor: "#fff",
-  },
-  mediaActions: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 25,
-    marginBottom: 20,
-  },
-
-  mediaBtn: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "rgba(255,255,255,0.15)",
+  iconBtn: {
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
-  preview: { marginRight: 10, position: "relative" },
-  media: { width: 250, height: 250, borderRadius: 12 },
-  removeButton: { position: "absolute", top: 5, right: 5 },
+  sendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: WA_GREEN,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  textStage: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 28,
+  },
+  textInput: {
+    color: "#fff",
+    fontSize: 31,
+    fontWeight: "600",
+    textAlign: "center",
+    lineHeight: 42,
+    minHeight: 120,
+  },
+  mediaStage: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullMedia: {
+    width: SCREEN_W,
+    height: SCREEN_H * 0.65,
+  },
+  mediaClose: {
+    position: "absolute",
+    top: 8,
+    right: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  palette: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  colorDot: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+  },
+  bottomBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  captionInput: {
+    color: "#fff",
+    fontSize: 15,
+    minHeight: 44,
+    maxHeight: 100,
+  },
+  tools: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: 8,
+  },
+  tool: {
+    alignItems: "center",
+    gap: 6,
+  },
+  toolLabel: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 11,
+  },
 });

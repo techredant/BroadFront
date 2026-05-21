@@ -32,7 +32,7 @@ export function LevelHeader() {
     >
       <Text
         className="font-bold text-2xl"
-        style={{ color: theme.text, fontSize: 18, marginTop: 14 }}
+        style={{ color: theme.text, fontSize: 17, marginTop: 14 }}
       >
         {formattedLevel}
         {levelType && levelType !== "home" ? ` ${levelType}` : ""} news

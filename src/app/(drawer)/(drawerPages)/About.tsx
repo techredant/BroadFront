@@ -109,12 +109,12 @@ const styles = StyleSheet.create({
     borderRadius: 40,
   },
   title: {
-    fontSize: 28,
+    fontSize: 27,
     fontWeight: "700",
     marginTop: 10,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
     marginTop: 4,
     textAlign: "center",
   },
@@ -122,16 +122,16 @@ const styles = StyleSheet.create({
     marginBottom: 25,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "600",
     marginBottom: 8,
   },
   paragraph: {
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 22,
   },
   link: {
-    fontSize: 15,
+    fontSize: 14,
     marginTop: 6,
   },
   footer: {
@@ -139,10 +139,10 @@ const styles = StyleSheet.create({
     marginTop: 40,
   },
   version: {
-    fontSize: 13,
+    fontSize: 12,
   },
   copyright: {
-    fontSize: 13,
+    fontSize: 12,
     marginTop: 4,
   },
 });

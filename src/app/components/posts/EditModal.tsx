@@ -9,7 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  Image,
   TouchableOpacity,
   Linking,
 } from "react-native";
@@ -26,6 +25,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { useUser } from "@clerk/clerk-expo";
+import { Image } from "expo-image";
 
 const MAX_CHARS = 280;
 
@@ -72,6 +72,9 @@ function LinkPreviewCard({ preview, theme }: any) {
         <Image
           source={{ uri: preview.image }}
           style={{ width: "100%", height: 180 }}
+          cachePolicy="memory-disk"
+          contentFit="cover"
+          transition={100}
         />
       )}
 
@@ -94,7 +97,7 @@ function LinkPreviewCard({ preview, theme }: any) {
 
         <Text
           numberOfLines={1}
-          style={{ color: theme.primary, marginTop: 6, fontSize: 12 }}
+          style={{ color: theme.primary, marginTop: 6, fontSize: 11 }}
         >
           {preview.url}
         </Text>
@@ -140,7 +143,8 @@ export function EditModal({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["videos", "images"],
       allowsMultipleSelection: true,
-      quality: 1,
+      videoMaxDuration: 60,
+      quality: 0.7,
     });
 
     if (!result.canceled) {
@@ -148,29 +152,6 @@ export function EditModal({
 
       setEditedMedia((prev) => [...prev, ...newMedia]);
     }
-  };
-
-  const uploadToCloudinary = async (uri: string) => {
-    const data = new FormData();
-
-    data.append("file", {
-      uri,
-      type: "image/jpeg",
-      name: "profile.jpg",
-    } as any);
-
-    data.append("upload_preset", "MediaCast");
-
-    const res = await fetch(
-      "https://api.cloudinary.com/v1_1/ds25oyyqo/image/upload",
-      {
-        method: "POST",
-        body: data,
-      },
-    );
-
-    const result = await res.json();
-    return result.secure_url;
   };
 
   // /* ---------------- PINCH ZOOM ---------------- */
@@ -394,6 +375,9 @@ export function EditModal({
                             <Image
                               source={{ uri }}
                               style={{ width: "100%", height: "100%" }}
+                              cachePolicy="memory-disk"
+                              contentFit="cover"
+                              transition={100}
                             />
                             {isOwner && (
                               <TouchableOpacity
@@ -435,7 +419,7 @@ export function EditModal({
                             <Text
                               style={{
                                 color: "#fff",
-                                fontSize: 32,
+                                fontSize: 31,
                                 fontWeight: "bold",
                               }}
                             >
@@ -524,16 +508,16 @@ const createStyles = (theme: {
       justifyContent: "center",
     },
     linkTitle: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: "600",
       marginBottom: 4,
     },
     linkDesc: {
-      fontSize: 12,
+      fontSize: 11,
       marginBottom: 4,
     },
     linkUrl: {
-      fontSize: 11,
+      fontSize: 10,
     },
     linkClose: {
       padding: 8,
@@ -541,7 +525,7 @@ const createStyles = (theme: {
     },
     headerTitle: {
       color: theme.text,
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: "600",
       marginLeft: 12,
     },
@@ -549,7 +533,7 @@ const createStyles = (theme: {
     postBtn: {
       color: theme.primary,
       fontWeight: "700",
-      fontSize: 15,
+      fontSize: 14,
     },
 
     inputWrapper: {
@@ -560,13 +544,13 @@ const createStyles = (theme: {
     },
 
     replyingTo: {
-      fontSize: 12,
+      fontSize: 11,
       color: theme.subtext,
       marginBottom: 6,
     },
 
     input: {
-      fontSize: 16,
+      fontSize: 15,
       color: theme.text,
       textAlignVertical: "top",
     },
@@ -600,7 +584,7 @@ const createStyles = (theme: {
 
     username: {
       color: theme.subtext,
-      fontSize: 13,
+      fontSize: 12,
     },
 
     caption: {

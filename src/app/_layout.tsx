@@ -5,63 +5,119 @@ import "../../global.css";
 
 import { AppProvider } from "@/contexts/AppProvider";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ActivityIndicator, View } from "react-native";
-import { MenuProvider } from "react-native-popup-menu";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
-import { LevelProvider } from "@/context/LevelContext";
+import { LevelProvider, useLevel } from "@/context/LevelContext";
 import { UserOnboardingProvider } from "@/context/UserOnBoardingContext";
 import { NotificationProvider } from "@/context/notification";
 import { FollowProvider } from "@/context/FollowContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-
-import * as Notifications from "expo-notifications";
-import * as Device from "expo-device";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import axios from "axios";
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+import { PushPromptProvider } from "@/context/PushPromptContext";
 
 /* ===========================
-   🔔 NOTIFICATION CLICK HANDLER
+   NOTIFICATION CLICK HANDLER
    =========================== */
+import * as Notifications from "expo-notifications";
+import { MenuProvider } from "react-native-popup-menu";
+
+import "@/utils/notification";
+import {
+  handleNotificationRedirect,
+  shouldAutoOpenInForeground,
+} from "@/utils/notificationRouting";
+
 function useNotificationObserver() {
   const router = useRouter();
 
   useEffect(() => {
-    const redirect = (notification: Notifications.Notification) => {
-      const data = notification.request.content.data as any;
-
-      const url = data?.url;
-
-      if (typeof url === "string" && url.startsWith("/")) {
-        router.push(url);
-      }
-    };
-
     const last = Notifications.getLastNotificationResponse();
 
     if (last?.notification) {
-      redirect(last.notification);
+      handleNotificationRedirect(router, last.notification);
     }
 
     const subscription = Notifications.addNotificationResponseReceivedListener(
       (response) => {
-        redirect(response.notification);
+        handleNotificationRedirect(router, response.notification);
       },
     );
 
-    return () => subscription.remove();
-  }, []);
+    const receivedSub = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        if (shouldAutoOpenInForeground(notification)) {
+          handleNotificationRedirect(router, notification);
+        }
+      },
+    );
+
+    return () => {
+      subscription.remove();
+      receivedSub.remove();
+    };
+  }, [router]);
+}
+
+function SplashController() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const segments = useSegments();
+  const { isLoadingUser, loadingPosts, currentLevel } = useLevel();
+  const { isReady: themeReady } = useTheme();
+
+  const inAuthGroup = segments[0] === "(auth)";
+  const inOnboardingGroup = segments[0] === "(onboarding)";
+  const inDrawerGroup = segments[0] === "(drawer)";
+
+  const hasCompletedName = user?.unsafeMetadata?.hasCompletedName;
+  const onboardingComplete = user?.unsafeMetadata?.onboardingComplete;
+  const accountType = user?.unsafeMetadata?.myAccountType;
+  const isPersonal = accountType === "Personal Account";
+
+  const routingSettled = useMemo(() => {
+    if (!isLoaded) return false;
+
+    if (!isSignedIn) return inAuthGroup;
+
+    if (!hasCompletedName) return inOnboardingGroup;
+
+    if (hasCompletedName && isPersonal && !onboardingComplete) {
+      return inOnboardingGroup;
+    }
+
+    if (onboardingComplete) return inDrawerGroup;
+
+    return inDrawerGroup;
+  }, [
+    isLoaded,
+    isSignedIn,
+    hasCompletedName,
+    isPersonal,
+    onboardingComplete,
+    inAuthGroup,
+    inOnboardingGroup,
+    inDrawerGroup,
+  ]);
+
+  const needsFeedBootstrap =
+    isSignedIn && !!onboardingComplete && inDrawerGroup;
+
+  const mainAppDataReady =
+    !isLoadingUser && !!currentLevel && !loadingPosts;
+
+  const canHideSplash =
+    themeReady &&
+    isLoaded &&
+    routingSettled &&
+    (!needsFeedBootstrap || mainAppDataReady);
+
+  useEffect(() => {
+    if (canHideSplash) {
+      SplashScreen.hideAsync();
+    }
+  }, [canHideSplash]);
+
+  return null;
 }
 
 /* ===========================
@@ -69,6 +125,10 @@ function useNotificationObserver() {
    =========================== */
 export default function RootLayout() {
   useNotificationObserver();
+
+  useEffect(() => {
+    SplashScreen.preventAutoHideAsync();
+  }, []);
 
   return (
     <SafeAreaProvider>
@@ -89,27 +149,11 @@ export default function RootLayout() {
    =========================== */
 function RootInnerLayout() {
   const { isLoaded, isSignedIn } = useAuth();
-
   const { user } = useUser();
 
   const router = useRouter();
-
   const segments = useSegments();
 
-  const { theme } = useTheme();
-
-  const [appReady, setAppReady] = useState(false);
-
-  /* ===========================
-     PREVENT SPLASH AUTO HIDE
-     =========================== */
-  useEffect(() => {
-    SplashScreen.preventAutoHideAsync();
-  }, []);
-
-  /* ===========================
-     ROUTING LOGIC
-     =========================== */
   useEffect(() => {
     if (!isLoaded) return;
 
@@ -118,9 +162,7 @@ function RootInnerLayout() {
     const inDrawerGroup = segments[0] === "(drawer)";
 
     const hasCompletedName = user?.unsafeMetadata?.hasCompletedName;
-
     const onboardingComplete = user?.unsafeMetadata?.onboardingComplete;
-
     const accountType = user?.unsafeMetadata?.myAccountType;
 
     const isPersonal = accountType === "Personal Account";
@@ -140,90 +182,7 @@ function RootInnerLayout() {
     } else if (isSignedIn && onboardingComplete && !inDrawerGroup) {
       router.replace("/(drawer)/(tabs)");
     }
-
-    const prepare = async () => {
-      await SplashScreen.hideAsync();
-
-      // 🔥 wait until app fully renders
-      setTimeout(() => {
-        setAppReady(true);
-      }, 1500);
-    };
-
-    prepare();
-  }, [isLoaded, isSignedIn, user?.unsafeMetadata, segments]);
-
-  /* ===========================
-     PUSH NOTIFICATIONS
-     =========================== */
-  useEffect(() => {
-    if (!appReady) return;
-
-    const registerPush = async () => {
-      if (!isSignedIn || !user?.id) return;
-
-      if (!Device.isDevice) return;
-
-      try {
-        const { status: existingStatus } =
-          await Notifications.getPermissionsAsync();
-
-        let finalStatus = existingStatus;
-
-        if (existingStatus !== "granted") {
-          const { status } = await Notifications.requestPermissionsAsync();
-
-          finalStatus = status;
-        }
-
-        if (finalStatus !== "granted") return;
-
-        const token = (
-          await Notifications.getExpoPushTokenAsync({
-            projectId: "e693fdcd-e810-4cf4-ae07-e5218d8032c1",
-          })
-        ).data;
-
-        console.log("🔥 PUSH TOKEN:", token);
-
-        const storedToken = await AsyncStorage.getItem("pushToken");
-
-        if (storedToken !== token) {
-          await axios.post(
-            "https://cast-api-zeta.vercel.app/api/notification-token/token",
-            {
-              userId: user.id,
-              token,
-            },
-          );
-
-          await AsyncStorage.setItem("pushToken", token);
-        }
-      } catch (err) {
-        console.log("Push setup error:", err);
-      }
-    };
-
-    registerPush();
-  }, [appReady, isSignedIn, user?.id]);
-
-  /* ===========================
-     LOADING STATE
-     =========================== */
-  if (!isLoaded) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: theme.background,
-        }}
-      >
-        <ActivityIndicator size="small" color={theme.text} />
-      </View>
-    );
-  }
+  }, [isLoaded, isSignedIn, user?.unsafeMetadata, segments, router]);
 
   /* ===========================
      APP TREE
@@ -231,21 +190,20 @@ function RootInnerLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <LevelProvider>
+        <PushPromptProvider>
         <UserOnboardingProvider>
           <FollowProvider>
             <MenuProvider>
               <NotificationProvider>
                 <AppProvider>
-                  <Stack
-                    screenOptions={{
-                      headerShown: false,
-                    }}
-                  />
+                  <SplashController />
+                  <Stack screenOptions={{ headerShown: false }} />
                 </AppProvider>
               </NotificationProvider>
             </MenuProvider>
           </FollowProvider>
         </UserOnboardingProvider>
+        </PushPromptProvider>
       </LevelProvider>
     </GestureHandlerRootView>
   );

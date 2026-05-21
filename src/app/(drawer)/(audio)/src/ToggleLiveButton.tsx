@@ -1,7 +1,8 @@
-import { useCall, useCallStateHooks } from '@stream-io/video-react-native-sdk';
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { useCall, useCallStateHooks } from "@stream-io/video-react-native-sdk";
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { MediaColors } from "@/constants/mediaTheme";
 
 export const ToggleLiveButton = () => {
   const call = useCall();
@@ -10,12 +11,8 @@ export const ToggleLiveButton = () => {
 
   const handlePress = () => {
     if (!call) return;
-
-    if (isLive) {
-      call.stopLive();
-    } else {
-      call.goLive();
-    }
+    if (isLive) call.stopLive();
+    else call.goLive();
   };
 
   return (
@@ -27,63 +24,43 @@ export const ToggleLiveButton = () => {
         pressed && styles.pressed,
       ]}
     >
-      <View style={styles.content}>
-        {isLive && <View style={styles.liveDot} />}
-        <Ionicons
-          name={isLive ? 'radio' : 'play'}
-          size={24}
-          color="red"
-          style={{ marginRight: 8 }}
-        />
-        <Text style={styles.text}>{isLive ? 'LIVE' : 'Go Live'}</Text>
-      </View>
+      {isLive ? (
+        <>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveLabel}>LIVE</Text>
+        </>
+      ) : (
+        <>
+          <Ionicons name="radio" size={22} color="#fff" />
+          <Text style={styles.goLabel}>Go live</Text>
+        </>
+      )}
     </Pressable>
   );
 };
 
 const styles = StyleSheet.create({
   button: {
-    width: 50,
-    height: 50,
-    borderRadius: 35, // circular like mic button
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-   
+    minWidth: 72,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: MediaColors.glassBorder,
   },
-  liveButton: {
-      backgroundColor: 'red',
-  },
-  offlineButton: {
-    backgroundColor: '#7C3AED', // purple when offline
-  },
-  pressed: {
-    transform: [{ scale: 0.95 }],
-    opacity: 0.85,
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-        shadowRadius: 6,
-  },
-  text: {
-    color: 'red',
-    fontWeight: '700',
-    fontSize: 14,
-    letterSpacing: 0.5,
-  },
+  liveButton: { backgroundColor: MediaColors.liveRed },
+  offlineButton: { backgroundColor: "rgba(255,255,255,0.12)" },
+  pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
   liveDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: 'red',
-    marginRight: 6,
+    backgroundColor: "#fff",
   },
- 
-  active: { backgroundColor: '#7C3AED' },
-  muted: { backgroundColor: '#EF4444' },
+  liveLabel: { color: "#fff", fontWeight: "800", fontSize: 12 },
+  goLabel: { color: "#fff", fontWeight: "700", fontSize: 11 },
 });

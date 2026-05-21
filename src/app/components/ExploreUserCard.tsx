@@ -1,12 +1,19 @@
-
 import { useTheme } from "@/context/ThemeContext";
+import { PoliticalPalette } from "@/constants/politicalTheme";
+import { formatNickHandle } from "@/utils/nickName";
+import type { StreamChatTarget } from "@/utils/streamUser";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 type ExploreUserCardProps = {
-  item: {
-    clerkId: string;
+  item: StreamChatTarget & {
     image: string | null;
     firstName: string;
     lastName: string;
@@ -14,51 +21,140 @@ type ExploreUserCardProps = {
     companyName: string;
   };
   creating: string | null;
-  onStartChat: (targetId: string) => void;
+  onStartChat: (target: StreamChatTarget) => void;
+  showDivider?: boolean;
 };
 
+function avatarUri(item: ExploreUserCardProps["item"]) {
+  if (item.image) return item.image;
+  const name = item.firstName || item.companyName || "U";
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1B3A6B&color=fff`;
+}
 
-const ExploreUserCard = ({ item, creating, onStartChat }: ExploreUserCardProps) => {
- const { theme } =useTheme()
+const ExploreUserCard = ({
+  item,
+  creating,
+  onStartChat,
+  showDivider = false,
+}: ExploreUserCardProps) => {
+  const { theme, isDark } = useTheme();
+  const isCreating = creating === item.clerkId;
+  const displayName = item.firstName
+    ? `${item.firstName} ${item.lastName || ""}`.trim()
+    : item.companyName || "Member";
+  const handle = formatNickHandle(item.nickName) || "@member";
 
- console.log("Item", JSON.stringify(item, null, 2));
-  
-  
   return (
-    <Pressable
-      className="flex-row items-center bg-surface rounded-2xl p-3.5 mb-2.5 border border-border gap-3.5"
-      style={{ backgroundColor: theme.card, borderColor: theme.border }}
-      onPress={() => onStartChat(item.clerkId)}
-      disabled={creating !== null}
+    <View
+      style={[
+        styles.row,
+        showDivider && { borderBottomColor: theme.border },
+        showDivider && styles.rowDivider,
+      ]}
     >
       <Image
-        source={item.image ? { uri: item.image } : undefined}
-        style={{ width: 48, height: 48, borderRadius: 24 }}
+        source={{ uri: avatarUri(item) }}
+        style={styles.avatar}
+        cachePolicy="memory-disk"
         contentFit="cover"
       />
-      <View className="flex-1">
+
+      <View style={styles.rowText}>
+        <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+          {displayName}
+        </Text>
         <Text
-          className="text-base font-semibold text-foreground"
+          style={[styles.handle, { color: theme.subtext }]}
           numberOfLines={1}
-          style={{ color: theme.text }}
         >
-          {item.firstName} {item.lastName}{" "}
-          {item.companyName}
+          {handle}
         </Text>
-        <Text className="text-xs text-foreground-muted mt-0.5">
-          {item.nickName}
-        </Text>
+        {item.companyName && item.firstName ? (
+          <Text
+            style={[styles.meta, { color: theme.subtext }]}
+            numberOfLines={1}
+          >
+            {item.companyName}
+          </Text>
+        ) : null}
       </View>
 
-      {creating === item.clerkId ? (
-        <ActivityIndicator size="small" color={theme.primary} />
-      ) : (
-        <View className="w-9 h-9 rounded-xl bg-primary/20 justify-center items-center">
-          <Ionicons name="chatbubble" size={16} color={theme.primary} />
-        </View>
-      )}
-    </Pressable>
+      <Pressable
+        onPress={() => onStartChat(item)}
+        disabled={creating !== null}
+        style={({ pressed }) => [
+          styles.messageBtn,
+          {
+            backgroundColor: isDark
+              ? PoliticalPalette.navy
+              : PoliticalPalette.navy,
+            opacity: pressed || (creating !== null && !isCreating) ? 0.55 : 1,
+          },
+        ]}
+      >
+        {isCreating ? (
+          <ActivityIndicator size="small" color={theme.text} />
+        ) : (
+          <>
+            <Ionicons name="chatbubble-outline" size={20} color={theme.text} />
+            <Text style={[styles.messageBtnText, { color: theme.text }]}>Message</Text>
+          </>
+        )}
+      </Pressable>
+    </View>
   );
 };
 
 export default ExploreUserCard;
+
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  rowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    marginRight: 12,
+    backgroundColor: "#262626",
+  },
+  rowText: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 10,
+  },
+  name: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  handle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  meta: {
+    fontSize: 11,
+    marginTop: 2,
+    opacity: 0.85,
+  },
+  messageBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    minWidth: 96,
+    height: 34,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    justifyContent: "center",
+  },
+  messageBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+});

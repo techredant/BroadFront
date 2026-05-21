@@ -2,13 +2,13 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
   FlatList,
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
   Pressable,
 } from "react-native";
+import { Image } from "expo-image";
 import React, {
   useCallback,
   useEffect,
@@ -25,8 +25,14 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useFollowContext } from "@/context/FollowContext";
 import { EditProfileModal } from "@/app/components/posts/EditProfileModal";
 import { PostCard } from "@/app/components/posts/PostCard";
+import { upsertPostInList } from "@/utils/buildSharePost";
 import { useIsFocused } from "@react-navigation/native";
 import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import { VerifiedBadge } from "@/app/components/VerifiedBadge";
+import {
+  MemberListRow,
+  ProfilePeopleListHint,
+} from "@/app/components/profile/MemberListRow";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -124,12 +130,28 @@ export default function ProfileScreen() {
   }, [profileUser]);
 
   const followersList = useMemo(() => {
-    return members.filter((m) => profileFollowers.includes(m.clerkId));
-  }, [members, profileFollowers]);
-
+    const list = members.filter((m) => profileFollowers.includes(m.clerkId));
+    const myId = userDetails?.clerkId;
+    if (!myId) return list;
+  
+    return [...list].sort((a, b) => {
+      if (a.clerkId === myId) return -1;
+      if (b.clerkId === myId) return 1;
+      return 0;
+    });
+  }, [members, profileFollowers, userDetails?.clerkId]);
+  
   const followingList = useMemo(() => {
-    return members.filter((m) => profileFollowing.includes(m.clerkId));
-  }, [members, profileFollowing]);
+    const list = members.filter((m) => profileFollowing.includes(m.clerkId));
+    const myId = userDetails?.clerkId;
+    if (!myId) return list;
+  
+    return [...list].sort((a, b) => {
+      if (a.clerkId === myId) return -1;
+      if (b.clerkId === myId) return 1;
+      return 0;
+    });
+  }, [members, profileFollowing, userDetails?.clerkId]);
 
   /* ---------------- REFRESH ---------------- */
   const onRefresh = () => {
@@ -169,6 +191,12 @@ export default function ProfileScreen() {
               prev.map((p) => (p._id === updatedPost._id ? updatedPost : p)),
             );
           }}
+          onPrependPost={(newPost: any) =>
+            setPosts((prev) => upsertPostInList(prev, newPost))
+          }
+          onRemovePost={(postId: string) =>
+            setPosts((prev) => prev.filter((p) => p._id !== postId))
+          }
           onDeletePost={(postId: any) =>
             setPosts((prev) => prev.filter((p) => p._id !== postId))
           }
@@ -177,52 +205,23 @@ export default function ProfileScreen() {
     }
 
     // const isFollowing = profileUser?.following?.includes(item.clerkId);
-    const isFollowing = following.includes(item.clerkId);
-
-    const you = item.clerkId === userDetails?.clerkId;
-
-
-   
-
     return (
-      <View style={[styles.userRow, { backgroundColor: theme.background }]}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Image source={{ uri: item?.image }} style={styles.userAvatar} />
-
-          <View style={{ marginLeft: 10 }}>
-            <Text style={[styles.userName, { color: theme.text }]}>
-              {item.firstName
-                ? `${item.firstName} ${item.lastName}`
-                : item.companyName}
-            </Text>
-            <Text style={{ color: theme.subtext }}>{item.nickName}</Text>
-          </View>
-        </View>
-
-
-        <TouchableOpacity
-          onPress={() => handleFollow(item.clerkId)}
-          style={[
-            styles.followButton,
-            {
-              backgroundColor: isFollowing ? "transparent" : "#1DA1F2",
-              borderWidth: 1,
-              borderColor: "#1DA1F2",
-            },
-          ]}
-        >
-          <Text
-            style={{
-              color: isFollowing ? "#1DA1F2" : "#fff",
-              fontWeight: "bold",
-            }}
-          >
-            {you ? "You" : isFollowing ? "Unfollow" : "Follow"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <MemberListRow
+        item={item}
+        isFollowing={following.includes(item.clerkId)}
+        onFollowPress={handleFollow}
+        currentUserId={userDetails?.clerkId}
+      />
     );
   };
+
+  const peopleListHeader =
+    activeTab === "followers" || activeTab === "following" ? (
+      <ProfilePeopleListHint
+        count={getData().length}
+        label={activeTab}
+      />
+    ) : null;
 
   /* ---------------- UI ---------------- */
   return (
@@ -233,16 +232,24 @@ export default function ProfileScreen() {
       </Pressable>
       {/* HEADER */}
       <View style={styles.header}>
-        <Image source={{ uri: profileUser?.image }} style={styles.avatar} />
+        <Image
+          source={{ uri: profileUser?.image }}
+          style={styles.avatar}
+          cachePolicy="memory-disk"
+          contentFit="cover"
+        />
 
         <View style={styles.bio}>
           <Text style={[styles.name, { color: theme.text }]}>
             {profileUser?.firstName} {profileUser?.lastName}{" "}
             {profileUser?.companyName}
           </Text>
-          <Text style={[styles.username, { color: theme.subtext }]}>
-            {profileUser?.nickName}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={[styles.username, { color: theme.subtext }]}>
+              {profileUser?.nickName}
+            </Text>
+            <VerifiedBadge isVerified={profileUser?.isVerified} size={16} />
+          </View>
         </View>
 
         {/* STATS */}
@@ -280,16 +287,24 @@ export default function ProfileScreen() {
       {/* LIST */}
       <FlatList
         data={getData()}
-        keyExtractor={(_, i) => i.toString()}
+        keyExtractor={(item, i) =>
+          item?.clerkId ?? item?._id?.toString() ?? `row-${i}`
+        }
         renderItem={renderItem}
+        ListHeaderComponent={peopleListHeader}
+        ListEmptyComponent={
+          activeTab !== "posts" ? (
+            <Text style={[styles.emptyPeople, { color: theme.subtext }]}>
+              {activeTab === "followers"
+                ? "No followers yet"
+                : "Not following anyone yet"}
+            </Text>
+          ) : null
+        }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        contentContainerStyle={
-            {
-                paddingBottom: 50
-            }
-        }
+        contentContainerStyle={{ paddingBottom: 50 }}
       />
 
       {/* EDIT PROFILE (ONLY OWNER) */}
@@ -313,8 +328,8 @@ const styles = StyleSheet.create({
   avatar: { width: 100, height: 100, borderRadius: 50 },
 
   bio: { alignItems: "center", marginTop: 10 },
-  name: { fontSize: 18, fontWeight: "700" },
-  username: { fontSize: 13 },
+  name: { fontSize: 17, fontWeight: "700" },
+  username: { fontSize: 12 },
 
   stats: {
     flexDirection: "row",
@@ -324,20 +339,11 @@ const styles = StyleSheet.create({
   },
 
   statItem: { alignItems: "center" },
-  statNumber: { fontWeight: "700", fontSize: 16 },
+  statNumber: { fontWeight: "700", fontSize: 15 },
 
-  userRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 12,
-  },
-
-  userAvatar: { width: 40, height: 40, borderRadius: 20 },
-  userName: { fontSize: 16, fontWeight: "500" },
-
-  followButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+  emptyPeople: {
+    textAlign: "center",
+    paddingVertical: 32,
+    fontSize: 14,
   },
 });

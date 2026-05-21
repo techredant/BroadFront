@@ -1,380 +1,277 @@
-import React, {
-  useRef,
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-} from "react";
+import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
+
 import {
   View,
   Text,
   Pressable,
-  TextInput,
   StatusBar,
-  RefreshControl,
   FlatList,
-  Image,
   Animated,
+  ActivityIndicator,
 } from "react-native";
+
 import axios from "axios";
-import io, { Socket } from "socket.io-client";
-import { Status } from "@/app/(drawer)/(status)/Status";
 import { useFocusEffect } from "expo-router";
-import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { LoaderKitView } from "react-native-loader-kit";
-import SAMPLE_STATUSES from "@/assets/data/SampleStatuses.json";
-import { Post } from "@/types/post";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { FloatingLevelButton } from "@/modals/LevelFloatingAction";
 import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
-import { PostCard } from "@/app/components/posts/PostCard";
+import { MemoizedFeedPostRow } from "@/app/components/posts/FeedPostRow";
+import { useUser } from "@clerk/clerk-expo";
+import { PostCardSkeleton } from "@/app/components/PostCardSkeleton";
+import { usePushPrompt } from "@/context/PushPromptContext";
+import {
+  useShowTabBarOnFocus,
+  useTabBarScrollHandler,
+} from "@/context/TabBarVisibilityContext";
+import { MemoizedHomeFeedHeader } from "@/app/components/home/HomeFeedHeader";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
-export default function HomeScreen() {
-  const { currentLevel } = useLevel();
-  const { theme, isDark } = useTheme();
-  const navigation = useNavigation();
-  const isFocused = useIsFocused();
+const SKELETON_DATA = [{ _id: "sk-0" }, { _id: "sk-1" }, { _id: "sk-2" }, { _id: "sk-3" }, { _id: "sk-4" }];
 
-  const [posts, setPosts] = useState<any[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
+export default function HomeScreen() {
+  const {
+    posts,
+    currentLevel,
+    refreshFeed,
+    loadMore,
+    loadingPosts,
+    loadingMore,
+    hasMorePosts,
+    removePost,
+    updatePost,
+    prependPost,
+  } = useLevel();
+  const { theme, isDark } = useTheme();
+  const { user } = useUser();
+  const { notifyUserEngaged } = usePushPrompt();
+  const onTabBarScroll = useTabBarScrollHandler();
+  useShowTabBarOnFocus();
+
   const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<any[]>([]);
-  const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList>(null);
+  const lastPrependedId = useRef<string | null>(null);
+  const showScrollTopRef = useRef(false);
+
   const [showScrollTop, setShowScrollTop] = useState(false);
   const scrollTopOpacity = useRef(new Animated.Value(0)).current;
-  const levelBtnOpacity = useRef(new Animated.Value(1)).current; // starts visible
 
-  const [page, setPage] = useState(1);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const handleScroll = useCallback(
+    (event: any) => {
+      onTabBarScroll(event);
+      const offsetY = event.nativeEvent.contentOffset.y;
 
-  const handleScroll = (event: any) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
-
-    const shouldShow = offsetY > 400;
-
-    setShowScrollTop(shouldShow);
-
-    // 🔥 Fade Top Button
-    Animated.timing(scrollTopOpacity, {
-      toValue: shouldShow ? 1 : 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-
-    // 🔥 Fade FloatingLevelButton (opposite behavior)
-    Animated.timing(levelBtnOpacity, {
-      toValue: shouldShow ? 0 : 1,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  // ---------------- FlatList viewability ----------------
-  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      setVisiblePostId(viewableItems[0].item._id);
-    }
-  }).current;
-  const viewabilityConfig = { itemVisiblePercentThreshold: 80 };
-
-  // ---------------- Fetch posts ----------------
-  const fetchPosts = useCallback(
-    async (pageNumber = 1, refresh = false) => {
-      if (!currentLevel?.type || !currentLevel?.value) return;
-
-      try {
-        if (pageNumber === 1) setLoading(true);
-        else setLoadingMore(true);
-
-        const url =
-          `${BASE_URL}/api/posts` +
-          `?levelType=${currentLevel.type}` +
-          `&levelValue=${currentLevel.value}` +
-          `&page=${pageNumber}` +
-          `&limit=5`;
-
-        const res = await axios.get<Post[]>(url);
-
-        const newPosts = res.data ?? [];
-
-        setHasMore(newPosts.length === 5);
-
-        if (refresh || pageNumber === 1) {
-          setPosts(newPosts);
-        } else {
-          setPosts((prev) => [...prev, ...newPosts]);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-        setLoadingMore(false);
-        setRefreshing(false);
+      if (offsetY > 24) {
+        notifyUserEngaged();
       }
+
+      const shouldShow = offsetY > 400;
+      if (shouldShow === showScrollTopRef.current) return;
+
+      showScrollTopRef.current = shouldShow;
+      setShowScrollTop(shouldShow);
+
+      Animated.timing(scrollTopOpacity, {
+        toValue: shouldShow ? 1 : 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
     },
-    [currentLevel],
+    [notifyUserEngaged, onTabBarScroll, scrollTopOpacity],
   );
 
-  useEffect(() => {
-    setPage(1);
-    fetchPosts(1, true);
-  }, [currentLevel]);
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    const id = viewableItems[0]?.item?._id;
+    if (!id) return;
+    setVisiblePostId((prev) => (prev === id ? prev : id));
+  }).current;
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchPosts();
-    }, [fetchPosts]),
-  );
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
 
-  const loadMore = () => {
-    if (loadingMore || !hasMore) return;
-
-    const nextPage = page + 1;
-
-    setPage(nextPage);
-
-    fetchPosts(nextPage);
-  };
-
-  const fetchStatuses = async () => {
-    const res = await axios.get(`${BASE_URL}/api/status`);
-    setStatuses(res.data);
-  };
-
-  useEffect(() => {
-    fetchStatuses(); // initial load
-
-    const interval = setInterval(() => {
-      fetchStatuses();
-    }, 5000);
-
-    return () => clearInterval(interval);
+  const fetchStatuses = useCallback(async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/api/status`);
+      setStatuses(res.data);
+    } catch {
+      /* non-blocking */
+    }
   }, []);
 
+  useEffect(() => {
+    fetchStatuses();
+    const interval = setInterval(fetchStatuses, 5000);
+    return () => clearInterval(interval);
+  }, [fetchStatuses]);
+
   useFocusEffect(
     useCallback(() => {
       fetchStatuses();
-    }, []),
+    }, [fetchStatuses]),
   );
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-
-    listRef.current?.scrollToOffset({ offset: 0, animated: true });
-    fetchPosts();
-  }, [fetchPosts]);
-
-  // ---------------- Socket setup ----------------
   useEffect(() => {
-    if (!currentLevel?.type || !currentLevel?.value) return;
-    const socket = io(BASE_URL, { transports: ["websocket"] });
-    socketRef.current = socket;
-
-    const room = `level-${currentLevel.type}-${currentLevel.value}`;
-    socket.emit("joinRoom", room);
-
-    socket.on("newPost", (post) => {
-      setPosts((prev) =>
-        prev.some((p) => p._id === post._id) ? prev : [post, ...prev],
-      );
-    });
-
-    socket.on("deletePost", (deletedPostId) => {
-      setPosts((prev) => prev.filter((p) => p._id !== deletedPostId));
-    });
-
-    socket.on("postUpdated", (updatedPost) => {
-      setPosts((prev) =>
-        prev.map((p) => (p._id === updatedPost._id ? updatedPost : p)),
-      );
-    });
-
-    return () => {
-      socket.emit("leaveRoom", room);
-      socket.disconnect();
-    };
-  }, [currentLevel]);
+    const firstId = posts[0]?._id;
+    if (!firstId || firstId === lastPrependedId.current) return;
+    if (String(firstId).startsWith("temp-")) {
+      lastPrependedId.current = firstId;
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+      });
+    }
+  }, [posts]);
 
   const rawLevelValue =
-    typeof currentLevel === "object"
-      ? currentLevel?.value
-      : (currentLevel ?? "home");
+    typeof currentLevel === "object" ? currentLevel?.value : "home";
 
   const levelType =
     typeof currentLevel === "object" ? currentLevel?.type : null;
 
-  // 🔥 Convert "home" → "national"
   const displayValue =
-    rawLevelValue?.toLowerCase() === "home"
-      ? "national"
-      : (rawLevelValue ?? "national");
+    (rawLevelValue?.toLowerCase() === "home" ? "national" : rawLevelValue) ||
+    "national";
 
   const formattedLevel =
     displayValue.charAt(0).toUpperCase() + displayValue.slice(1);
 
-  // ---------------- Render ----------------
-  // {
-  //   loading && posts.length === 0 && (
-  //     <View
-  //       style={{
-  //         position: "absolute",
-  //         top: "50%",
-  //         left: 0,
-  //         right: 0,
-  //         alignItems: "center",
-  //         zIndex: 10,
-  //       }}
-  //     >
-  //       <LoaderKitView
-  //         style={{ width: 50, height: 50 }}
-  //         name="BallScaleRippleMultiple"
-  //         color={theme.text}
-  //       />
-  //     </View>
-  //   );
-  // }
+  const showInitialSkeleton = loadingPosts && posts.length === 0;
+  const listData: any[] = showInitialSkeleton ? SKELETON_DATA : posts;
+
+  const keyExtractor = useCallback(
+    (item: { _id?: string }, index: number) => {
+      const id = item?._id?.toString();
+      return id ? `post-${id}` : `skeleton-${index}`;
+    },
+    [],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: any }) => {
+      if (showInitialSkeleton) {
+        return <PostCardSkeleton />;
+      }
+      return (
+        <MemoizedFeedPostRow
+          post={item}
+          isVisible={visiblePostId === item._id}
+          onDeletePost={removePost}
+          onUpdatePost={updatePost}
+          onPrependPost={prependPost}
+          onRemovePost={removePost}
+        />
+      );
+    },
+    [
+      showInitialSkeleton,
+      visiblePostId,
+      removePost,
+      updatePost,
+      prependPost,
+    ],
+  );
+
+  const listHeader = useMemo(
+    () => (
+      <MemoizedHomeFeedHeader
+        formattedLevel={formattedLevel}
+        levelType={levelType ?? null}
+        theme={theme}
+        statuses={statuses}
+        currentUserId={user?.id}
+      />
+    ),
+    [formattedLevel, levelType, theme, statuses, user?.id],
+  );
+
+  const scrollToTop = useCallback(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
 
   return (
-    // <BottomSheetModalProvider>
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       <StatusBar
         translucent
         backgroundColor="transparent"
         barStyle={isDark ? "light-content" : "dark-content"}
       />
+
       <DrawerMenuButton />
-      {/* Posts List */}
+
       <FlatList
         ref={listRef}
-        onScroll={handleScroll}
-        data={posts}
-        initialNumToRender={5}
-        maxToRenderPerBatch={5}
-        windowSize={5}
-        removeClippedSubviews
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
-        keyExtractor={(item) => item._id.toString()}
+        data={listData}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        extraData={visiblePostId}
+        refreshing={false}
+        onRefresh={refreshFeed}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
+        onScroll={handleScroll}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
         scrollEventThrottle={16}
-        renderItem={({ item }) => (
-          <PostCard
-            post={item}
-            isVisible={visiblePostId === item._id && isFocused}
-            socket={socketRef.current}
-            allPosts={posts}
-            onRefresh={onRefresh}
-            onUpdatePost={(updatedPost: { _id: any }) => {
-              setPosts((prev) =>
-                prev.map((p) => (p._id === updatedPost._id ? updatedPost : p)),
-              );
-            }}
-            onDeletePost={(postId: any) =>
-              setPosts((prev) => prev.filter((p) => p._id !== postId))
-            }
-          />
-        )}
-        ListHeaderComponent={
-          <>
-            <View />
-
-            <View
-              className="px-4 py-2 mt-8"
-              style={{
-                backgroundColor: theme.background,
-                justifyContent: "center",
-              }}
-            >
-              {/* Centered Text */}
-              <Text
-                className="font-bold text-2xl"
-                style={{
-                  color: theme.text,
-                  fontSize: 18,
-                  textAlign: "center",
-                  position: "absolute",
-                  alignSelf: "center",
-                }}
-              >
-                {formattedLevel}
-                {levelType && levelType !== "home" ? ` ${levelType}` : ""}
-              </Text>
-
-              {/* Right Image */}
-              <Image
-                source={require("../../../../assets/images/icon.jpg")}
-                style={{
-                  height: 40,
-                  width: 40,
-                  borderRadius: 50,
-                  alignSelf: "flex-end",
-                }}
-              />
-            </View>
-
-            <Status statuses={statuses} />
-          </>
-        }
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={7}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews
+        contentContainerStyle={{ paddingBottom: 90 }}
+        ListHeaderComponent={listHeader}
         ListFooterComponent={
           loadingMore ? (
-            <LoaderKitView
-              style={{ width: 40, height: 40, alignSelf: "center" }}
-              name="BallScaleRippleMultiple"
-              color={theme.text}
-            />
+            <View style={{ paddingVertical: 24, alignItems: "center" }}>
+              <ActivityIndicator size="small" color={theme.primary} />
+            </View>
+          ) : !hasMorePosts && posts.length > 0 ? (
+            <View style={{ paddingVertical: 20, alignItems: "center" }}>
+              <Text style={{ color: theme.subtext, fontSize: 13 }}>
+                You&apos;ve seen it all
+              </Text>
+            </View>
           ) : null
         }
         ListEmptyComponent={
-          <View
-            style={{
-              flex: 1,
-              justifyContent: "center",
-              alignItems: "center",
-              backgroundColor: theme.background,
-              paddingTop: 100,
-            }}
-          >
-            {loading ? (
-              <Text> </Text>
-            ) : (
-              <Text style={{ color: theme.subtext }}>No posts yet</Text>
-            )}
-          </View>
+          !showInitialSkeleton ? (
+            <View
+              style={{
+                justifyContent: "center",
+                alignItems: "center",
+                paddingTop: 48,
+                paddingBottom: 48,
+                paddingHorizontal: 24,
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.subtext,
+                  fontSize: 15,
+                  textAlign: "center",
+                }}
+              >
+                No posts at the moment
+              </Text>
+            </View>
+          ) : null
         }
       />
+
       <Animated.View
         pointerEvents={showScrollTop ? "auto" : "none"}
         style={{
           position: "absolute",
-          bottom: 60,
+          bottom: 160,
           right: 20,
           opacity: scrollTopOpacity,
-          transform: [
-            {
-              translateY: scrollTopOpacity.interpolate({
-                inputRange: [0, 1],
-                outputRange: [20, 0], // slight slide up effect
-              }),
-            },
-          ],
         }}
       >
         <Pressable
-          onPress={() =>
-            listRef.current?.scrollToOffset({ offset: 0, animated: true })
-          }
+          onPress={scrollToTop}
           style={{
             backgroundColor: "#1F2937",
             padding: 12,
             borderRadius: 30,
-            elevation: 5,
           }}
         >
           <Text style={{ color: "#fff", fontWeight: "bold" }}>↑ Top</Text>

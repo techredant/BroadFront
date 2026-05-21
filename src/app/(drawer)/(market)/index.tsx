@@ -1,98 +1,158 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
   FlatList,
   Pressable,
-  Image,
   TextInput,
   ScrollView,
-  ActivityIndicator,
   RefreshControl,
-  TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
 } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
-import axios from "axios";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Animated, { FadeInUp } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
-import Video from "react-native-video";
+import { ProductCard } from "@/app/components/market/ProductCard";
+import { MarketSkeleton } from "@/app/components/market/MarketSkeleton";
+import { FilterSheet } from "@/app/components/market/FilterSheet";
+import { useMarketplaceFeed } from "@/hooks/useMarketplaceFeed";
+import { fetchPromoted, fetchTrending } from "@/services/marketplaceApi";
+import { MARKET_CATEGORIES } from "@/services/marketplaceApi";
+import type { MarketplaceProduct, ProductFilters } from "@/types/marketplace";
 
-type Product = {
-  _id: string;
-  title: string;
-  price: number;
-  media: string[];
-  category: string;
-  status?: "new" | "sold";
-  verified?: boolean;
-};
+const cardTheme = (t: ReturnType<typeof useTheme>["theme"]) => ({
+  card: t.card,
+  text: t.text,
+  success: t.success ?? "#28a745",
+  badge: t.badge ?? "#e8e8e8",
+  primary: t.primary,
+  subtext: t.subtext,
+});
 
 export default function MarketScreen() {
   const router = useRouter();
   const { theme } = useTheme();
+  const productTheme = cardTheme(theme);
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const [filters, setFilters] = useState<ProductFilters>({ sort: "relevance" });
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [promoted, setPromoted] = useState<MarketplaceProduct[]>([]);
+  const [trending, setTrending] = useState<MarketplaceProduct[]>([]);
 
-  const fetchProducts = useCallback(async () => {
+  const goToSearch = (q?: string) => {
+    const href = q?.trim()
+      ? `/search?q=${encodeURIComponent(q.trim())}`
+      : "/search";
+    router.push(href as Href);
+  };
+
+  const activeFilters: ProductFilters = {
+    ...filters,
+    q: searchText.trim() || undefined,
+    category: selectedCategory,
+  };
+
+  const {
+    products,
+    loading,
+    refreshing,
+    loadingMore,
+    hasMore,
+    refresh,
+    loadMore,
+    initialLoad,
+  } = useMarketplaceFeed(activeFilters);
+
+  const loadHighlights = useCallback(async () => {
     try {
-      const res = await axios.get<Product[]>(
-        "https://cast-api-zeta.vercel.app/api/products",
-      );
-
-      const sorted = (res.data || [])
-        .filter((p) => p && p._id && p.title)
-        .sort((a, b) => b._id.localeCompare(a._id));
-
-      setProducts(sorted);
-    } catch (err) {
-      console.error("❌ Product fetch error:", err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      const [p, t] = await Promise.all([fetchPromoted(), fetchTrending()]);
+      setPromoted(p);
+      setTrending(t);
+    } catch {
+      /* optional sections */
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      fetchProducts();
-    }, [fetchProducts]),
+      initialLoad();
+      loadHighlights();
+    }, [JSON.stringify(activeFilters)]),
   );
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchProducts();
-  }, [fetchProducts]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      initialLoad();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchText, selectedCategory, JSON.stringify(filters)]);
 
-  const categories = useMemo(() => {
-    return Array.from(new Set(products.map((p) => p.category)));
-  }, [products]);
+  const renderHeader = () => (
+    <View>
+      {promoted.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="flash" size={18} color="#FF6B00" />
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>
+              Promoted
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {promoted.map((item, i) => (
+              <ProductCard
+                key={item._id}
+                item={item}
+                theme={productTheme}
+                compact
+                index={i}
+                onPress={() => router.push(`/${item._id}`)}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((item) => {
-      const matchesSearch = (item.title || "")
-        .toLowerCase()
-        .includes(searchText.toLowerCase());
+      {trending.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="trending-up" size={18} color={theme.primary} />
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>
+              Trending
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {trending.map((item, i) => (
+              <ProductCard
+                key={`t-${item._id}`}
+                item={item}
+                theme={productTheme}
+                compact
+                index={i}
+                onPress={() => router.push(`/${item._id}`)}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
-      const matchesCategory = selectedCategory
-        ? item.category === selectedCategory
-        : true;
+      <Text style={[styles.feedTitle, { color: theme.text }]}>
+        All listings
+      </Text>
+    </View>
+  );
 
-      return matchesSearch && matchesCategory;
-    });
-  }, [products, searchText, selectedCategory]);
-
-  if (loading) {
+  if (loading && products.length === 0) {
     return (
-      <SafeAreaView style={styles.loader}>
-        <ActivityIndicator size="small" />
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: theme.background }]}
+      >
+        <DrawerMenuButton />
+        <MarketSkeleton />
       </SafeAreaView>
     );
   }
@@ -103,23 +163,26 @@ export default function MarketScreen() {
     >
       <DrawerMenuButton />
 
-      {/* HEADER */}
       <View style={styles.header}>
-        <Text />
-
-        <Text style={[styles.title, { color: theme.text }]}>Market</Text>
-
-        <Pressable
-          onPress={() => router.push("/sell-form")}
-          style={[styles.sellBtn, { backgroundColor: theme.primary }]}
-        >
-          <Text style={{ color: theme.buttonText, fontWeight: "600" }}>
-            Sell
-          </Text>
-        </Pressable>
+        <Text style={[styles.title, { color: theme.text, textAlign: "center" }]}>Marketplace</Text>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => router.push("/seller-dashboard")}
+            style={[styles.iconBtn, { backgroundColor: theme.card }]}
+          >
+            <Ionicons name="stats-chart" size={18} color={theme.primary} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/sell-form")}
+            style={[styles.sellBtn, { backgroundColor: theme.primary }]}
+          >
+            <Text style={{ color: theme.buttonText, fontWeight: "700" }}>
+              Sell
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
-      {/* SEARCH */}
       <View style={styles.searchWrapper}>
         <View
           style={[
@@ -129,252 +192,190 @@ export default function MarketScreen() {
         >
           <Ionicons name="search" size={18} color={theme.subtext} />
           <TextInput
-            placeholder="Search products..."
+            placeholder="Search phones, fashion, cars..."
             placeholderTextColor={theme.subtext}
             value={searchText}
             onChangeText={setSearchText}
+            onFocus={() => goToSearch(searchText)}
+            onSubmitEditing={() => goToSearch(searchText)}
+            returnKeyType="search"
             style={[styles.searchInput, { color: theme.text }]}
           />
+          <Pressable onPress={() => setFilterOpen(true)} hitSlop={8}>
+            <Ionicons
+              name="options-outline"
+              size={22}
+              color={theme.primary}
+            />
+          </Pressable>
         </View>
       </View>
 
-      {/* CATEGORIES (FIXED SPACING) */}
-      <View style={styles.categoryWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryContainer}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.categoryScroll}
+        contentContainerStyle={styles.categoryContainer}
+      >
+        <Pressable
+          onPress={() => setSelectedCategory(null)}
+          style={[
+            styles.categoryChip,
+            {
+              backgroundColor:
+                selectedCategory === null ? theme.primary : theme.card,
+            },
+          ]}
         >
-          <Pressable
-            onPress={() => setSelectedCategory(null)}
-            style={[
-              styles.categoryChip,
-              {
-                backgroundColor:
-                  selectedCategory === null ? theme.primary : theme.card,
-              },
-            ]}
+          <Text
+            style={{
+              color: selectedCategory === null ? "#fff" : theme.text,
+              fontWeight: "600",
+            }}
           >
-            <Text
-              style={{
-                color:
-                  selectedCategory === null ? theme.buttonText : theme.text,
-              }}
+            All
+          </Text>
+        </Pressable>
+        {MARKET_CATEGORIES.map((cat) => {
+          const selected = selectedCategory === cat;
+          return (
+            <Pressable
+              key={cat}
+              onPress={() => setSelectedCategory(selected ? null : cat)}
+              style={[
+                styles.categoryChip,
+                {
+                  backgroundColor: selected ? theme.primary : theme.card,
+                },
+              ]}
             >
-              All
-            </Text>
-          </Pressable>
-
-          {categories.map((cat) => {
-            const selected = selectedCategory === cat;
-
-            return (
-              <Pressable
-                key={cat}
-                onPress={() => setSelectedCategory(selected ? null : cat)}
-                style={[
-                  styles.categoryChip,
-                  {
-                    backgroundColor: selected ? theme.primary : theme.card,
-                  },
-                ]}
+              <Text
+                style={{
+                  color: selected ? "#fff" : theme.text,
+                  fontSize: 12,
+                }}
               >
-                <Text
-                  style={{
-                    color: selected ? theme.buttonText : theme.text,
-                  }}
-                >
-                  {cat}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
+                {cat}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
 
-      {/* PRODUCTS */}
       <FlatList
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.listContainer}
-        data={filteredProducts}
+        data={products}
         keyExtractor={(item) => item._id}
         numColumns={2}
-        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={renderHeader}
+        contentContainerStyle={styles.listContainer}
         columnWrapperStyle={styles.row}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.text}
+            onRefresh={() => {
+              refresh();
+              loadHighlights();
+            }}
+            tintColor={theme.primary}
           />
         }
-        renderItem={({ item, index }) => {
-          const mediaUrl =
-            item.media?.[item.media.length - 1] ||
-            "https://via.placeholder.com/300";
-
-          const isVideo = /\.(mp4|mov|webm)$/i.test(mediaUrl);
-
-          return (
-            <Pressable
-              onPress={() => router.push(`/${item._id}`)}
-              style={[styles.card, { backgroundColor: theme.card }]}
+        onEndReached={() => loadMore()}
+        onEndReachedThreshold={0.4}
+        ListFooterComponent={
+          loadingMore ? (
+            <ActivityIndicator style={{ marginVertical: 16 }} />
+          ) : !hasMore && products.length > 0 ? (
+            <Text
+              style={{
+                textAlign: "center",
+                color: theme.subtext,
+                marginVertical: 16,
+              }}
             >
-              <Animated.View entering={FadeInUp.delay(120)}>
-                {isVideo ? (
-                  <Video
-                    source={{ uri: mediaUrl }}
-                    style={styles.media}
-                    resizeMode="cover"
-                    muted
-                    repeat
-                  />
-                ) : (
-                  <Image
-                    source={{ uri: mediaUrl }}
-                    style={styles.media}
-                    resizeMode="cover"
-                  />
-                )}
-              </Animated.View>
+              You&apos;ve seen it all
+            </Text>
+          ) : null
+        }
+        ListEmptyComponent={
+          <Text
+            style={{
+              textAlign: "center",
+              color: theme.subtext,
+              marginTop: 40,
+            }}
+          >
+            No products found. Try adjusting filters.
+          </Text>
+        }
+        renderItem={({ item, index }) => (
+          <ProductCard
+            item={item}
+            theme={productTheme}
+            index={index}
+            onPress={() => router.push(`/${item._id}`)}
+          />
+        )}
+      />
 
-              <View style={styles.cardBody}>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.productTitle, { color: theme.text }]}
-                >
-                  {item.title}
-                </Text>
-
-                <Text style={[styles.price, { color: theme.success }]}>
-                  KES {(item.price || 0).toLocaleString("en-KE")}
-                </Text>
-
-                <View style={[styles.badge, { backgroundColor: theme.badge }]}>
-                  <Text style={{ fontSize: 12, color: theme.text }}>
-                    {item.category || "Other"}
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
-          );
-        }}
+      <FilterSheet
+        visible={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        filters={filters}
+        onApply={setFilters}
+        theme={theme as Record<string, string>}
       />
     </SafeAreaView>
   );
 }
 
-/* ---------------- STYLES ---------------- */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-
-  loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
+  container: { flex: 1 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    marginTop: 10,
+    marginTop: 8,
     marginBottom: 8,
   },
-
-  title: {
-    fontSize: 22,
-    fontWeight: "bold",
-  },
-
-  sellBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-  },
-
-  searchWrapper: {
-    paddingHorizontal: 16,
-    marginBottom: 10,
-  },
-
+  title: { fontSize: 23, fontWeight: "800", textAlign: "center" },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  iconBtn: { padding: 10, borderRadius: 12 },
+  sellBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20 },
+  searchWrapper: { paddingHorizontal: 16, marginBottom: 10 },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 30,
+    borderRadius: 14,
     borderWidth: 1,
     paddingHorizontal: 12,
-  },
-
-  searchInput: {
-    flex: 1,
-    paddingVertical: 10,
-    marginLeft: 8,
-  },
-
-  categoryWrapper: {
-    marginBottom: 8, // 🔥 FIXED spacing issue
-  },
-
-  categoryContainer: {
-    paddingHorizontal: 12,
     paddingVertical: 4,
-    alignItems: "center",
   },
-
+  searchInput: { flex: 1, paddingVertical: 10, marginLeft: 8 },
+  categoryScroll: { maxHeight: 48, marginBottom: 8 },
+  categoryContainer: { paddingHorizontal: 12, alignItems: "center" },
   categoryChip: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
     marginRight: 8,
   },
-
-  listContainer: {
-    paddingBottom: 24,
-    paddingHorizontal: 8,
+  section: { marginBottom: 16, paddingLeft: 12 },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+    paddingHorizontal: 4,
   },
-
-  row: {
-    justifyContent: "space-between",
-    paddingHorizontal: 8,
-  },
-
-  card: {
-    flex: 1,
-    marginBottom: 16,
-    borderRadius: 16,
-    overflow: "hidden",
-    elevation: 2,
-    marginHorizontal: 4,
-  },
-
-  media: {
-    width: "100%",
-    height: 160,
-  },
-
-  cardBody: {
-    padding: 12,
-  },
-
-  productTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-
-  price: {
+  sectionTitle: { fontSize: 16, fontWeight: "700" },
+  feedTitle: {
+    fontSize: 15,
     fontWeight: "700",
-    marginTop: 4,
+    marginBottom: 10,
+    paddingHorizontal: 8,
   },
-
-  badge: {
-    marginTop: 6,
-    alignSelf: "flex-start",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
+  listContainer: { paddingBottom: 24, paddingHorizontal: 8 },
+  row: { justifyContent: "space-between", paddingHorizontal: 8 },
 });

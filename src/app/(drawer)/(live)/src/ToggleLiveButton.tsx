@@ -62,5 +62,5 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     marginRight: 8,
   },
-  text: { color: "white", fontWeight: "700", fontSize: 16, letterSpacing: 0.5 },
+  text: { color: "white", fontWeight: "700", fontSize: 15, letterSpacing: 0.5 },
 });

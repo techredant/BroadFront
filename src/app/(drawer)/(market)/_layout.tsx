@@ -1,18 +1,15 @@
 
 import React from "react";
 import { Stack } from "expo-router";
-import ChatWrapper from "@/app/components/ChatWrapper";
-import VideoProvider from "@/app/components/VideoProvider";
-import { useLevel } from "@/context/LevelContext";
 
 export default function MarketLayout() {
-  const { userDetails } = useLevel();
-
   return (
-    <ChatWrapper userDetail={userDetails!}>
-      {/* <VideoProvider> */}
-        <Stack screenOptions={{ headerShown: false }} />
-      {/* </VideoProvider> */}
-    </ChatWrapper>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="[id]" />
+      <Stack.Screen name="sell-form" />
+      <Stack.Screen name="seller-dashboard" />
+      <Stack.Screen name="search" />
+    </Stack>
   );
 }

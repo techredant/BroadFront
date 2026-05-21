@@ -16,6 +16,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useRouter } from "expo-router"; // ✅ Expo Router
 import * as ImagePicker from "expo-image-picker";
+import { uploadLocalMedia } from "@/utils/mediaUpload";
+import { imagePickerMediaOptions } from "@/utils/mediaUtils";
 import { useUser } from "@clerk/clerk-expo";
 import { useTheme } from "@/context/ThemeContext";
 import axios from "axios";
@@ -85,7 +87,7 @@ const EditProduct = ({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
-      quality: 1,
+      ...imagePickerMediaOptions,
     });
 
     if (!result.canceled) {
@@ -101,7 +103,7 @@ const EditProduct = ({
   const takePhotoOrVideo = async () => {
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
-      quality: 1,
+      ...imagePickerMediaOptions,
     });
 
     if (!result.canceled) {
@@ -137,34 +139,14 @@ const EditProduct = ({
     setMedia((prev) => prev.filter((m) => m.uri !== uri));
   };
 
-  const uploadToCloudinary = async (uri: string, type: "image" | "video") => {
-    const data = new FormData();
-    data.append("file", {
-      uri,
-      type: type === "video" ? "video/mp4" : "image/jpeg",
-      name: type === "video" ? "upload.mp4" : "upload.jpg",
-    } as any);
-
-    data.append("upload_preset", "MediaCast");
-    data.append("cloud_name", "ds25oyyqo");
-
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/ds25oyyqo/${type}/upload`,
-      { method: "POST", body: data },
-    );
-
-    const result = await res.json();
-    return result.secure_url;
-  };
-
   const handleSubmit = async () => {
     setLoading(true);
 
     try {
       const uploadedUrls = await Promise.all(
         media.map(async (item) => {
-          if (item.uri.startsWith("http")) return item.uri;
-          return await uploadToCloudinary(item.uri, item.type);
+          const url = await uploadLocalMedia(item.uri, item.type);
+          return url ?? item.uri;
         }),
       );
 
@@ -498,13 +480,13 @@ export default EditProduct;
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9f9f9", paddingBottom: 40 },
   form: { padding: 16, marginBottom: 30, paddingTop: 40 },
-  label: { fontSize: 14, fontWeight: "600", marginTop: 12, marginBottom: 6 },
+  label: { fontSize: 13, fontWeight: "600", marginTop: 12, marginBottom: 6 },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  headerText: { fontSize: 20, fontWeight: "700", textAlign: "center" },
+  headerText: { fontSize: 19, fontWeight: "700", textAlign: "center" },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "#ddd",
@@ -525,7 +507,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#fff",
   },
-  errorText: { color: "red", fontSize: 12, marginTop: 4 },
+  errorText: { color: "red", fontSize: 11, marginTop: 4 },
   submitButton: {
     backgroundColor: "#4caf50",
     padding: 14,
@@ -541,7 +523,7 @@ const styles = StyleSheet.create({
   },
   submitText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
   },
   imagePreview: { width: 120, height: 120, borderRadius: 10 },
@@ -575,7 +557,7 @@ const styles = StyleSheet.create({
   },
 
   modalTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     marginBottom: 10,
   },

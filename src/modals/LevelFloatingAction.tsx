@@ -7,6 +7,7 @@ import Animated, {
   withTiming,
   FadeIn,
   FadeOut,
+  type SharedValue,
 } from "react-native-reanimated";
 import { useRouter } from "expo-router"; // ✅ FIXED
 import { useLevel } from "@/context/LevelContext";
@@ -18,12 +19,46 @@ type LevelType =
   | "ward"
   | "ai"
   | "live"
-  | "audio"
+  | "audio";
+
+type ActionItem = {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  offset: number;
+};
+
+function FloatingActionItem({
+  action,
+  progress,
+  onPress,
+}: {
+  action: ActionItem;
+  progress: SharedValue<number>;
+  onPress: () => void;
+}) {
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: -progress.value * action.offset },
+      { scale: progress.value },
+    ],
+    opacity: progress.value,
+  }));
+
+  return (
+    <Animated.View style={[styles.actionContainer, animatedStyle]}>
+      <Pressable style={styles.action} onPress={onPress}>
+        {action.icon}
+        <Text style={styles.actionText}>{action.label}</Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
 
 export function FloatingLevelButton() {
   const [open, setOpen] = useState(false);
   const progress = useSharedValue(0);
-  const { userDetails, setCurrentLevel } = useLevel();
+  const { userDetails, switchLevel } = useLevel();
   const router = useRouter(); // ✅ correct usage
 
   useEffect(() => {
@@ -70,63 +105,69 @@ export function FloatingLevelButton() {
       audio: { type: "audioRoom", value: "audioRoom" },
     };
 
-    setCurrentLevel(mapping[type]);
+    switchLevel(mapping[type]);
   };
 
-  const actions = [
-    {
-      key: "home",
-      label: "Home",
-      icon: <Ionicons name="home-outline" size={18} color="#fff" />,
-      offset: 0,
-    },
-    {
-      key: "county",
-      label: "County",
-      icon: <Feather name="map" size={18} color="#fff" />,
-      offset: 60,
-    },
-    {
-      key: "constituency",
-      label: "Constituency",
-      icon: <FontAwesome5 name="flag" size={16} color="#fff" />,
-      offset: 120,
-    },
-    {
-      key: "ward",
-      label: "Ward",
-      icon: <FontAwesome5 name="map-pin" size={16} color="#fff" />,
-      offset: 180,
-    },
-    {
-      key: "ai",
-      label: "Chat AI",
-      icon: <FontAwesome5 name="robot" size={16} color="#fff" />,
-      offset: 240,
-    },
-    {
-      key: "live",
-      label: "Go Live",
-      icon:  <Ionicons name="radio-outline" size={16} color="#fff" />,
-      offset: 300,
-    },
-    {
-      key: "audio",
-      label: "Join Audio",
-      icon: <Ionicons name="mic-circle" size={22} color="#fff" />,
-      offset: 360,
-    },
-  ];
+const isPersonal = userDetails?.accountType === "Personal Account";
 
-  // ✅ SAFE animated style generator
-  const getActionStyle = (offset: number) =>
-    useAnimatedStyle(() => ({
-      transform: [
-        { translateY: -progress.value * offset },
-        { scale: progress.value },
-      ],
-      opacity: progress.value,
-    }));
+
+const rawActions = [
+  {
+    key: "home",
+    label: "Home",
+    icon: <Ionicons name="home-outline" size={18} color="#fff" />,
+    show: true,
+  },
+
+  {
+    key: "county",
+    label: "County",
+    icon: <Feather name="map" size={18} color="#fff" />,
+    show: isPersonal,
+  },
+
+  {
+    key: "constituency",
+    label: "Constituency",
+    icon: <FontAwesome5 name="flag" size={16} color="#fff" />,
+    show: isPersonal,
+  },
+
+  {
+    key: "ward",
+    label: "Ward",
+    icon: <FontAwesome5 name="map-pin" size={16} color="#fff" />,
+    show: isPersonal,
+  },
+
+  {
+    key: "ai",
+    label: "Chat AI",
+    icon: <FontAwesome5 name="robot" size={16} color="#fff" />,
+    show: true,
+  },
+
+  {
+    key: "live",
+    label: "Go Live",
+    icon: <Ionicons name="radio-outline" size={16} color="#fff" />,
+    show: true,
+  },
+
+  {
+    key: "audio",
+    label: "Join Audio",
+    icon: <Ionicons name="mic-circle" size={22} color="#fff" />,
+    show: true,
+  },
+];
+
+const actions = rawActions
+  .filter((action) => action.show)
+  .map((action, index) => ({
+    ...action,
+    offset: index * 60,
+  }));
 
   return (
     <Animated.View
@@ -140,18 +181,12 @@ export function FloatingLevelButton() {
 
       {/* Actions */}
       {actions.map((action) => (
-        <Animated.View
+        <FloatingActionItem
           key={action.key}
-          style={[styles.actionContainer, getActionStyle(action.offset)]}
-        >
-          <Pressable
-            style={styles.action}
-            onPress={() => selectLevel(action.key as LevelType)}
-          >
-            {action.icon}
-            <Text style={styles.actionText}>{action.label}</Text>
-          </Pressable>
-        </Animated.View>
+          action={action}
+          progress={progress}
+          onPress={() => selectLevel(action.key as LevelType)}
+        />
       ))}
 
       {/* FAB */}
@@ -165,7 +200,7 @@ export function FloatingLevelButton() {
 const styles = StyleSheet.create({
   fab: {
     position: "absolute",
-    bottom: 5,
+    bottom: 100,
     right: 10,
     width: 50,
     height: 50,
@@ -182,7 +217,7 @@ const styles = StyleSheet.create({
   },
   actionContainer: {
     position: "absolute",
-    bottom: 90,
+    bottom: 150,
     right: 20,
     zIndex: 15,
   },
@@ -200,6 +235,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     marginLeft: 8,
     fontWeight: "600",
-    fontSize: 13,
+    fontSize: 12,
   },
 });

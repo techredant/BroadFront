@@ -1,71 +1,87 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { PermissionRequestsPanel } from "./PermissionsRequestsPanel";
-import { useCall } from "@stream-io/video-react-native-sdk";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AudioRoomDescription from "./AudioRoomDescription";
 import AudioRoomParticipants from "./AudioRoomParticipants";
 import AudioRoomControlsPanel from "./AudioRoomControlsPanel";
-import { useTheme } from "@/context/ThemeContext";
+import AudioPresenterBanner from "./AudioPresenterBanner";
+import AudioScreenShareBar from "./AudioScreenShareBar";
+import { MediaColors, MediaGradients } from "@/constants/mediaTheme";
 
-type Props = { goToHomeScreen: () => void };
+type Props = { goToHomeScreen: () => void; isHost?: boolean };
 
-export const AudioRoomUI = ({ goToHomeScreen }: Props) => {
-  const { theme } = useTheme();
-  const call = useCall();
+export const AudioRoomUI = ({ goToHomeScreen, isHost = false }: Props) => {
+  const insets = useSafeAreaInsets();
 
-  const leaveCall = async () => {
-    try {
-      await call?.leave();
-    } catch (e) {
-      console.error("Leave error:", e);
-    } finally {
-      goToHomeScreen();
-    }
+  const leaveCall = () => {
+    goToHomeScreen();
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <AudioRoomDescription />
-      <AudioRoomParticipants />
-      <PermissionRequestsPanel />
-      <AudioRoomControlsPanel />
-
-      <Animated.View entering={FadeInDown.delay(700)}>
-        <Pressable
-          style={[styles.leaveButton, { backgroundColor: theme.primary }]}
-          onPress={leaveCall}
-        >
-          <Ionicons name="exit-outline" size={22} color={theme.background} />
-          <Text style={[styles.leaveText, { color: theme.background }]}>
-            Leave Quietly
-          </Text>
+    <LinearGradient
+      colors={[...MediaGradients.audioRoom]}
+      style={styles.root}
+    >
+      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+        <Pressable onPress={leaveCall} style={styles.backBtn}>
+          <Ionicons name="chevron-down" size={24} color="#fff" />
         </Pressable>
-      </Animated.View>
-    </View>
+        <Text style={styles.topLabel}>Audio room</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      <AudioRoomDescription />
+      <PermissionRequestsPanel />
+      <AudioScreenShareBar />
+      <AudioPresenterBanner />
+      <AudioRoomParticipants isHost={isHost} />
+
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
+        <AudioRoomControlsPanel isHost={isHost} />
+        <Pressable style={styles.leaveBtn} onPress={leaveCall}>
+          <Ionicons name="exit-outline" size={20} color="#fff" />
+          <Text style={styles.leaveText}>Leave</Text>
+        </Pressable>
+      </View>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: 20,
+  root: { flex: 1 },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  leaveButton: {
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: MediaColors.glass,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  topLabel: { color: MediaColors.textSecondary, fontSize: 12, fontWeight: "600" },
+  bottomBar: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  leaveBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 30,
-    borderRadius: 30,
-    elevation: 6,
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: MediaColors.glassBorder,
   },
-  leaveText: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 8,
-  },
+  leaveText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 });

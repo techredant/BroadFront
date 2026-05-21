@@ -2,23 +2,32 @@ import { FlatList, View, StyleSheet } from "react-native";
 import { CreateStatus } from "./CreateStatus";
 import { useTheme } from "@/context/ThemeContext";
 import { StatusItem } from "./StatusItem";
+import { enrichStatusGroup } from "@/utils/statusUser";
 
 interface Status {
   _id: string;
   userId: string;
-  viewed: boolean;
-  caption: string;
-  media: string[];
-  backgroundColor: string;
+  viewed?: boolean;
+  caption?: string;
+  media?: string[];
+  backgroundColor?: string;
   createdAt: string;
+  views?: { userId: string }[];
+  firstName?: string;
+  lastName?: string;
+  companyName?: string;
+  nickName?: string;
+  image?: string;
 }
 
-export function Status({ statuses }: { statuses: Status[] }) {
+type StatusProps = {
+  statuses: Status[];
+  currentUserId?: string | null;
+};
+
+export function Status({ statuses, currentUserId }: StatusProps) {
   const { theme } = useTheme();
 
-  /* =========================
-     GROUP BY USER
-  ========================= */
   const groupedStatuses = Object.values(
     statuses.reduce((acc: any, status) => {
       const key = status.userId;
@@ -26,6 +35,11 @@ export function Status({ statuses }: { statuses: Status[] }) {
       if (!acc[key]) {
         acc[key] = {
           userId: status.userId,
+          firstName: status.firstName,
+          lastName: status.lastName,
+          companyName: status.companyName,
+          nickName: status.nickName,
+          image: status.image,
           statuses: [],
         };
       }
@@ -34,18 +48,18 @@ export function Status({ statuses }: { statuses: Status[] }) {
 
       return acc;
     }, {}),
-  ).map((group: any) => {
-    // IMPORTANT: sort each user’s statuses same as viewer
-    group.statuses.sort(
-      (a: any, b: any) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-
-    return group;
-  });
+  ).map((group: any) => enrichStatusGroup(group));
 
   return (
-    <View style={[styles.container, { backgroundColor: "theme.background" }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.background,
+          borderBottomColor: theme.border,
+        },
+      ]}
+    >
       <FlatList
         data={groupedStatuses}
         horizontal
@@ -56,8 +70,10 @@ export function Status({ statuses }: { statuses: Status[] }) {
         keyExtractor={(item: any) => item.userId}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
-        ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
-        renderItem={({ item }) => <StatusItem userStatus={item} />}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        renderItem={({ item }) => (
+          <StatusItem userStatus={item} currentUserId={currentUserId} />
+        )}
         ListHeaderComponent={<CreateStatus />}
       />
     </View>
@@ -66,10 +82,17 @@ export function Status({ statuses }: { statuses: Status[] }) {
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 12,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
 
   listContent: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
+    alignItems: "flex-start",
+    gap: 0,
+  },
+
+  separator: {
+    width: 6,
   },
 });

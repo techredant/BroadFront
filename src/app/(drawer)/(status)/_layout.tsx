@@ -1,9 +1,14 @@
-import { View, Text } from 'react-native'
-import React from 'react'
-import { Stack } from 'expo-router'
+import { Stack } from "expo-router";
 
-export default function _layout() {
+export default function StatusStackLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false}}/>
-  )
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: "#000" },
+        animation: "fade",
+        gestureEnabled: true,
+      }}
+    />
+  );
 }

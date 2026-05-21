@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Drawer } from "expo-router/drawer";
 import {
   DrawerContentComponentProps,
@@ -11,6 +11,10 @@ import { router, usePathname } from "expo-router";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import ChatWrapper from "../components/ChatWrapper";
+import {
+  formatDrawerBadge,
+  useStreamUnreadCount,
+} from "@/utils/chatLayout";
 import { useChatContext } from "stream-chat-expo";
 
 /* =======================
@@ -18,22 +22,21 @@ import { useChatContext } from "stream-chat-expo";
 ======================= */
 const CustomDrawerContent = (props: DrawerContentComponentProps) => {
   const { user } = useUser();
-  const { userDetails, isLoadingUser, setCurrentLevel } = useLevel();
+  const { userDetails, isLoadingUser, switchLevel } = useLevel();
   const { theme } = useTheme();
   const { client } = useChatContext();
   const pathname = usePathname();
 
-  // Get unread count from Stream Chat
-  const unreadCount = (client?.user as any)?.unread_count || 0;
-  const newProductsCount = 1; // TODO: Implement new products count logic
+  const chatUnread = useStreamUnreadCount(client);
 
-  const drawerItems = [
+  const drawerItems = useMemo(
+    () => [
     {
       name: "(tabs)",
       label: "Home",
       icon: "home-outline",
       onPress: () => {
-        setCurrentLevel({ type: "home", value: "home" });
+        switchLevel({ type: "home", value: "home" });
 
         props.navigation.closeDrawer(); // ✅ CLOSE DRAWER FIRST
 
@@ -53,7 +56,7 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
       name: "(stream)",
       label: "Chat",
       icon: "chatbubble-ellipses-outline",
-      badge: unreadCount,
+      badge: chatUnread,
     },
     {
       name: "status",
@@ -65,7 +68,7 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
       name: "(market)",
       label: "Market",
       icon: "cart-outline",
-      badge: newProductsCount,
+      badge: 0,
     },
     {
       name: "members",
@@ -97,7 +100,9 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
       icon: "mic-circle",
       badge: 0,
     },
-  ];
+  ],
+    [chatUnread, props.navigation, switchLevel],
+  );
 
   return (
     <DrawerContentScrollView
@@ -134,32 +139,34 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
         />
 
         <View style={{ marginLeft: 12, flex: 1 }}>
-          {isLoadingUser ? (
+          {!userDetails && isLoadingUser ? (
             <ActivityIndicator size="small" color={theme.text} />
           ) : (
             <>
               <Text
                 style={{
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: "600",
                   color: theme.text,
                 }}
                 numberOfLines={1}
               >
-                {userDetails?.firstName
-                  ? `${userDetails.firstName} ${userDetails.lastName}`
-                  : "Anonymous"}
+                {userDetails?.firstName} {userDetails?.lastName}{" "}
+                {userDetails?.companyName}
               </Text>
 
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: 12,
                   color: theme.subtext,
                   marginTop: 2,
                 }}
                 numberOfLines={1}
               >
-                {userDetails?.nickName || "guest"}
+                {userDetails?.nickName ||
+                  user?.username ||
+                  user?.primaryEmailAddress?.emailAddress ||
+                  "guest"}
               </Text>
             </>
           )}
@@ -195,7 +202,8 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
             />
             <Text
               style={{
-                fontSize: 15,
+                fontSize: 14,
+                fontWeight: "700",
                 color: pathname.includes(item.name)
                   ? theme.primary
                   : theme.text,
@@ -205,7 +213,7 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
             >
               {item.label}
             </Text>
-            {item.badge > 0 && (
+            {formatDrawerBadge(item.badge) ? (
               <View
                 style={{
                   backgroundColor: theme.danger,
@@ -220,14 +228,14 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
                 <Text
                   style={{
                     color: "white",
-                    fontSize: 12,
-                    fontWeight: "bold",
+                    fontSize: 11,
+                    fontWeight: "700",
                   }}
                 >
-                  {item.badge > 99 ? "99+" : item.badge}
+                  {formatDrawerBadge(item.badge)}
                 </Text>
               </View>
-            )}
+            ) : null}
           </Pressable>
         ))}
       </View>
@@ -240,7 +248,7 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
 ======================= */
 export default function DrawerLayout() {
   const { theme } = useTheme();
-  const { userDetails, setCurrentLevel } = useLevel();
+  const { userDetails, switchLevel } = useLevel();
   const { user } = useUser();
 
   return (
@@ -252,15 +260,22 @@ export default function DrawerLayout() {
           drawerStyle: {
             backgroundColor: theme.card,
             width: 260,
+            borderRightWidth: 0,
           },
+          sceneContainerStyle: {
+            backgroundColor: theme.background,
+          },
+          overlayColor: "rgba(0,0,0,0.45)",
           drawerLabelStyle: {
-            fontSize: 15,
+            fontSize: 14,
             fontWeight: "bold",
             color: theme.text,
           },
           drawerActiveTintColor: theme.primary,
           drawerInactiveTintColor: theme.text,
-          drawerType: "front",
+          // "back" keeps the drawer behind content when closed — avoids a 1px
+          // light edge peeking on dark fullscreen routes (e.g. status viewer).
+          drawerType: "back",
           swipeEnabled: false,
         }}
         initialRouteName="(tabs)"
@@ -275,18 +290,6 @@ export default function DrawerLayout() {
             ),
           }}
      
-        />
-
-        {/* TRENDS */}
-        <Drawer.Screen
-          name="trend"
-          options={{
-            drawerLabel: "Trends",
-            drawerItemStyle: { display: "none" }, // HIDDEN FOR NOW
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="flame-outline" size={size} color={color} />
-            ),
-          }}
         />
 
         {/* CHAT */}
@@ -381,32 +384,12 @@ export default function DrawerLayout() {
           }}
         />
 
-        {/* PROFILE */}
-        <Drawer.Screen
-          name="profile"
-          options={{
-            drawerLabel: "Your Profile",
-            drawerIcon: () => (
-              <Image
-                source={{
-                  uri: userDetails?.image || user?.imageUrl,
-                }}
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor: theme.border,
-                }}
-              />
-            ),
-          }}
-        />
-
         {/* HIDDEN SCREENS */}
         <Drawer.Screen
           name="(status)"
           options={{
             drawerItemStyle: { display: "none" },
+            sceneContainerStyle: { backgroundColor: "#000" },
           }}
         />
 
@@ -418,7 +401,7 @@ export default function DrawerLayout() {
         />
 
         <Drawer.Screen
-          name="(ai)/index"
+          name="(ai)"
           options={{
             drawerItemStyle: { display: "none" },
           }}

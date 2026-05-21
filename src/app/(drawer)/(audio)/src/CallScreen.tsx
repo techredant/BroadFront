@@ -1,6 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AudioRoomUI } from "./AudioRoomUI";
-import { StyleSheet, View, Text, ActivityIndicator, Pressable } from "react-native";
+import {
+  StyleSheet,
+  View,
+  Text,
+  ActivityIndicator,
+  Pressable,
+} from "react-native";
 import {
   Call,
   StreamCall,
@@ -11,8 +17,13 @@ import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 
 const CallScreen = () => {
-  const params = useLocalSearchParams<{ callId?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    callId?: string | string[];
+    isHost?: string | string[];
+  }>();
   const callId = Array.isArray(params.callId) ? params.callId[0] : params.callId;
+  const isHost =
+    (Array.isArray(params.isHost) ? params.isHost[0] : params.isHost) === "true";
 
   const [call, setCall] = useState<Call | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -20,58 +31,68 @@ const CallScreen = () => {
   const client = useStreamVideoClient();
   const { theme } = useTheme();
   const router = useRouter();
+  const joinGenRef = useRef(0);
+
+  const streamCall = useMemo(() => {
+    if (!client || !callId) return null;
+    return client.call("audio_room", callId);
+  }, [client, callId]);
 
   useEffect(() => {
-    if (!client) return;
-  
-    if (!callId) {
-      setError("Missing room id.");
+    if (!streamCall) {
+      if (!callId) setError("Missing room id.");
       return;
     }
-  
-    let isMounted = true;
-    let joined = false;
-  
-    const myCall = client.call("audio_room", callId);
-  
+
+    const gen = ++joinGenRef.current;
+    let active = true;
+
     const joinCall = async () => {
       try {
         setError(null);
-  
-        await myCall.join({
-          create: true,
-        });
-  
-        joined = true;
-  
-        if (isMounted) {
-          setCall(myCall);
+
+        if (isHost) {
+          await streamCall.getOrCreate();
+          await streamCall.join({ create: true });
+        } else {
+          await streamCall.join({ create: false });
         }
+
+        if (!active || joinGenRef.current !== gen) {
+          await streamCall.leave().catch(() => {});
+          return;
+        }
+
+        setCall(streamCall);
       } catch (e) {
         console.error("Join error:", e);
-  
-        if (isMounted) {
+        if (active && joinGenRef.current === gen) {
           setError("Failed to join audio room.");
         }
       }
     };
-  
-    joinCall();
-  
-    return () => {
-      isMounted = false;
-  
-      if (joined) {
-        myCall.leave().catch(() => {});
-      }
-    };
-  }, [client, callId]);
 
-  
+    joinCall();
+
+    return () => {
+      active = false;
+      const teardown = isHost ? streamCall.endCall() : streamCall.leave();
+      void teardown.catch(() => {});
+    };
+  }, [streamCall, callId, isHost]);
 
   const goBack = () => {
     router.back();
   };
+
+  if (!client && !error) {
+    return (
+      <View style={[styles.loading, { backgroundColor: "#0f0f0f" }]}>
+        <ActivityIndicator size="small" color="#FE2C55" />
+        <Text style={styles.loadingText}>Connecting…</Text>
+      </View>
+    );
+  }
 
   if (error) {
     return (
@@ -90,7 +111,7 @@ const CallScreen = () => {
             marginTop: 12,
             color: theme.text,
             textAlign: "center",
-            fontSize: 15,
+            fontSize: 14,
           }}
         >
           {error}
@@ -114,16 +135,9 @@ const CallScreen = () => {
 
   if (!call) {
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: theme.background,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <ActivityIndicator size="small" color={theme.text} />
-        <Text style={{ marginTop: 12, color: theme.text }}>Joining Audio Room...</Text>
+      <View style={[styles.loading, { backgroundColor: "#0f0f0f" }]}>
+        <ActivityIndicator size="small" color="#FE2C55" />
+        <Text style={styles.loadingText}>Joining room…</Text>
       </View>
     );
   }
@@ -131,7 +145,7 @@ const CallScreen = () => {
   return (
     <StreamCall call={call}>
       <View style={styles.container}>
-        <AudioRoomUI goToHomeScreen={goBack} />
+        <AudioRoomUI goToHomeScreen={goBack} isHost={isHost} />
       </View>
     </StreamCall>
   );
@@ -140,8 +154,16 @@ const CallScreen = () => {
 export default CallScreen;
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1 },
+  loading: {
     flex: 1,
     justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

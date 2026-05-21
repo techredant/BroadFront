@@ -85,7 +85,7 @@ useEffect(() => {
 
         <Text
           style={{
-            fontSize: 18,
+            fontSize: 17,
             fontWeight: "700",
             marginLeft: 10,
             color: theme.text,

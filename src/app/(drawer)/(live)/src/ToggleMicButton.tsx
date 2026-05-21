@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -10,26 +10,64 @@ import {
 
 export const ToggleMicButton = () => {
   const call = useCall();
+  const isJoined = call?.state.callingState === "joined";
+
+  if (!call || !isJoined) {
+    return <MicButtonShell disabled muted />;
+  }
+
+  return <ToggleMicButtonJoined />;
+};
+
+function MicButtonShell({
+  disabled,
+  muted,
+  loading,
+  onPress,
+}: {
+  disabled?: boolean;
+  muted?: boolean;
+  loading?: boolean;
+  onPress?: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={({ pressed }) => [
+        styles.button,
+        muted ? styles.muted : styles.active,
+        pressed && styles.pressed,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color="white" />
+      ) : (
+        <Ionicons name={muted ? "mic-off" : "mic"} size={28} color="white" />
+      )}
+    </Pressable>
+  );
+}
+
+function ToggleMicButtonJoined() {
+  const call = useCall();
   const { useMicrophoneState, useHasPermissions } = useCallStateHooks();
   const { status: micStatus } = useMicrophoneState();
   const hasPermission = useHasPermissions(OwnCapability.SEND_AUDIO);
-
   const [loading, setLoading] = useState(false);
-  const isJoined = call?.state.callingState === "joined";
 
-  // 🔥 START AUDIO WHEN JOINED
   useEffect(() => {
-    if (!call) return;
-    if (call.state.callingState === "joined") {
-      callManager.start({
-        audioRole: "communicator",
-        defaultAudioDeviceEndpointType: "speaker",
-      });
-    }
-  }, [call?.state.callingState]);
+    if (!call || call.state.callingState !== "joined") return;
+
+    callManager.start({
+      audioRole: "communicator",
+      deviceEndpointType: "speaker",
+    });
+  }, [call, call?.state.callingState]);
 
   const toggleMic = async () => {
     if (!call || call.state.callingState !== "joined") return;
+
     try {
       setLoading(true);
       if (!hasPermission) {
@@ -49,23 +87,13 @@ export const ToggleMicButton = () => {
   const isMuted = micStatus !== "enabled";
 
   return (
-    <Pressable
+    <MicButtonShell
+      muted={isMuted}
+      loading={loading}
       onPress={toggleMic}
-      disabled={!isJoined || loading}
-      style={({ pressed }) => [
-        styles.button,
-        isMuted ? styles.muted : styles.active,
-        pressed && styles.pressed,
-      ]}
-    >
-      {loading ? (
-        <ActivityIndicator color="white" />
-      ) : (
-        <Ionicons name={isMuted ? "mic-off" : "mic"} size={28} color="white" />
-      )}
-    </Pressable>
+    />
   );
-};
+}
 
 const styles = StyleSheet.create({
   button: {

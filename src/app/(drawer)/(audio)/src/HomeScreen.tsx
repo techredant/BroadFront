@@ -9,18 +9,27 @@ import {
   Modal,
   ActivityIndicator,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Call, useStreamVideoClient } from "@stream-io/video-react-native-sdk";
+import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { router, useFocusEffect } from "expo-router";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
+import { MediaColors, MediaGradients } from "@/constants/mediaTheme";
+import { isStreamCallLive } from "@/utils/isStreamCallLive";
 
 export const HomeScreen = () => {
   const client = useStreamVideoClient();
   const { theme, isDark } = useTheme();
   const { currentLevel, userDetails } = useLevel();
+  const insets = useSafeAreaInsets();
 
   const [calls, setCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,18 +39,16 @@ export const HomeScreen = () => {
 
   const categories = ["All", "National", "County", "Debates", "Trending"];
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [filter, setFilter] = useState<"live" | "all" | "ended">("live");
 
-  const isCallLive = useCallback((call: Call) => {
-    const s = call.state as any;
-    const endedAt =
-      s?.endedAt ?? s?.ended_at ?? (call as any)?.endedAt ?? (call as any)?.ended_at;
-    return !endedAt;
-  }, []);
+  const bg = isDark ? MediaColors.black : theme.background;
+  const cardBg = isDark ? MediaColors.surfaceElevated : theme.card;
+  const textMain = isDark ? MediaColors.textPrimary : theme.text;
+  const textSub = isDark ? MediaColors.textSecondary : theme.subtext;
+
+  const isCallLive = useCallback((call: Call) => isStreamCallLive(call), []);
 
   const fetchCalls = useCallback(async () => {
     if (!client) return;
-
     try {
       setLoading(true);
       const res = await client.queryCalls({
@@ -68,32 +75,39 @@ export const HomeScreen = () => {
     }, [fetchCalls]),
   );
 
-  const filteredRooms = useMemo(() => {
-    return calls.filter((room) => {
-      const live = isCallLive(room);
-
-      if (filter === "live" && !live) return false;
-      if (filter === "ended" && live) return false;
-
+  const matchesCategory = useCallback(
+    (room: Call) => {
       if (selectedCategory === "All") return true;
       return room.state?.custom?.category === selectedCategory;
-    });
-  }, [calls, filter, selectedCategory, isCallLive]);
+    },
+    [selectedCategory],
+  );
 
-  const liveRooms = useMemo(() => calls.filter(isCallLive), [calls, isCallLive]);
+  const filteredRooms = useMemo(() => {
+    const filtered = calls.filter(matchesCategory);
+    return [...filtered].sort((a, b) => {
+      const aLive = isCallLive(a);
+      const bLive = isCallLive(b);
+      if (aLive === bLive) return 0;
+      return aLive ? -1 : 1;
+    });
+  }, [calls, matchesCategory, isCallLive]);
+
+  const liveRooms = useMemo(
+    () => calls.filter((room) => isCallLive(room) && matchesCategory(room)),
+    [calls, isCallLive, matchesCategory],
+  );
 
   const createRoom = async () => {
     if (!client || !userDetails) return;
 
     try {
       setCreatingRoom(true);
-
       const id = `audio_${Date.now()}_${userDetails.clerkId}`;
       const title = roomTitle.trim() || `${userDetails.nickName}'s Room`;
       const category = selectedCategory === "All" ? "National" : selectedCategory;
 
       const call = client.call("audio_room", id);
-
       await call.getOrCreate({
         data: {
           custom: {
@@ -104,15 +118,13 @@ export const HomeScreen = () => {
         },
       });
 
-      await call.join();
-
       setModalVisible(false);
       setRoomTitle("");
       await fetchCalls();
 
       router.push({
         pathname: "/(drawer)/(audio)/src/CallScreen",
-        params: { callId: id },
+        params: { callId: id, isHost: "true" },
       });
     } catch (err) {
       console.log("Create error:", err);
@@ -121,463 +133,449 @@ export const HomeScreen = () => {
     }
   };
 
+  const openRoom = (room: Call) => {
+    const createdById = room.state?.createdBy?.id;
+    const me = userDetails?.clerkId;
+    const isOwner = Boolean(createdById && me && createdById === me);
+
+    router.push({
+      pathname: "/(drawer)/(audio)/src/CallScreen",
+      params: { callId: room.id, isHost: isOwner ? "true" : "false" },
+    });
+  };
+
   if (loading && calls.length === 0) {
     return (
-      <View
-        style={{    
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: theme.background,
-        }}
-      >
-        <ActivityIndicator size="small" color={theme.primary} />
+      <View style={[styles.center, { backgroundColor: bg }]}>
+        <ActivityIndicator size="small" color={MediaColors.liveRed} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.background }}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
+    <View style={[styles.root, { backgroundColor: bg }]}>
+      <StatusBar barStyle="light-content" />
 
       <Animated.View entering={FadeInUp}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={theme.text} />
+          <Pressable onPress={() => router.back()} style={styles.iconBtn}>
+            <Ionicons name="chevron-back" size={26} color={textMain} />
           </Pressable>
-
-          <View>
-            <Text style={[styles.title, { color: theme.text }]}>Audio Rooms</Text>
-            <Text style={{ color: theme.subtext }}>{currentLevel?.value}</Text>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.headerTitle, { color: textMain }]}>Audio</Text>
+            <Text style={[styles.headerSub, { color: textSub }]}>
+              {currentLevel?.value?.toUpperCase() || "ROOMS"}
+            </Text>
           </View>
-
-          <View style={{ position: "relative", padding: 6 }}>
-            <Ionicons name="radio-outline" size={24} color={theme.primary} />
-            {calls.length > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>
-                  {calls.length > 9 ? "9+" : calls.length}
-                </Text>
-              </View>
-            )}
-          </View>
+          <Pressable style={styles.iconBtn} onPress={fetchCalls}>
+            <Ionicons name="refresh" size={22} color={textMain} />
+          </Pressable>
         </View>
       </Animated.View>
-
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={categories}
-        keyExtractor={(item) => item}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 4 }}
-        style={{ maxHeight: 40 }}
-        renderItem={({ item }) => {
-          const active = item === selectedCategory;
-          return (
-            <Pressable
-              onPress={() => setSelectedCategory(item)}
-              style={[
-                styles.chip,
-                { backgroundColor: active ? theme.primary : theme.card },
-              ]}
-            >
-              <Text style={{ color: active ? "#fff" : theme.text, fontSize: 13 }}>
-                {item}
-              </Text>
-            </Pressable>
-          );
-        }}
-      />
-
-      <View style={styles.tabs}>
-        {(["live", "all", "ended"] as const).map((t) => {
-          const active = filter === t;
-          return (
-            <Pressable
-              key={t}
-              onPress={() => setFilter(t)}
-              style={[
-                styles.tab,
-                { backgroundColor: active ? theme.primary : "transparent" },
-              ]}
-            >
-              <Text style={{ color: active ? "#fff" : theme.text }}>
-                {t.toUpperCase()}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <View style={[styles.onAirCard, { backgroundColor: theme.card }]}>
-        <View style={styles.row}>
-          <View style={styles.liveDot} />
-          <Text style={{ color: theme.primary, fontWeight: "bold" }}>ON AIR</Text>
-        </View>
-        <Text style={[styles.bigText, { color: theme.text }]}>
-          {liveRooms.length} Active Discussions
-        </Text>
-      </View>
-
-      {liveRooms[0] && (
-        <Pressable
-          style={[styles.featured, { backgroundColor: theme.primary }]}
-          onPress={() =>
-            router.push({
-              pathname: "/(drawer)/(audio)/src/CallScreen",
-              params: { callId: liveRooms[0].id },
-            })
-          }
-        >
-          <Text style={styles.featuredLabel}>FEATURED ROOM</Text>
-          <Text style={styles.featuredTitle}>
-            {liveRooms[0].state?.custom?.title || "Untitled Room"}
-          </Text>
-          <Text style={styles.featuredMeta}>
-            👥 {liveRooms[0].state?.participants?.length || 0}
-          </Text>
-        </Pressable>
-      )}
 
       <FlatList
         data={filteredRooms}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 120 }}
+        ListHeaderComponent={
+          <>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={categories}
+              keyExtractor={(item) => item}
+              contentContainerStyle={styles.categoryRow}
+              renderItem={({ item }) => {
+                const active = item === selectedCategory;
+                return (
+                  <Pressable onPress={() => setSelectedCategory(item)}>
+                    <Text
+                      style={[
+                        styles.categoryText,
+                        { color: active ? textMain : textSub },
+                        active && styles.categoryActive,
+                      ]}
+                    >
+                      {item}
+                    </Text>
+                  </Pressable>
+                );
+              }}
+            />
+
+            <Pressable style={styles.createBanner} onPress={() => setModalVisible(true)}>
+              <LinearGradient
+                colors={["#7B2FF7", "#FE2C55"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.createGradient}
+              >
+                <View style={styles.micIcon}>
+                  <Ionicons name="mic" size={22} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.createTitle}>Start a room</Text>
+                  <Text style={styles.createSub}>Host a live audio conversation</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={22} color="#fff" />
+              </LinearGradient>
+            </Pressable>
+
+            <View style={[styles.onAir, { backgroundColor: cardBg }]}>
+              <View style={styles.onAirLeft}>
+                <View style={styles.pulseDot} />
+                <Text style={styles.onAirLabel}>ON AIR</Text>
+              </View>
+              <Text style={[styles.onAirCount, { color: textMain }]}>
+                {liveRooms.length}
+              </Text>
+              <Text style={[styles.onAirHint, { color: textSub }]}>active rooms</Text>
+            </View>
+
+            {liveRooms[0] && (
+              <Pressable
+                onPress={() => openRoom(liveRooms[0])}
+                style={styles.featuredWrap}
+              >
+                <LinearGradient
+                  colors={[...MediaGradients.featured]}
+                  style={styles.featuredCard}
+                >
+                  <View style={styles.featuredTop}>
+                    <View style={styles.livePill}>
+                      <Text style={styles.livePillText}>LIVE</Text>
+                    </View>
+                    <Text style={styles.featuredCat}>
+                      {liveRooms[0].state?.custom?.category || "Room"}
+                    </Text>
+                  </View>
+                  <Text style={styles.featuredTitle} numberOfLines={2}>
+                    {liveRooms[0].state?.custom?.title || "Untitled Room"}
+                  </Text>
+                  <View style={styles.featuredFooter}>
+                    <Ionicons name="people" size={14} color="#fff" />
+                    <Text style={styles.featuredMeta}>
+                      {liveRooms[0].state?.participants?.length || 0} listening
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </Pressable>
+            )}
+
+            <Text style={[styles.sectionLabel, { color: textMain }]}>Rooms</Text>
+          </>
+        }
         ListEmptyComponent={
-          <Text style={{ textAlign: "center", marginTop: 20, color: theme.subtext }}>
-            No rooms found
+          <Text style={[styles.empty, { color: textSub }]}>
+            No rooms in this category
           </Text>
         }
         renderItem={({ item }) => {
           const live = isCallLive(item);
+
           return (
             <Pressable
-              style={[styles.roomCard, { backgroundColor: theme.card }]}
-              onPress={
-                live
-                  ? () =>
-                      router.push({
-                        pathname: "/(drawer)/(audio)/src/CallScreen",
-                        params: { callId: item.id },
-                      })
-                  : undefined
-              }
+              style={[
+                styles.roomCard,
+                { backgroundColor: cardBg, marginHorizontal: 16 },
+                !live && styles.roomCardEnded,
+              ]}
+              onPress={live ? () => openRoom(item) : undefined}
+              disabled={!live}
             >
-              <View>
-                <Text style={{ color: live ? theme.primary : "gray", fontSize: 12 }}>
-                  {live ? "LIVE" : "ENDED"}
-                </Text>
-
-                <Text style={[styles.roomTitle, { color: theme.text }]}>
+              {live ? (
+                <LinearGradient
+                  colors={["#25F4EE", "#7B2FF7"]}
+                  style={styles.roomIcon}
+                >
+                  <Ionicons name="mic" size={20} color="#000" />
+                </LinearGradient>
+              ) : (
+                <View style={[styles.roomIcon, styles.roomIconEnded]}>
+                  <Ionicons name="mic-off" size={20} color={textSub} />
+                </View>
+              )}
+              <View style={styles.roomBody}>
+                {live ? (
+                  <View style={styles.roomLiveTag}>
+                    <Text style={styles.roomLiveText}>LIVE</Text>
+                  </View>
+                ) : (
+                  <View style={styles.roomEndedTag}>
+                    <Text style={styles.roomEndedText}>ENDED</Text>
+                  </View>
+                )}
+                <Text
+                  style={[
+                    styles.roomTitle,
+                    { color: live ? textMain : textSub },
+                  ]}
+                  numberOfLines={1}
+                >
                   {item.state?.custom?.title || "Untitled Room"}
                 </Text>
-
-                <Text style={{ color: theme.subtext }}>
-                  by {item.state?.createdBy?.name || "Unknown"}
+                <Text style={[styles.roomHost, { color: textSub }]} numberOfLines={1}>
+                  {item.state?.createdBy?.name || "Host"}
+                  {live
+                    ? ` · ${item.state?.participants?.length || 0} in room`
+                    : " · Session ended"}
                 </Text>
               </View>
-
-              <Ionicons name="chevron-forward" size={20} color={theme.text} />
+              {live ? (
+                <Ionicons name="chevron-forward" size={20} color={textSub} />
+              ) : null}
             </Pressable>
           );
         }}
       />
 
       <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
-        <Ionicons name="add" size={26} color="#fff" />
+        <LinearGradient colors={["#7B2FF7", "#FE2C55"]} style={styles.fabInner}>
+          <Ionicons name="add" size={28} color="#fff" />
+        </LinearGradient>
       </Pressable>
 
       <Modal
         visible={modalVisible}
-        animationType="fade"
+        animationType="slide"
         transparent
         statusBarTranslucent
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.overlay}>
-          <View style={[styles.modalBox, { backgroundColor: theme.card }]}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalIcon}>
-                <Ionicons name="mic" size={16} color="#fff" />
-              </View>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>
-                Create Audio Room
-              </Text>
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardRoot}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalBackdrop}>
               <Pressable
+                style={StyleSheet.absoluteFill}
                 onPress={() => setModalVisible(false)}
-                style={[styles.closeBtn, { borderColor: theme.border }]}
-              >
-                <Ionicons name="close" size={16} color={theme.subtext} />
-              </Pressable>
-            </View>
-
-            <Text style={[styles.modalSub, { color: theme.subtext }]}>
-              Give your room a clear title so people can join faster.
-            </Text>
-
-            <Text style={[styles.inputLabel, { color: theme.text }]}>Room title</Text>
-            <View
-              style={[
-                styles.inputWrap,
-                { borderColor: theme.border, backgroundColor: theme.background },
-              ]}
-            >
-              <Ionicons name="create-outline" size={16} color={theme.subtext} />
-              <TextInput
-                value={roomTitle}
-                onChangeText={setRoomTitle}
-                placeholder="e.g. Morning Politics Brief"
-                placeholderTextColor={theme.subtext}
-                style={[styles.input, { color: theme.text }]}
-                maxLength={60}
-                autoFocus
               />
-            </View>
-
-            <Text style={[styles.metaLine, { color: theme.subtext }]}>
-              Category: {selectedCategory === "All" ? "National" : selectedCategory}
-            </Text>
-
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setModalVisible(false)}
+              <View
                 style={[
-                  styles.cancelBtn,
-                  { borderColor: theme.border, backgroundColor: theme.background },
+                  styles.modalSheet,
+                  {
+                    backgroundColor: cardBg,
+                    paddingBottom: Math.max(insets.bottom, 16) + 8,
+                  },
                 ]}
               >
-                <Text style={{ color: theme.text, fontWeight: "600" }}>Cancel</Text>
-              </Pressable>
-
-              <Pressable
-                style={[styles.joinBtn, { opacity: creatingRoom ? 0.75 : 1 }]}
-                onPress={createRoom}
-                disabled={creatingRoom}
-              >
-                {creatingRoom ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={{ color: "#fff", fontWeight: "700" }}>Create Now</Text>
-                )}
-              </Pressable>
+                <View style={styles.sheetHandle} />
+                <Text style={[styles.modalTitle, { color: textMain }]}>
+                  Create room
+                </Text>
+                <Text style={[styles.modalHint, { color: textSub }]}>
+                  Category:{" "}
+                  {selectedCategory === "All" ? "National" : selectedCategory}
+                </Text>
+                <TextInput
+                  placeholder="Room title"
+                  placeholderTextColor={textSub}
+                  value={roomTitle}
+                  onChangeText={setRoomTitle}
+                  style={[
+                    styles.modalInput,
+                    { color: textMain, borderColor: theme.border },
+                  ]}
+                  maxLength={60}
+                  returnKeyType="done"
+                  onSubmitEditing={createRoom}
+                />
+                <Pressable
+                  style={[styles.modalGoBtn, { opacity: creatingRoom ? 0.7 : 1 }]}
+                  onPress={createRoom}
+                  disabled={creatingRoom}
+                >
+                  {creatingRoom ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.modalGoText}>Go live in audio</Text>
+                  )}
+                </Pressable>
+              </View>
             </View>
-          </View>
-        </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: {
-    padding: 16,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  badge: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    backgroundColor: "#ff3b30",
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 3,
-  },
-  badgeText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "bold",
-  },
-
-  chip: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    justifyContent: "center",
-    alignItems: "center",
+    paddingTop: 8,
+    paddingBottom: 8,
   },
-
-  tabs: {
+  headerCenter: { flex: 1, alignItems: "center" },
+  headerTitle: { fontSize: 21, fontWeight: "800" },
+  headerSub: { fontSize: 11, marginTop: 2, fontWeight: "600" },
+  iconBtn: { width: 40, height: 40, justifyContent: "center", alignItems: "center" },
+  categoryRow: { paddingHorizontal: 16, paddingBottom: 12, gap: 20 },
+  categoryText: { fontSize: 14, fontWeight: "600", paddingBottom: 6 },
+  categoryActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: MediaColors.liveRed,
+    fontWeight: "800",
+  },
+  createBanner: { marginHorizontal: 16, marginBottom: 14, borderRadius: 16, overflow: "hidden" },
+  createGradient: {
     flexDirection: "row",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-  tab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginHorizontal: 5,
-  },
-
-  onAirCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
+    alignItems: "center",
     padding: 16,
-    borderRadius: 16,
+    gap: 12,
   },
-  row: {
-    flexDirection: "row",
+  micIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
-    gap: 6,
+    justifyContent: "center",
   },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "red",
-  },
-  bigText: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginTop: 8,
-  },
-
-  featured: {
+  createTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  createSub: { color: "rgba(255,255,255,0.85)", fontSize: 12, marginTop: 2 },
+  onAir: {
     marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 20,
-    borderRadius: 18,
-  },
-  featuredLabel: {
-    color: "#fff",
-    fontSize: 12,
-    opacity: 0.8,
-  },
-  featuredTitle: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-    marginVertical: 8,
-  },
-  featuredMeta: {
-    color: "#fff",
-    opacity: 0.9,
-  },
-
-  roomCard: {
-    marginHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 14,
     padding: 14,
     borderRadius: 14,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 10,
   },
-  roomTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    marginVertical: 3,
+  onAirLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
+  pulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: MediaColors.liveRed,
   },
-
+  onAirLabel: { color: MediaColors.liveRed, fontWeight: "800", fontSize: 11 },
+  onAirCount: { fontSize: 21, fontWeight: "800" },
+  onAirHint: { fontSize: 12, flex: 1 },
+  featuredWrap: { marginHorizontal: 16, marginBottom: 16, borderRadius: 18, overflow: "hidden" },
+  featuredCard: { padding: 18 },
+  featuredTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
+  livePill: {
+    backgroundColor: "rgba(0,0,0,0.25)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  livePillText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  featuredCat: { color: "rgba(255,255,255,0.85)", fontSize: 11, fontWeight: "600" },
+  featuredTitle: { color: "#fff", fontSize: 19, fontWeight: "800" },
+  featuredFooter: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 12 },
+  featuredMeta: { color: "#fff", fontSize: 12, fontWeight: "600" },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: "800",
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
+  empty: { textAlign: "center", marginTop: 24, fontSize: 13 },
+  roomCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 14,
+    marginBottom: 10,
+    gap: 12,
+  },
+  roomCardEnded: {
+    opacity: 0.55,
+  },
+  roomIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  roomIconEnded: {
+    backgroundColor: "rgba(128,128,128,0.25)",
+  },
+  roomBody: { flex: 1 },
+  roomLiveTag: {
+    alignSelf: "flex-start",
+    backgroundColor: MediaColors.liveRedSoft,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  roomLiveText: { color: MediaColors.liveRed, fontSize: 9, fontWeight: "800" },
+  roomEndedTag: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(128,128,128,0.2)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  roomEndedText: {
+    color: MediaColors.textMuted,
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  roomTitle: { fontSize: 14, fontWeight: "700" },
+  roomHost: { fontSize: 11, marginTop: 2 },
   fab: {
     position: "absolute",
-    bottom: 30,
+    bottom: 60,
     right: 20,
-    backgroundColor: "#2563EB",
-    width: 60,
-    height: 60,
     borderRadius: 30,
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 10,
+    overflow: "hidden",
   },
-
-  overlay: {
+  fabInner: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalKeyboardRoot: { flex: 1 },
+  modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 18,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
   },
-  modalBox: {
-    width: "100%",
-    borderRadius: 16,
-    padding: 16,
-    elevation: 20,
+  modalSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingTop: 12,
   },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(128,128,128,0.5)",
+    alignSelf: "center",
+    marginBottom: 16,
   },
-  modalIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#2563EB",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  closeBtn: {
-    marginLeft: "auto",
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalSub: {
-    marginTop: 8,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  inputLabel: {
-    marginTop: 14,
-    marginBottom: 8,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  inputWrap: {
+  modalTitle: { fontSize: 19, fontWeight: "800", textAlign: "center" },
+  modalHint: { fontSize: 12, marginTop: 8, marginBottom: 14, textAlign: "center" },
+  modalInput: {
     borderWidth: 1,
     borderRadius: 12,
-    minHeight: 46,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  input: {
-    flex: 1,
-    marginLeft: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 14,
-    paddingVertical: 0,
+    marginBottom: 16,
   },
-  metaLine: {
-    marginTop: 10,
-    fontSize: 12,
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 16,
-  },
-  cancelBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: 10,
-    borderWidth: 1,
-    justifyContent: "center",
+  modalGoBtn: {
+    backgroundColor: "#7B2FF7",
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: "center",
   },
-  joinBtn: {
-    flex: 1,
-    height: 44,
-    backgroundColor: "#2563EB",
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  modalGoText: { color: "#fff", fontWeight: "800", fontSize: 15 },
 });

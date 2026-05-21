@@ -1,4 +1,11 @@
-import { View, Text, Pressable, StatusBar } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  ScrollView,
+} from "react-native";
 import React, { useMemo, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import TypeWriter from "react-native-typewriter";
@@ -19,6 +26,11 @@ export default function LocationSelection() {
   >(null);
   const [selectedWard, setSelectedWard] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const canSubmit =
+    Boolean(selectedCounty) &&
+    Boolean(selectedConstituency) &&
+    Boolean(selectedWard) &&
+    !loading;
 
   const constituencies = useMemo(() => {
     if (!selectedCounty) return [];
@@ -68,10 +80,10 @@ export default function LocationSelection() {
   const dropdownStyle = {
     borderWidth: 1,
     borderColor: theme.border,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 10,
+    paddingVertical: 12,
+    marginTop: 8,
     backgroundColor: theme.background,
   };
 
@@ -103,140 +115,182 @@ export default function LocationSelection() {
   };
 
   return (
-    <SafeAreaView
-      style={{
-        flex: 1,
-        backgroundColor: theme.background,
-        justifyContent: "center",
-        paddingHorizontal: 20,
-      }}
-    >
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <StatusBar
         translucent
         backgroundColor="transparent"
         barStyle={isDark ? "light-content" : "dark-content"}
       />
 
-      <View style={{ height: 120 }}>
-        <TypeWriter
-          typing={1}
-          style={{
-            margin: 20,
-            fontSize: 20,
-            fontWeight: "bold",
-            textAlign: "center",
-            color: theme.text,
-          }}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerWrap}>
+          <Text style={[styles.title, { color: theme.text }]}>
+            Set Your Location
+          </Text>
+          <TypeWriter typing={1} style={[styles.subtitle, { color: theme.subtext }]}>
+            Choose your county, constituency, and ward to personalize your feed.
+          </TypeWriter>
+        </View>
+
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.card, borderColor: theme.border },
+          ]}
         >
-          Welcome to BroadCast, In pursuit of a perfect nation.
-        </TypeWriter>
-      </View>
+          <Text style={[styles.label, { color: theme.text }]}>County</Text>
+          <Dropdown
+            {...dropdownProps}
+            data={iebc.counties}
+            labelField="name"
+            valueField="name"
+            placeholder="Select County"
+            value={selectedCounty}
+            search
+            searchPlaceholder="Search county..."
+            onChange={(item) => {
+              setSelectedCounty(item.name);
+              setSelectedConstituency(null);
+              setSelectedWard(null);
+            }}
+          />
 
-      {/* COUNTY */}
-      <Text style={{ fontWeight: "bold", fontSize: 18, color: theme.text }}>
-        County
-      </Text>
+          <Text style={[styles.label, { color: theme.text }]}>Constituency</Text>
+          <Dropdown
+            {...dropdownProps}
+            data={constituencies}
+            labelField="name"
+            valueField="name"
+            placeholder="Select Constituency"
+            value={selectedConstituency}
+            search
+            searchPlaceholder="Search constituency..."
+            disable={!selectedCounty}
+            onChange={(item) => {
+              setSelectedConstituency(item.name);
+              setSelectedWard(null);
+            }}
+          />
 
-      <Dropdown
-        {...dropdownProps}
-        data={iebc.counties}
-        labelField="name"
-        valueField="name"
-        placeholder="Select County"
-        value={selectedCounty}
-        search
-        searchPlaceholder="Search county..."
-        onChange={(item) => {
-          setSelectedCounty(item.name);
-          setSelectedConstituency(null);
-          setSelectedWard(null);
-        }}
-      />
+          <Text style={[styles.label, { color: theme.text }]}>Ward</Text>
+          <Dropdown
+            {...dropdownProps}
+            data={wards}
+            labelField="name"
+            valueField="name"
+            placeholder="Select Ward"
+            value={selectedWard}
+            search
+            searchPlaceholder="Search ward..."
+            disable={!selectedConstituency}
+            onChange={(item) => {
+              setSelectedWard(item.name);
+            }}
+          />
 
-      {/* CONSTITUENCY */}
-      <Text
-        style={{
-          fontWeight: "bold",
-          fontSize: 18,
-          color: theme.text,
-          marginTop: 15,
-        }}
-      >
-        Constituency
-      </Text>
+          <View
+            style={[
+              styles.previewBox,
+              { borderColor: theme.border, backgroundColor: theme.background },
+            ]}
+          >
+            <Text style={[styles.previewLabel, { color: theme.subtext }]}>
+              Selected Location
+            </Text>
+            <Text style={[styles.previewValue, { color: theme.text }]}>
+              {selectedCounty || "-"}
+              {selectedConstituency ? `  >  ${selectedConstituency}` : ""}
+              {selectedWard ? `  >  ${selectedWard}` : ""}
+            </Text>
+          </View>
+        </View>
 
-      <Dropdown
-        {...dropdownProps}
-        data={constituencies}
-        labelField="name"
-        valueField="name"
-        placeholder="Select Constituency"
-        value={selectedConstituency}
-        search
-        searchPlaceholder="Search constituency..."
-        disable={!selectedCounty}
-        onChange={(item) => {
-          setSelectedConstituency(item.name);
-          setSelectedWard(null);
-        }}
-      />
-
-      {/* WARD */}
-      <Text
-        style={{
-          fontWeight: "bold",
-          fontSize: 18,
-          color: theme.text,
-          marginTop: 15,
-        }}
-      >
-        Ward
-      </Text>
-
-      <Dropdown
-        {...dropdownProps}
-        data={wards}
-        labelField="name"
-        valueField="name"
-        placeholder="Select Ward"
-        value={selectedWard}
-        search
-        searchPlaceholder="Search ward..."
-        disable={!selectedConstituency}
-        onChange={(item) => {
-          setSelectedWard(item.name);
-        }}
-      />
-
-      {/* PREVIEW */}
-      <Text style={{ marginTop: 20, color: theme.subtext }}>
-        {selectedCounty || "-"}
-        {selectedConstituency ? ` → ${selectedConstituency}` : ""}
-        {selectedWard ? ` → ${selectedWard}` : ""}
-      </Text>
-
-      {/* BUTTON */}
-      {selectedCounty && selectedConstituency && selectedWard && (
         <Pressable
           onPress={saveLocation}
-          style={{
-            backgroundColor: theme.primary,
-            padding: 16,
-            borderRadius: 12,
-            marginTop: 30,
-          }}
+          disabled={!canSubmit}
+          style={[
+            styles.submitBtn,
+            {
+              backgroundColor: canSubmit ? theme.primary : theme.border,
+              opacity: canSubmit ? 1 : 0.7,
+            },
+          ]}
         >
-          <Text
-            style={{
-              color: "#fff",
-              textAlign: "center",
-              fontWeight: "bold",
-            }}
-          >
+          <Text style={styles.submitText}>
             {loading ? "Saving..." : "Save & Continue"}
           </Text>
         </Pressable>
-      )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 28,
+  },
+  headerWrap: {
+    marginBottom: 18,
+  },
+  title: {
+    fontSize: 25,
+    fontWeight: "800",
+    textAlign: "center",
+    letterSpacing: 0.3,
+  },
+  subtitle: {
+    marginTop: 10,
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 20,
+    minHeight: 40,
+  },
+  card: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+  },
+  label: {
+    fontWeight: "700",
+    fontSize: 14,
+    marginTop: 14,
+  },
+  previewBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    marginTop: 16,
+    padding: 12,
+  },
+  previewLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  previewValue: {
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 18,
+  },
+  submitBtn: {
+    marginTop: 18,
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  submitText: {
+    color: "#fff",
+    textAlign: "center",
+    fontWeight: "800",
+    fontSize: 14,
+    letterSpacing: 0.2,
+  },
+});

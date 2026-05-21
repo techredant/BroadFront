@@ -56,6 +56,7 @@ const darkTheme: Theme = {
 type ThemeContextType = {
   theme: Theme;
   isDark: boolean;
+  isReady: boolean;
   toggleTheme: () => void;
 };
 
@@ -93,6 +94,7 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
       value={{
         theme: isDark ? darkTheme : lightTheme,
         isDark,
+        isReady: hydrated,
         toggleTheme,
       }}
     >
