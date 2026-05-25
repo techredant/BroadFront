@@ -107,7 +107,7 @@ function ConnectedChat({
     const onMessage = (event: { message?: { id?: string; text?: string; user?: { id?: string; name?: string } }; cid?: string }) => {
       const msg = event.message;
       const senderId = msg?.user?.id;
-      if (!msg?.id || !senderId || senderId === userId) return;
+      if (!msg?.id || !senderId || senderId !== userId) return;
 
       const channelId = event.cid?.includes(":")
         ? event.cid.split(":")[1]

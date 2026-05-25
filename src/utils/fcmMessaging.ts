@@ -1,5 +1,14 @@
 import { Platform, PermissionsAndroid } from "react-native";
-import messaging from "@react-native-firebase/messaging";
+import { getApp } from "@react-native-firebase/app";
+import {
+  AuthorizationStatus,
+  getMessaging,
+  getToken as getMessagingToken,
+  onMessage,
+  onTokenRefresh,
+  requestPermission,
+  setBackgroundMessageHandler,
+} from "@react-native-firebase/messaging";
 import {
   displayFcmRemoteMessage,
   ensureNotifeeChannels,
@@ -10,6 +19,10 @@ let initialized = false;
 let fcmPermissionResolved = false;
 let cachedFcmToken: string | null = null;
 let tokenFetchInFlight: Promise<string | null> | null = null;
+
+function firebaseMessaging() {
+  return getMessaging(getApp());
+}
 
 /** Android 13+ runtime permission (API 33). */
 export async function requestAndroidNotificationPermission(): Promise<boolean> {
@@ -31,10 +44,10 @@ async function ensureFcmPermission(): Promise<boolean> {
   if (fcmPermissionResolved) return true;
 
   try {
-    const authStatus = await messaging().requestPermission();
+    const authStatus = await requestPermission(firebaseMessaging());
     const enabled =
-      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+      authStatus === AuthorizationStatus.AUTHORIZED ||
+      authStatus === AuthorizationStatus.PROVISIONAL;
 
     if (!enabled && Platform.OS === "ios") {
       return false;
@@ -72,7 +85,7 @@ export async function getFcmToken(options?: {
       if (!permitted) return null;
 
       await ensureNotifeeChannels();
-      const token = await messaging().getToken();
+      const token = await getMessagingToken(firebaseMessaging());
       cachedFcmToken = token || null;
       return cachedFcmToken;
     } catch (err) {
@@ -92,23 +105,28 @@ export function clearFcmTokenCache() {
 }
 
 let fcmRefreshUnsub: (() => void) | null = null;
+const fcmRefreshListeners = new Set<(token: string) => void>();
 
 export function subscribeFcmTokenRefresh(
   onToken: (token: string) => void,
 ): () => void {
-  if (fcmRefreshUnsub) {
-    fcmRefreshUnsub();
-    fcmRefreshUnsub = null;
+  fcmRefreshListeners.add(onToken);
+
+  if (!fcmRefreshUnsub) {
+    fcmRefreshUnsub = onTokenRefresh(firebaseMessaging(), (token) => {
+      cachedFcmToken = token;
+      for (const listener of fcmRefreshListeners) {
+        listener(token);
+      }
+    });
   }
 
-  fcmRefreshUnsub = messaging().onTokenRefresh((token) => {
-    cachedFcmToken = token;
-    onToken(token);
-  });
-
   return () => {
-    fcmRefreshUnsub?.();
-    fcmRefreshUnsub = null;
+    fcmRefreshListeners.delete(onToken);
+    if (fcmRefreshListeners.size === 0) {
+      fcmRefreshUnsub?.();
+      fcmRefreshUnsub = null;
+    }
   };
 }
 
@@ -120,7 +138,7 @@ export function initializeFcmMessaging(handlers?: {
 
   void ensureNotifeeChannels();
 
-  messaging().onMessage(async (remoteMessage) => {
+  onMessage(firebaseMessaging(), async (remoteMessage) => {
     await displayFcmRemoteMessage(remoteMessage);
     handlers?.onForegroundMessage?.(remoteMessage);
   });
@@ -128,7 +146,7 @@ export function initializeFcmMessaging(handlers?: {
 
 /** Call from index.js before expo-router entry (background/killed). */
 export function registerFcmBackgroundHandler() {
-  messaging().setBackgroundMessageHandler(async (remoteMessage) => {
+  setBackgroundMessageHandler(firebaseMessaging(), async (remoteMessage) => {
     await displayFcmRemoteMessage(remoteMessage);
   });
 }

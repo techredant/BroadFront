@@ -11,8 +11,9 @@ import useSWR from "swr";
 import React from "react";
 import axios from "axios";
 import { useFocusEffect } from "expo-router";
+import { API_PUBLIC_URL } from "@/constants/api";
 
-const BASE_URL = "https://cast-api-zeta.vercel.app/api/users";
+const BASE_URL = `${API_PUBLIC_URL}/api/users`;
 
 /** =========================
  * Types
@@ -105,13 +106,22 @@ const followerUsers = useMemo(() => {
     }
   }, [user?.id]);
 
-  const refreshMembers = async () => {
-    const res = await axios.get(`${BASE_URL}/api/users`, {
-      params: { clerkId: user?.id },
-    });
+  const refreshMembers = useCallback(async () => {
+    if (!user?.id) return;
 
-    setMembers(res.data.users);
-  };
+    try {
+      const res = await axios.get(BASE_URL, {
+        params: {
+          clerkId: user.id,
+          includeSelf: true,
+        },
+      });
+
+      setMembers(res.data.users || []);
+    } catch (err) {
+      console.warn("refreshMembers failed:", err);
+    }
+  }, [user?.id]);
 
   /** FOLLOW / UNFOLLOW */
 const handleFollow = async (targetClerkId: string) => {
@@ -134,10 +144,13 @@ const handleFollow = async (targetClerkId: string) => {
   );
 
   try {
-    await fetch(
+    const res = await fetch(
       `${BASE_URL}/${user.id}/follow-action/${targetClerkId}?action=${action}`,
       { method: "POST" },
     );
+    if (!res.ok) {
+      throw new Error(`Follow ${action} failed: ${res.status}`);
+    }
 
     // ✅ sync with backend AFTER success
     mutate();

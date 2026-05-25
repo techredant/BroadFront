@@ -4,7 +4,11 @@
  */
 import { StreamVideoClient, StreamVideoRN } from "@stream-io/video-react-native-sdk";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import messaging from "@react-native-firebase/messaging";
+import { getApp } from "@react-native-firebase/app";
+import {
+  getMessaging,
+  setBackgroundMessageHandler,
+} from "@react-native-firebase/messaging";
 import { displayFcmRemoteMessage } from "./src/utils/notifeeNotifications";
 import { registerNotifeeBackgroundHandler } from "./src/utils/notifeeEvents";
 
@@ -87,7 +91,7 @@ if (apiKey && (STREAM_ANDROID_PUSH_PROVIDER || STREAM_IOS_PUSH_PROVIDER)) {
 }
 
 /** FCM: display via Notifee when app is killed or backgrounded. */
-messaging().setBackgroundMessageHandler(async (remoteMessage) => {
+setBackgroundMessageHandler(getMessaging(getApp()), async (remoteMessage) => {
   await displayFcmRemoteMessage(remoteMessage);
 });
 

@@ -1,4 +1,5 @@
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import notifee, {
   AndroidCategory,
   AndroidImportance,
@@ -15,7 +16,8 @@ import type { AppNotification } from "@/types/notifications";
 export type NotificationPayload = Record<string, string | undefined>;
 
 const chatGroupCounts = new Map<string, number>();
-const DEFAULT_VIBRATION_PATTERN = [0, 250, 120, 250];
+const DEFAULT_VIBRATION_PATTERN = [250, 120, 250, 120];
+const BATTERY_PROMPT_KEY = "@broadcast/battery_optimization_prompted";
 
 function asPayload(data: Record<string, unknown> | undefined): NotificationPayload {
   const out: NotificationPayload = {};
@@ -195,7 +197,7 @@ export async function displayIncomingCallNotification(params: {
       autoCancel: false,
       loopSound: true,
       sound: NOTIFICATION_SOUNDS.incomingCall,
-      vibrationPattern: [0, 800, 400, 800, 400, 800],
+      vibrationPattern: [800, 400, 800, 400],
       fullScreenAction: {
         id: "call_fullscreen",
         launchActivity: "default",
@@ -437,6 +439,35 @@ export async function openBatteryOptimizationSettings() {
     await notifee.openBatteryOptimizationSettings();
   } catch {
     /* ignore */
+  }
+}
+
+export async function promptBatteryOptimizationSettingsIfNeeded() {
+  if (Platform.OS !== "android") return;
+
+  try {
+    const alreadyPrompted = await AsyncStorage.getItem(BATTERY_PROMPT_KEY);
+    if (alreadyPrompted === "true") return;
+
+    const enabled = await notifee.isBatteryOptimizationEnabled();
+    if (!enabled) return;
+
+    await AsyncStorage.setItem(BATTERY_PROMPT_KEY, "true");
+    Alert.alert(
+      "Keep notifications reliable",
+      "Allow BroadCast to run in the background so calls and messages arrive on time.",
+      [
+        { text: "Not now", style: "cancel" },
+        {
+          text: "Open settings",
+          onPress: () => {
+            void openBatteryOptimizationSettings();
+          },
+        },
+      ],
+    );
+  } catch {
+    /* best effort only */
   }
 }
 

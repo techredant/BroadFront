@@ -1,8 +1,7 @@
 import React, { memo } from "react";
-import { View, Text, Image, Pressable } from "react-native";
-import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { View, Text, Image } from "react-native";
 import { Status } from "@/components/status/Status";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 type Props = {
   formattedLevel: string;
@@ -19,8 +18,6 @@ function HomeFeedHeader({
   statuses,
   currentUserId,
 }: Props) {
-  const router = useRouter();
-
   return (
     <View>
       <View
@@ -61,16 +58,12 @@ function HomeFeedHeader({
           <Image
             source={require("../../../assets/images/icon.jpg")}
             style={{
-              height: 40,
-              width: 40,
+              height: 30,
+              width: 30,
               borderRadius: 50,
             }}
           />
-          <Pressable
-            accessibilityLabel="Open activity"
-            accessibilityRole="button"
-            hitSlop={10}
-            onPress={() => router.push("/(drawer)/(drawerPages)/ActivityInbox")}
+          <View
             style={{
               height: 40,
               width: 40,
@@ -79,8 +72,8 @@ function HomeFeedHeader({
               justifyContent: "center",
             }}
           >
-            <Ionicons name="notifications-outline" size={22} color={theme.text} />
-          </Pressable>
+            <NotificationBell size={22} color={theme.text} />
+          </View>
         </View>
       </View>
 

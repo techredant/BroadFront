@@ -3,8 +3,9 @@ import axios from "axios";
 import { AppState, Platform, type AppStateStatus } from "react-native";
 import * as Device from "expo-device";
 import { getPushTokenIfGranted } from "@/utils/notification";
-import { getFcmToken } from "@/utils/fcmMessaging";
+import { getFcmToken, subscribeFcmTokenRefresh } from "@/utils/fcmMessaging";
 import { API_PUBLIC_URL } from "@/constants/api";
+import { promptBatteryOptimizationSettingsIfNeeded } from "@/utils/notifeeNotifications";
 
 export async function savePushToken(
   userId: string,
@@ -69,8 +70,8 @@ export function usePushNotifications(
     let cancelled = false;
     let attempts = 0;
 
-    const register = async () => {
-      if (registeredRef.current === userId) return;
+    const register = async (force = false) => {
+      if (!force && registeredRef.current === userId) return;
 
       try {
         const token = await getPushTokenIfGranted();
@@ -79,6 +80,7 @@ export function usePushNotifications(
         const ok = await savePushToken(userId, token);
         if (!cancelled && ok) {
           setRegisteredFor(userId);
+          void promptBatteryOptimizationSettingsIfNeeded();
         }
       } catch (err) {
         console.error("Push token sync failed:", err);
@@ -108,11 +110,15 @@ export function usePushNotifications(
         appState.current = next;
       },
     );
+    const unsubscribeFcmRefresh = subscribeFcmTokenRefresh(() => {
+      void register(true);
+    });
 
     return () => {
       cancelled = true;
       clearInterval(retry);
       sub.remove();
+      unsubscribeFcmRefresh();
     };
   }, [userId, enabled]);
 

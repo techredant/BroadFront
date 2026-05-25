@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { AppState } from "react-native";
 import { io, type Socket } from "socket.io-client";
 import type { AppNotification, NotificationSection } from "@/types/notifications";
 import { sectionToCategory } from "@/types/notifications";
@@ -21,13 +22,32 @@ import {
 import { presentActivityNotificationInShade } from "@/utils/activityShade";
 import { SOCKET_IO_DISABLED_ON_HOST, SOCKET_IO_URL } from "@/constants/api";
 
+const HOSTED_NOTIFICATION_REFRESH_MS = 8000;
+
 function countUnread(list: AppNotification[]) {
   return list.filter((n) => !n.read).length;
 }
 
 function matchesSection(item: AppNotification, section: NotificationSection) {
   if (section === "all") return true;
-  return item.category === section;
+  if (item.category === section) return true;
+  if (
+    section === "messages" &&
+    ["message", "group_message", "media_message", "voice_note"].includes(
+      String(item.type || ""),
+    )
+  ) {
+    return true;
+  }
+  if (
+    section === "livestreams" &&
+    ["livestream_started", "live_invite", "live_join_request", "live_reaction"].includes(
+      String(item.type || ""),
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 type NotificationContextValue = {
@@ -71,6 +91,7 @@ export const NotificationProvider = ({
 
   const activeSectionRef = useRef(activeSection);
   activeSectionRef.current = activeSection;
+  const shadeSeenIdsRef = useRef<Set<string>>(new Set());
 
   const filteredNotifications = useMemo(
     () => notifications.filter((n) => matchesSection(n, activeSection)),
@@ -86,10 +107,10 @@ export const NotificationProvider = ({
   const dismissBanner = useCallback(() => setBanner(null), []);
 
   const loadPage = useCallback(
-    async (replace: boolean) => {
+    async (replace: boolean, sectionOverride?: NotificationSection) => {
       if (!userId) return;
 
-      const section = activeSectionRef.current;
+      const section = sectionOverride ?? activeSectionRef.current;
       const pageCursor = replace ? null : cursor;
 
       if (replace) {
@@ -112,6 +133,10 @@ export const NotificationProvider = ({
         const nextCursor = result?.nextCursor ?? null;
 
         setUnreadCount(result?.unreadCount ?? countUnread(page));
+        for (const item of page) {
+          const id = item._id;
+          if (id) shadeSeenIdsRef.current.add(id);
+        }
 
         if (replace) {
           setNotifications(page);
@@ -135,6 +160,13 @@ export const NotificationProvider = ({
   );
 
   const refresh = useCallback(() => loadPage(true), [loadPage]);
+  const changeSection = useCallback(
+    (section: NotificationSection) => {
+      setActiveSection(section);
+      void loadPage(true, section);
+    },
+    [loadPage, setActiveSection],
+  );
   const loadMore = useCallback(() => {
     if (!loading && !refreshing && hasMore) {
       return loadPage(false);
@@ -156,6 +188,71 @@ export const NotificationProvider = ({
     void fetchUnreadCount(userId)
       .then((count) => setUnreadCount(count ?? 0))
       .catch(() => {});
+  }, [userId]);
+
+  useEffect(() => {
+    if (!SOCKET_IO_DISABLED_ON_HOST || !userId) return;
+
+    let currentAppState = AppState.currentState;
+    let refreshingHostedActivity = false;
+
+    const refreshHostedActivity = async () => {
+      if (currentAppState !== "active" || refreshingHostedActivity) return;
+      refreshingHostedActivity = true;
+      try {
+        const result = await fetchNotifications({
+          userId,
+          section: "all",
+          limit: 10,
+        });
+        const page = result?.notifications ?? [];
+        setUnreadCount(result?.unreadCount ?? countUnread(page));
+
+        const incomingUnread = page.filter((item) => {
+          const id = item._id;
+          return id && !item.read && !shadeSeenIdsRef.current.has(id);
+        });
+
+        for (const item of page) {
+          if (item._id) shadeSeenIdsRef.current.add(item._id);
+        }
+
+        if (page.length) {
+          setNotifications((prev) => {
+            const existing = new Set(prev.map((item) => item._id).filter(Boolean));
+            const next = [...page.filter((item) => !existing.has(item._id)), ...prev];
+            return next.slice(0, 200);
+          });
+        }
+
+        for (const item of incomingUnread) {
+          void presentActivityNotificationInShade(item).catch((err) => {
+            console.warn("Activity shade notification failed:", err);
+          });
+          setBanner(item);
+        }
+      } catch {
+        /* keep current badge */
+      } finally {
+        refreshingHostedActivity = false;
+      }
+    };
+
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      currentAppState = nextState;
+      if (nextState === "active") {
+        void refreshHostedActivity();
+      }
+    });
+
+    const interval = setInterval(() => {
+      void refreshHostedActivity();
+    }, HOSTED_NOTIFICATION_REFRESH_MS);
+
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
   }, [userId]);
 
   const markRead = useCallback(
@@ -267,7 +364,7 @@ export const NotificationProvider = ({
       refreshing,
       hasMore,
       activeSection,
-      setActiveSection,
+      setActiveSection: changeSection,
       refresh,
       loadMore,
       markRead,
@@ -284,7 +381,7 @@ export const NotificationProvider = ({
       refreshing,
       hasMore,
       activeSection,
-      setActiveSection,
+      changeSection,
       refresh,
       loadMore,
       markRead,

@@ -50,7 +50,7 @@ export async function setupIncomingCallNotifications() {
     await Notifications.setNotificationChannelAsync(INCOMING_CALL_CHANNEL, {
       name: "Incoming calls",
       importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 800, 400, 800, 400, 800],
+      vibrationPattern: [800, 400, 800, 400],
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       bypassDnd: true,
       sound: "default",

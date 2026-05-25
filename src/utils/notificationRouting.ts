@@ -31,12 +31,10 @@ export function streamChannelPath(channelId: string) {
   return `/(drawer)/(stream)/channel/${id}` as const;
 }
 
-export function handleNotificationRedirect(
+export function handleNotificationDataRedirect(
   router: Router,
-  notification: Notification,
+  data: NotificationData,
 ) {
-  const data = getNotificationData(notification);
-
   if (data.screen === "live" && data.callId) {
     router.push({
       pathname: "/(drawer)/(live)",
@@ -118,8 +116,15 @@ export function handleNotificationRedirect(
 
   if (data.screen === "notifications") {
     router.push("/(drawer)/(drawerPages)/Notifications" as any);
-    return;
   }
+}
+
+export function handleNotificationRedirect(
+  router: Router,
+  notification: Notification,
+) {
+  const data = getNotificationData(notification);
+  handleNotificationDataRedirect(router, data);
 }
 
 /** Only incoming calls should auto-open while the app is in the foreground. */

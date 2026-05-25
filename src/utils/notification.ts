@@ -3,6 +3,8 @@ import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { setupIncomingCallNotifications } from "@/utils/callNotifications";
+import { NOTIFEE_CHANNELS } from "@/constants/notificationChannels";
+import { NOTIFICATION_SOUNDS } from "@/constants/notificationSounds";
 
 const EAS_PROJECT_ID =
   Constants.expoConfig?.extra?.eas?.projectId ??
@@ -19,40 +21,47 @@ export async function ensureNotificationChannels() {
     return;
   }
 
-  await Notifications.setNotificationChannelAsync("new_cast", {
+  await Notifications.setNotificationChannelAsync(NOTIFEE_CHANNELS.default, {
     name: "BroadCast",
     importance: Notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 250, 250, 250],
-    sound: "notification_sound.wav",
+    vibrationPattern: [250, 250, 250, 250],
+    sound: NOTIFICATION_SOUNDS.default,
   });
 
-  await Notifications.setNotificationChannelAsync("chat_messages", {
+  await Notifications.setNotificationChannelAsync(NOTIFEE_CHANNELS.messages, {
     name: "Messages",
     importance: Notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 250, 250, 250],
-    sound: "default",
+    vibrationPattern: [250, 250, 250, 250],
+    sound: NOTIFICATION_SOUNDS.other,
   });
 
-  await Notifications.setNotificationChannelAsync("incoming_calls", {
+  await Notifications.setNotificationChannelAsync(NOTIFEE_CHANNELS.calls, {
     name: "Incoming calls",
     importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 800, 400, 800],
+    vibrationPattern: [800, 400, 800, 400],
     bypassDnd: true,
-    sound: "default",
+    sound: NOTIFICATION_SOUNDS.incomingCall,
   });
 
-  await Notifications.setNotificationChannelAsync("missed_calls", {
+  await Notifications.setNotificationChannelAsync(NOTIFEE_CHANNELS.missedCalls, {
     name: "Missed calls",
     importance: Notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 500, 250, 500],
-    sound: "default",
+    vibrationPattern: [500, 250, 500, 250],
+    sound: NOTIFICATION_SOUNDS.other,
   });
 
-  await Notifications.setNotificationChannelAsync("live_now", {
-    name: "Live broadcasts",
+  await Notifications.setNotificationChannelAsync(NOTIFEE_CHANNELS.followers, {
+    name: "Followers",
     importance: Notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 250, 250, 250],
-    sound: "notification_sound.wav",
+    vibrationPattern: [250, 250, 250, 250],
+    sound: NOTIFICATION_SOUNDS.default,
+  });
+
+  await Notifications.setNotificationChannelAsync(NOTIFEE_CHANNELS.livestreams, {
+    name: "Livestreams",
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [250, 250, 250, 250],
+    sound: NOTIFICATION_SOUNDS.default,
   });
 
   channelsReady = true;

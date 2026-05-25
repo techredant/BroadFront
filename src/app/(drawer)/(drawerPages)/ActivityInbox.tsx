@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 import { useNotifications } from "@/context/notification";
@@ -90,6 +91,17 @@ export default function ActivityInbox() {
   } = useNotifications();
 
   const list = filteredNotifications ?? [];
+  const refreshRef = useRef(refresh);
+
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshRef.current();
+    }, []),
+  );
 
   const openNotification = useCallback(
     async (item: AppNotification) => {
@@ -98,9 +110,9 @@ export default function ActivityInbox() {
       }
 
       const data = item.data || {
-        screen: item.type,
+        screen: item.type === "livestream_started" ? "live" : item.type,
         postId: item.entityId,
-        callId: item.callId,
+        callId: item.callId || item.entityId,
         authorId: item.actor?.userId || item.authorId,
         entityId: item.entityId,
         url: item.data?.url,
