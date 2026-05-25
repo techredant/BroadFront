@@ -21,13 +21,19 @@ import { router, useFocusEffect } from "expo-router";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
 import { MediaColors, MediaGradients } from "@/constants/mediaTheme";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { isStreamCallLive } from "@/utils/isStreamCallLive";
 import {
   formatEndedAgo,
   purgeExpiredEndedCalls,
 } from "@/utils/livestreamCalls";
+import {
+  isMarketLiveCall,
+  isCommunityLiveCall,
+  marketLiveCallId,
+  type MarketLiveProduct,
+} from "@/utils/marketLive";
 
 type LiveTab = "live" | "ended";
 
@@ -56,11 +62,30 @@ type Props = {
   joinCall: (callId: string) => void;
   liveScreen: (
     callId: string,
-    meta?: { roomTitle?: string; level?: string },
+    meta?: {
+      roomTitle?: string;
+      level?: string;
+      productId?: string;
+      productTitle?: string;
+      productPrice?: number;
+      productImage?: string;
+    },
   ) => void;
+  mode?: "community" | "market";
+  pendingMarketLive?: MarketLiveProduct | null;
+  openGoLiveOnMount?: boolean;
+  onGoLiveModalOpened?: () => void;
 };
 
-export const HomeScreen = ({ client, joinCall, liveScreen }: Props) => {
+export const HomeScreen = ({
+  client,
+  joinCall,
+  liveScreen,
+  mode = "community",
+  pendingMarketLive,
+  openGoLiveOnMount,
+  onGoLiveModalOpened,
+}: Props) => {
   const { theme, isDark } = useTheme();
   const { currentLevel, userDetails } = useLevel();
   const insets = useSafeAreaInsets();
@@ -171,10 +196,24 @@ export const HomeScreen = ({ client, joinCall, liveScreen }: Props) => {
     }, [fetchCalls]),
   );
 
+  React.useEffect(() => {
+    if (!openGoLiveOnMount) return;
+    setModalVisible(true);
+    onGoLiveModalOpened?.();
+  }, [openGoLiveOnMount, onGoLiveModalOpened]);
+
   const createRoom = async () => {
     if (!userDetails) return;
-    const id = `room_${currentLevel?.value || "home"}_${userDetails.clerkId}_${Date.now()}`;
-    const roomTitle = title?.trim() || `${userDetails.nickName}'s Live`;
+    const marketProduct = mode === "market" ? pendingMarketLive : null;
+    const id =
+      mode === "market"
+        ? marketLiveCallId(userDetails.clerkId, marketProduct?.productId)
+        : `room_${currentLevel?.value || "home"}_${userDetails.clerkId}_${Date.now()}`;
+    const roomTitle =
+      title?.trim() ||
+      (marketProduct
+        ? `Selling: ${marketProduct.title}`
+        : `${userDetails.nickName}'s Live`);
 
     setModalVisible(false);
     setTitle("");
@@ -182,18 +221,31 @@ export const HomeScreen = ({ client, joinCall, liveScreen }: Props) => {
     liveScreen(id, {
       roomTitle,
       level: currentLevel?.value || "home",
+      productId: marketProduct?.productId,
+      productTitle: marketProduct?.title,
+      productPrice: marketProduct?.price,
+      productImage: marketProduct?.image,
     });
     void fetchCalls({ force: true, silent: true });
   };
 
   const liveCalls = useMemo(
-    () => calls.filter(isCallLive),
-    [calls],
+    () =>
+      calls.filter(
+        (call) =>
+          isCallLive(call) &&
+          (mode === "market" ? isMarketLiveCall(call) : isCommunityLiveCall(call)),
+      ),
+    [calls, mode],
   );
 
   const endedCalls = useMemo(() => {
     return calls
-      .filter((c) => !isCallLive(c))
+      .filter(
+        (c) =>
+          !isCallLive(c) &&
+          (mode === "market" ? isMarketLiveCall(c) : isCommunityLiveCall(c)),
+      )
       .sort((a, b) => {
         const aMs =
           a.state.endedAt?.getTime() ??

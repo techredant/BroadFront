@@ -15,6 +15,7 @@ export default function MarketLayout() {
         <Stack.Screen name="sell-form" />
         <Stack.Screen name="seller-dashboard" />
         <Stack.Screen name="search" />
+        <Stack.Screen name="live/index" />
       </Stack>
     </ChatWrapper>
   );

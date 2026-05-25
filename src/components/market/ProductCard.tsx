@@ -17,6 +17,8 @@ type Props = {
     subtext: string;
   };
   onPress: () => void;
+  onFavoritePress?: () => void;
+  favorited?: boolean;
   index?: number;
   compact?: boolean;
 };
@@ -25,6 +27,8 @@ export function ProductCard({
   item,
   theme,
   onPress,
+  onFavoritePress,
+  favorited = false,
   index = 0,
   compact = false,
 }: Props) {
@@ -63,6 +67,22 @@ export function ProductCard({
               <Text style={styles.conditionText}>New</Text>
             </View>
           )}
+          {onFavoritePress ? (
+            <Pressable
+              onPress={(event) => {
+                event.stopPropagation();
+                onFavoritePress();
+              }}
+              style={styles.favoriteBtn}
+              hitSlop={8}
+            >
+              <Ionicons
+                name={favorited ? "heart" : "heart-outline"}
+                size={17}
+                color={favorited ? "#E0245E" : "#fff"}
+              />
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={styles.body}>
@@ -92,6 +112,25 @@ export function ProductCard({
                 <Ionicons name="star" size={11} color="#F5A623" />
                 <Text style={[styles.rating, { color: theme.subtext }]}>
                   {item.seller.ratingAvg.toFixed(1)}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.metaRow}>
+            {item.location?.county ? (
+              <View style={styles.metaItem}>
+                <Ionicons name="location-outline" size={11} color={theme.subtext} />
+                <Text numberOfLines={1} style={[styles.metaText, { color: theme.subtext }]}>
+                  {item.location.county}
+                </Text>
+              </View>
+            ) : null}
+            {item.trustScore != null ? (
+              <View style={styles.metaItem}>
+                <Ionicons name="shield-checkmark-outline" size={11} color={theme.primary} />
+                <Text style={[styles.metaText, { color: theme.subtext }]}>
+                  {Math.round(item.trustScore)}
                 </Text>
               </View>
             ) : null}
@@ -151,6 +190,17 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   conditionText: { color: "#fff", fontSize: 9, fontWeight: "600" },
+  favoriteBtn: {
+    position: "absolute",
+    right: 8,
+    bottom: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
   body: { padding: 10 },
   title: { fontSize: 13, fontWeight: "600", lineHeight: 18 },
   price: { fontWeight: "800", marginTop: 4, fontSize: 14 },
@@ -163,6 +213,20 @@ const styles = StyleSheet.create({
   sellerName: { flex: 1, fontSize: 10 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 2 },
   rating: { fontSize: 10 },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+    marginTop: 6,
+  },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    flexShrink: 1,
+  },
+  metaText: { fontSize: 10 },
   catBadge: {
     marginTop: 6,
     alignSelf: "flex-start",

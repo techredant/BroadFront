@@ -72,7 +72,12 @@ export function MarketLiveProductRail({
             return (
               <Pressable
                 key={item._id}
-                onPress={() => router.push(`/(drawer)/(market)/${item._id}`)}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(drawer)/(market)/[id]",
+                    params: { id: item._id },
+                  } as any)
+                }
                 style={[styles.card, featured && styles.cardFeatured]}
               >
                 {item.media?.[0] ? (

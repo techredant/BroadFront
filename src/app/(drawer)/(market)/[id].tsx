@@ -15,7 +15,7 @@ import {
   TextInput,
 } from "react-native";
 import { Image } from "expo-image";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useChatContext } from "stream-chat-expo";
@@ -43,14 +43,20 @@ import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { ProductCard } from "@/components/market/ProductCard";
 import { BoostListingModal } from "@/components/market/BoostListingModal";
 import {
+  stashMarketLiveProduct,
+  goToMarketLive,
+} from "@/utils/marketLive";
+import {
   fetchProduct,
+  fetchFavoriteStatus,
+  fetchProductReviews,
   fetchRelated,
   toggleFavorite,
   reportProduct,
   submitReview,
   trackChatStarted,
 } from "@/services/marketplaceApi";
-import type { MarketplaceProduct } from "@/types/marketplace";
+import type { MarketplaceProduct, ProductReview } from "@/types/marketplace";
 
 const { width } = Dimensions.get("window");
 
@@ -58,9 +64,10 @@ export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { theme, isDark } = useTheme();
   const { user } = useUser();
+  const insets = useSafeAreaInsets();
 
   const [product, setProduct] = useState<
-    (MarketplaceProduct & { phoneNumber?: string }) | null
+    (MarketplaceProduct & { phoneNumber?: string | number }) | null
   >(null);
   const [related, setRelated] = useState<MarketplaceProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +75,7 @@ export default function ProductDetail() {
   const [favorited, setFavorited] = useState(false);
   const [favoriteBurstKey, setFavoriteBurstKey] = useState(0);
   const [reviewVisible, setReviewVisible] = useState(false);
+  const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [rating, setRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
 
@@ -95,15 +103,21 @@ export default function ProductDetail() {
     try {
       const data = await fetchProduct(id);
       setProduct(data);
-      const rel = await fetchRelated(id);
+      const [rel, status, productReviews] = await Promise.all([
+        fetchRelated(id),
+        fetchFavoriteStatus(id, user?.id),
+        fetchProductReviews(id),
+      ]);
       setRelated(rel);
+      setFavorited(status.favorited);
+      setReviews(productReviews);
     } catch {
       Alert.alert("Error", "Product not found");
       router.back();
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, user?.id]);
 
   useEffect(() => {
     loadProduct();
@@ -111,6 +125,7 @@ export default function ProductDetail() {
 
   const owner = product?.userId === user?.id;
   const sortedMedia = [...(product?.media || [])];
+  const bottomActionOffset = Math.max(insets.bottom, 10)
 
   const boostRemaining = product?.boostExpiresAt
     ? Math.max(
@@ -153,7 +168,7 @@ export default function ProductDetail() {
       const channel = client.channel("messaging", {
         members: [client.userID, product.userId],
         distinct: true,
-      });
+      } as any);
       await channel.watch();
       setChannel(channel);
       await channel.sendMessage({
@@ -177,7 +192,7 @@ export default function ProductDetail() {
         ],
       });
       await trackChatStarted(product._id);
-      router.push(`/channel/${channel.cid}`);
+      router.push(`/(drawer)/(stream)/channel/${channel.cid}` as any);
     } catch {
       Alert.alert("Chat error", "Could not start conversation");
     }
@@ -198,6 +213,22 @@ export default function ProductDetail() {
     if (!product) return;
     await Share.share({
       message: `${product.title} — KES ${product.price.toLocaleString("en-KE")}\n${product.description || ""}`,
+    });
+  };
+
+  const startLiveSelling = () => {
+    if (!product) return;
+    stashMarketLiveProduct({
+      productId: product._id,
+      title: product.title,
+      price: product.price,
+      image: product.media?.[0],
+    });
+    goToMarketLive(router, {
+      productId: product._id,
+      title: product.title,
+      price: product.price,
+      image: product.media?.[0],
     });
   };
 
@@ -313,6 +344,11 @@ export default function ProductDetail() {
                   <MenuOption onSelect={() => setEditVisible(true)}>
                     <Text style={{ color: theme.text, padding: 10 }}>Edit</Text>
                   </MenuOption>
+                  <MenuOption onSelect={startLiveSelling}>
+                    <Text style={{ color: theme.text, padding: 10 }}>
+                      Sell live
+                    </Text>
+                  </MenuOption>
                   <MenuOption onSelect={() => setDeleteVisible(true)}>
                     <Text style={{ color: "red", padding: 10 }}>Delete</Text>
                   </MenuOption>
@@ -382,7 +418,13 @@ export default function ProductDetail() {
         ))}
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={{
+          paddingBottom: bottomActionOffset + 96,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
         {product.fraudWarning && (
           <View style={styles.fraudBanner}>
             <Ionicons name="warning" size={18} color="#B45309" />
@@ -491,6 +533,11 @@ export default function ProductDetail() {
                   📍 {product.seller.county}
                 </Text>
               )}
+              {product.seller.isPremiumSeller ? (
+                <Text style={{ color: "#FF6B00", fontSize: 11, marginTop: 2 }}>
+                  Premium seller
+                </Text>
+              ) : null}
             </View>
             <Ionicons name="chevron-forward" size={20} color={theme.subtext} />
           </TouchableOpacity>
@@ -503,6 +550,63 @@ export default function ProductDetail() {
           <Text style={{ color: theme.subtext, lineHeight: 22 }}>
             {product.description || "No description"}
           </Text>
+        </View>
+
+        <View style={[styles.descCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.descTitle, { color: theme.text }]}>
+            Listing details
+          </Text>
+          <View style={styles.detailRow}>
+            <Text style={{ color: theme.subtext }}>Location</Text>
+            <Text style={{ color: theme.text, fontWeight: "600" }}>
+              {[product.location?.county, product.location?.constituency]
+                .filter(Boolean)
+                .join(", ") || "Not specified"}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={{ color: theme.subtext }}>Trust score</Text>
+            <Text style={{ color: theme.text, fontWeight: "600" }}>
+              {product.trustScore != null ? Math.round(product.trustScore) : "New"}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={{ color: theme.subtext }}>Views</Text>
+            <Text style={{ color: theme.text, fontWeight: "600" }}>
+              {product.viewCount || 0}
+            </Text>
+          </View>
+        </View>
+
+        <View style={[styles.descCard, { backgroundColor: theme.card }]}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.descTitle, { color: theme.text }]}>
+              Reviews
+            </Text>
+            {!owner ? (
+              <TouchableOpacity onPress={() => setReviewVisible(true)}>
+                <Text style={{ color: theme.primary, fontWeight: "700" }}>
+                  Write
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {reviews.length === 0 ? (
+            <Text style={{ color: theme.subtext }}>
+              No reviews yet. Be the first buyer to rate this seller.
+            </Text>
+          ) : (
+            reviews.slice(0, 4).map((review) => (
+              <View key={review._id} style={styles.reviewRow}>
+                <Text style={{ color: "#F5A623", fontWeight: "700" }}>
+                  {"★".repeat(review.rating)}
+                </Text>
+                <Text style={{ color: theme.text, flex: 1 }}>
+                  {review.comment || "No comment"}
+                </Text>
+              </View>
+            ))
+          )}
         </View>
 
         {related.length > 0 && (
@@ -518,7 +622,12 @@ export default function ProductDetail() {
                   theme={productTheme}
                   compact
                   index={i}
-                  onPress={() => router.push(`/${item._id}`)}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(drawer)/(market)/[id]",
+                      params: { id: item._id },
+                    } as any)
+                  }
                 />
               ))}
             </ScrollView>
@@ -530,7 +639,11 @@ export default function ProductDetail() {
         <View
           style={[
             styles.bottomBar,
-            { borderTopColor: theme.border, backgroundColor: theme.background },
+            {
+              borderTopColor: theme.border,
+              backgroundColor: theme.background,
+              bottom: bottomActionOffset,
+            },
           ]}
         >
           <TouchableOpacity
@@ -550,12 +663,26 @@ export default function ProductDetail() {
               Boost listing
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            onPress={startLiveSelling}
+            style={[styles.outlineBtn, { borderColor: "#FE2C55" }]}
+          >
+            <Ionicons name="radio" size={18} color="#FE2C55" />
+            <Text style={{ color: "#FE2C55", fontWeight: "700" }}>Live</Text>
+          </TouchableOpacity>
         </View>
       )}
 
       {!owner && (
         <View
-          style={[styles.bottomBar, { borderTopColor: theme.border, backgroundColor: theme.background }]}
+          style={[
+            styles.bottomBar,
+            {
+              borderTopColor: theme.border,
+              backgroundColor: theme.background,
+              bottom: bottomActionOffset,
+            },
+          ]}
         >
           <TouchableOpacity
             onPress={() =>
@@ -674,7 +801,7 @@ export default function ProductDetail() {
         visible={editVisible}
         onClose={() => setEditVisible(false)}
         product={product}
-        onSubmit={async (updatedData) => {
+        onSubmit={async (updatedData: Record<string, unknown>) => {
           const { default: axios } = await import("axios");
           const { API_PUBLIC_URL } = await import("@/constants/api");
           await axios.put(`${API_PUBLIC_URL}/api/products/${product._id}`, {
@@ -752,6 +879,23 @@ const styles = StyleSheet.create({
   sellerName: { fontSize: 15, fontWeight: "700" },
   descCard: { marginTop: 16, padding: 16, borderRadius: 16 },
   descTitle: { fontWeight: "700", marginBottom: 8, fontSize: 15 },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 7,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  reviewRow: {
+    gap: 4,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(128,128,128,0.25)",
+  },
   relatedSection: { marginTop: 20 },
   bottomBar: {
     position: "absolute",

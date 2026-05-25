@@ -18,6 +18,7 @@ import {
   TextInput,
   StatusBar,
   Platform,
+  KeyboardAvoidingView,
   ActivityIndicator,
   Share,
   Dimensions,
@@ -27,9 +28,6 @@ import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  KeyboardAvoidingView,
-} from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -71,6 +69,14 @@ import {
 import { API_PUBLIC_URL } from "@/constants/api";
 import { notifyLiveStarted } from "@/utils/notifyLiveStarted";
 import { io } from "socket.io-client";
+import {
+  buildMarketLiveCustom,
+  productFromLiveCustom,
+  type MarketLiveProduct,
+} from "@/utils/marketLive";
+import { LiveProductOverlay } from "@/components/live/LiveProductOverlay";
+import { LivePinProductSheet } from "@/components/live/LivePinProductSheet";
+import { MarketLiveProductRail } from "@/components/market/MarketLiveProductRail";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -80,6 +86,11 @@ type Props = {
   isHost?: boolean;
   roomTitle?: string;
   level?: string;
+  variant?: "community" | "market";
+  productId?: string;
+  productTitle?: string;
+  productPrice?: number;
+  productImage?: string;
 };
 
 export default function LiveScreen({
@@ -88,6 +99,11 @@ export default function LiveScreen({
   isHost = false,
   roomTitle,
   level,
+  variant = "community",
+  productId,
+  productTitle,
+  productPrice,
+  productImage,
 }: Props) {
   const client = useStreamVideoClient();
   const { userDetails } = useLevel();
@@ -105,6 +121,15 @@ export default function LiveScreen({
     if (!client) return null;
     return client.call("livestream", callId);
   }, [client, callId]);
+  const initialMarketProduct = useMemo<MarketLiveProduct | null>(() => {
+    if (variant !== "market" || !productId) return null;
+    return {
+      productId,
+      title: productTitle || "Product",
+      price: Number(productPrice) || 0,
+      image: productImage,
+    };
+  }, [variant, productId, productTitle, productPrice, productImage]);
 
   useEffect(() => {
     liveNotifySentRef.current = false;
@@ -124,8 +149,17 @@ export default function LiveScreen({
           await streamCall.getOrCreate({
             data: {
               custom: {
-                title: roomTitle ?? "Live",
-                level: level ?? "home",
+                ...(variant === "market"
+                  ? buildMarketLiveCustom({
+                      hostClerkId: userDetails?.clerkId || "",
+                      roomTitle,
+                      level,
+                      product: initialMarketProduct,
+                    })
+                  : {
+                      title: roomTitle ?? "Live",
+                      level: level ?? "home",
+                    }),
               },
             },
           });
@@ -181,7 +215,16 @@ export default function LiveScreen({
       callManager.stop();
       setCall(null);
     };
-  }, [streamCall, callId, isHost, roomTitle, level, userDetails?.clerkId]);
+  }, [
+    streamCall,
+    callId,
+    isHost,
+    roomTitle,
+    level,
+    userDetails?.clerkId,
+    variant,
+    initialMarketProduct,
+  ]);
 
   if (joinError) {
     return (
@@ -215,6 +258,8 @@ export default function LiveScreen({
       <LeaveStateHandler goToHomeScreen={goToHomeScreen} />
       <LiveCanvas
         isHost={isHost}
+        variant={variant}
+        initialMarketProduct={initialMarketProduct}
         goToHomeScreen={goToHomeScreen}
         insetsBottom={insets.bottom}
       />
@@ -239,10 +284,14 @@ function LeaveStateHandler({ goToHomeScreen }: { goToHomeScreen: () => void }) {
 
 function LiveCanvas({
   isHost,
+  variant,
+  initialMarketProduct,
   goToHomeScreen,
   insetsBottom,
 }: {
   isHost: boolean;
+  variant: "community" | "market";
+  initialMarketProduct: MarketLiveProduct | null;
   goToHomeScreen: () => void;
   insetsBottom: number;
 }) {
@@ -261,6 +310,8 @@ function LiveCanvas({
   return (
     <LiveCanvasJoined
       isHost={isHost}
+      variant={variant}
+      initialMarketProduct={initialMarketProduct}
       goToHomeScreen={goToHomeScreen}
       insetsBottom={insetsBottom}
     />
@@ -269,10 +320,14 @@ function LiveCanvas({
 
 function LiveCanvasJoined({
   isHost,
+  variant,
+  initialMarketProduct,
   goToHomeScreen,
   insetsBottom,
 }: {
   isHost: boolean;
+  variant: "community" | "market";
+  initialMarketProduct: MarketLiveProduct | null;
   goToHomeScreen: () => void;
   insetsBottom: number;
 }) {
@@ -290,14 +345,19 @@ function LiveCanvasJoined({
     useHasPermissions,
   } = useCallStateHooks();
   const custom = useCallCustomData();
+  const marketProductFromCall = useMemo(
+    () => productFromLiveCustom(custom as Record<string, unknown> | undefined),
+    [custom],
+  );
 
   const localParticipant = useLocalParticipant();
   const participants = useParticipants();
   const hostUserId = call?.state.createdBy?.id;
-  const canModerate =
-    isHost ||
-    useHasPermissions(OwnCapability.UPDATE_CALL_PERMISSIONS) ||
-    useHasPermissions(OwnCapability.MUTE_USERS);
+  const canUpdatePermissions = useHasPermissions(
+    OwnCapability.UPDATE_CALL_PERMISSIONS,
+  );
+  const canMuteUsers = useHasPermissions(OwnCapability.MUTE_USERS);
+  const canModerate = isHost || canUpdatePermissions || canMuteUsers;
 
   const myUserId = localParticipant?.userId;
   const myName =
@@ -318,6 +378,16 @@ function LiveCanvasJoined({
       text: "Say hi in the chat!",
     },
   ]);
+  const [pinnedProduct, setPinnedProduct] = useState<MarketLiveProduct | null>(
+    initialMarketProduct ?? marketProductFromCall,
+  );
+  const [pinSheetVisible, setPinSheetVisible] = useState(false);
+
+  useEffect(() => {
+    if (!pinnedProduct && marketProductFromCall) {
+      setPinnedProduct(marketProductFromCall);
+    }
+  }, [marketProductFromCall, pinnedProduct]);
   const [speakRequests, setSpeakRequests] = useState<SpeakRequest[]>([]);
   const [showGuests, setShowGuests] = useState(false);
   const [input, setInput] = useState("");
@@ -1102,6 +1172,24 @@ function LiveCanvasJoined({
         onEmoji={emitReaction}
       />
 
+      {variant === "market" && !keyboardOpen && hostClerkId ? (
+        <>
+          {pinnedProduct ? (
+            <LiveProductOverlay
+              product={pinnedProduct}
+              bottomOffset={dockBottom + 136}
+              isHost={isHost}
+              onPinPress={() => setPinSheetVisible(true)}
+            />
+          ) : null}
+          <MarketLiveProductRail
+            hostUserId={hostClerkId}
+            featuredProductId={pinnedProduct?.productId}
+            bottomOffset={dockBottom + (pinnedProduct ? 286 : 136)}
+          />
+        </>
+      ) : null}
+
       {/* BOTTOM DOCK — sits above keyboard (chat → input → controls) */}
       <View
         pointerEvents="box-none"
@@ -1165,6 +1253,7 @@ function LiveCanvasJoined({
                 onPress={() => call?.camera.toggle()}
               />
               <TikTokIconBtn icon="sync" onPress={() => call?.camera.flip()} />
+              <TikTokIconBtn icon="pricetag" onPress={() => setPinSheetVisible(true)} />
               <TikTokIconBtn icon="call" danger onPress={endLiveHost} />
             </View>
           )}
@@ -1193,6 +1282,22 @@ function LiveCanvasJoined({
         onClose={() => setShowGiftPicker(false)}
         pay={handleMpesaPay}
       />
+      {variant === "market" && hostClerkId ? (
+        <LivePinProductSheet
+          visible={pinSheetVisible}
+          hostUserId={hostClerkId}
+          pinnedProductId={pinnedProduct?.productId}
+          onClose={() => setPinSheetVisible(false)}
+          onPin={(product) => {
+            setPinnedProduct(product);
+            setPinSheetVisible(false);
+          }}
+          onUnpin={() => {
+            setPinnedProduct(null);
+            setPinSheetVisible(false);
+          }}
+        />
+      ) : null}
     </View>
   );
 }

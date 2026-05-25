@@ -31,12 +31,16 @@ export type MarketplaceProduct = {
   status?: ProductStatus;
   location?: { county?: string; constituency?: string; ward?: string };
   isPromoted?: boolean;
+  boostStatus?: "active" | "inactive" | "expired";
   boostExpiresAt?: string | null;
+  boostRankWeight?: number;
   listingType?: "free" | "boosted";
   viewCount?: number;
   favoriteCount?: number;
+  chatCount?: number;
   seller?: MarketplaceSeller | null;
   rankScore?: number;
+  trustScore?: number;
   fraudFlags?: { score: number; warnings: string[] };
   fraudWarning?: string | null;
   createdAt?: string;
@@ -59,6 +63,33 @@ export type FeedResponse = {
   limit: number;
   total: number;
   hasMore: boolean;
+  filters?: ProductFilters;
+};
+
+export type ProductReview = {
+  _id: string;
+  productId: string;
+  sellerId: string;
+  reviewerId: string;
+  rating: number;
+  comment?: string;
+  createdAt?: string;
+};
+
+export type SellerProductAnalytics = {
+  _id: string;
+  title: string;
+  media: string[];
+  price: number;
+  status: ProductStatus;
+  views: number;
+  saves: number;
+  chats: number;
+  isPromoted: boolean;
+  boostExpiresAt?: string | null;
+  boostRankWeight: number;
+  listingHealth: string;
+  createdAt?: string;
 };
 
 export type SellerAnalytics = {
@@ -73,12 +104,19 @@ export type SellerAnalytics = {
   reviewCount: number;
   isPremiumSeller: boolean;
   premiumExpiresAt?: string | null;
+  premiumStatus?: {
+    planId: string;
+    status: string;
+    expiresAt?: string;
+    daysRemaining: number;
+  } | null;
   listingQuota: {
     allowed: boolean;
     count: number;
     limit: number;
     isPremium: boolean;
   };
+  products?: SellerProductAnalytics[];
 };
 
 export type BoostPlan = {

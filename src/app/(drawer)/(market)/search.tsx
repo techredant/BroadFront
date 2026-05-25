@@ -10,7 +10,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 import { ProductCard } from "@/components/market/ProductCard";
@@ -93,6 +93,16 @@ export default function MarketSearchScreen() {
     setSubmitted(true);
     initialLoad();
   }, [query, filters]);
+
+  const openProduct = useCallback(
+    (productId: string) => {
+      router.push({
+        pathname: "/(drawer)/(market)/[id]",
+        params: { id: productId },
+      } as Href);
+    },
+    [router],
+  );
 
   const resultLabel = submitted
     ? `${products.length}${hasMore ? "+" : ""} results`
@@ -190,7 +200,7 @@ export default function MarketSearchScreen() {
               item={item}
               theme={productTheme}
               index={index}
-              onPress={() => router.push(`/${item._id}`)}
+              onPress={() => openProduct(item._id)}
             />
           )}
         />

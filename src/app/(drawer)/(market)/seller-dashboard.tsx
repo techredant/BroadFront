@@ -114,9 +114,14 @@ export default function SellerDashboard() {
         {analytics.isPremiumSeller && (
           <View style={[styles.premiumBanner, { backgroundColor: "#FF6B0020" }]}>
             <Ionicons name="diamond" size={20} color="#FF6B00" />
-            <Text style={{ color: "#FF6B00", fontWeight: "700", marginLeft: 8 }}>
-              Premium Seller
-            </Text>
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={{ color: "#FF6B00", fontWeight: "700" }}>
+                Premium Seller
+              </Text>
+              <Text style={{ color: "#FF6B00", fontSize: 12 }}>
+                {analytics.premiumStatus?.daysRemaining ?? 0} days remaining
+              </Text>
+            </View>
           </View>
         )}
 
@@ -157,6 +162,21 @@ export default function SellerDashboard() {
             {analytics.listingQuota.count} / {analytics.listingQuota.limit} free
             listings used
           </Text>
+          <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  backgroundColor: theme.primary,
+                  width: `${Math.min(
+                    100,
+                    (analytics.listingQuota.count / analytics.listingQuota.limit) *
+                      100,
+                  )}%`,
+                },
+              ]}
+            />
+          </View>
           <Text style={{ color: theme.subtext, marginTop: 4 }}>
             {analytics.boostedListings} boosted active
           </Text>
@@ -216,6 +236,69 @@ export default function SellerDashboard() {
             Get verified seller badge
           </Text>
         </TouchableOpacity>
+
+        <Text style={[styles.sectionLabel, { color: theme.text, marginTop: 18 }]}>
+          Product analytics
+        </Text>
+        {(analytics.products || []).length === 0 ? (
+          <View style={[styles.card, { backgroundColor: theme.card }]}>
+            <Text style={{ color: theme.subtext }}>
+              Your listings will appear here with views, saves, chats and boost status.
+            </Text>
+          </View>
+        ) : (
+          (analytics.products || []).map((product) => {
+            const expiresAt = product.boostExpiresAt
+              ? new Date(product.boostExpiresAt)
+              : null;
+            const daysLeft = expiresAt
+              ? Math.max(
+                  0,
+                  Math.ceil((expiresAt.getTime() - Date.now()) / 86400000),
+                )
+              : 0;
+            return (
+              <TouchableOpacity
+                key={product._id}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(drawer)/(market)/[id]",
+                    params: { id: product._id },
+                  } as any)
+                }
+                style={[styles.productCard, { backgroundColor: theme.card }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={1} style={{ color: theme.text, fontWeight: "800" }}>
+                    {product.title}
+                  </Text>
+                  <Text style={{ color: theme.subtext, fontSize: 12 }}>
+                    KES {product.price.toLocaleString("en-KE")} · {product.listingHealth}
+                  </Text>
+                  <View style={styles.analyticsRow}>
+                    <Text style={{ color: theme.subtext, fontSize: 11 }}>
+                      {product.views} views
+                    </Text>
+                    <Text style={{ color: theme.subtext, fontSize: 11 }}>
+                      {product.saves} saves
+                    </Text>
+                    <Text style={{ color: theme.subtext, fontSize: 11 }}>
+                      {product.chats} chats
+                    </Text>
+                  </View>
+                </View>
+                {product.isPromoted ? (
+                  <View style={styles.boostPill}>
+                    <Ionicons name="flash" size={12} color="#fff" />
+                    <Text style={styles.boostPillText}>{daysLeft}d</Text>
+                  </View>
+                ) : (
+                  <Ionicons name="chevron-forward" size={18} color={theme.subtext} />
+                )}
+              </TouchableOpacity>
+            );
+          })
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -254,6 +337,13 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 21, fontWeight: "800" },
   card: { padding: 16, borderRadius: 16, marginBottom: 12 },
   cardTitle: { fontWeight: "700", marginBottom: 6 },
+  progressTrack: {
+    height: 7,
+    borderRadius: 999,
+    overflow: "hidden",
+    marginTop: 10,
+  },
+  progressFill: { height: "100%", borderRadius: 999 },
   sectionLabel: { fontSize: 15, fontWeight: "700", marginBottom: 4 },
   planRow: {
     padding: 14,
@@ -278,4 +368,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
   },
+  productCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 10,
+    gap: 12,
+  },
+  analyticsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  boostPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FF6B00",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  boostPillText: { color: "#fff", fontWeight: "800", fontSize: 11 },
 });

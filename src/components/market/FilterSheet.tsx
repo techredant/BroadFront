@@ -162,6 +162,20 @@ export function FilterSheet({
               </View>
             </ScrollView>
 
+            <Text style={[styles.label, { color: theme.subtext }]}>Location</Text>
+            <TextInput
+              placeholder="County or town"
+              placeholderTextColor={theme.subtext}
+              value={local.county || ""}
+              onChangeText={(v) =>
+                setLocal((p) => ({ ...p, county: v.trim() ? v : null }))
+              }
+              style={[
+                styles.fullInput,
+                { color: theme.text, borderColor: theme.border },
+              ]}
+            />
+
             <View style={styles.switchRow}>
               <Text style={{ color: theme.text, fontWeight: "600" }}>
                 Verified sellers only
@@ -184,6 +198,7 @@ export function FilterSheet({
                   condition: null,
                   minPrice: "",
                   maxPrice: "",
+                  county: null,
                   verifiedOnly: false,
                 });
                 onClose();
@@ -239,6 +254,12 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  fullInput: {
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,

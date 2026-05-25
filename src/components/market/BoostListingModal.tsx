@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
-    maxHeight: "88%",
+    maxHeight: "98%",
   },
   handle: {
     width: 40,
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 14,
     alignItems: "center",
-    marginTop: 8,
+    marginBottom: 40,
   },
   payBtnText: { color: "#fff", fontWeight: "800", fontSize: 15 },
 });

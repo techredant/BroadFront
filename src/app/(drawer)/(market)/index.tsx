@@ -19,8 +19,11 @@ import { ProductCard } from "@/components/market/ProductCard";
 import { MarketSkeleton } from "@/components/market/MarketSkeleton";
 import { FilterSheet } from "@/components/market/FilterSheet";
 import { useMarketplaceFeed } from "@/hooks/useMarketplaceFeed";
-import { fetchPromoted, fetchTrending } from "@/services/marketplaceApi";
-import { MARKET_CATEGORIES } from "@/services/marketplaceApi";
+import {
+  fetchPromoted,
+  fetchTrending,
+  MARKET_CATEGORIES,
+} from "@/services/marketplaceApi";
 import type { MarketplaceProduct, ProductFilters } from "@/types/marketplace";
 
 const cardTheme = (t: ReturnType<typeof useTheme>["theme"]) => ({
@@ -78,6 +81,16 @@ export default function MarketScreen() {
     }
   }, []);
 
+  const openProduct = useCallback(
+    (productId: string) => {
+      router.push({
+        pathname: "/(drawer)/(market)/[id]",
+        params: { id: productId },
+      } as Href);
+    },
+    [router],
+  );
+
   useFocusEffect(
     useCallback(() => {
       initialLoad();
@@ -110,7 +123,7 @@ export default function MarketScreen() {
                 theme={productTheme}
                 compact
                 index={i}
-                onPress={() => router.push(`/${item._id}`)}
+                onPress={() => openProduct(item._id)}
               />
             ))}
           </ScrollView>
@@ -133,7 +146,7 @@ export default function MarketScreen() {
                 theme={productTheme}
                 compact
                 index={i}
-                onPress={() => router.push(`/${item._id}`)}
+                onPress={() => openProduct(item._id)}
               />
             ))}
           </ScrollView>
@@ -167,13 +180,19 @@ export default function MarketScreen() {
         <Text style={[styles.title, { color: theme.text, textAlign: "center" }]}>Marketplace</Text>
         <View style={styles.headerActions}>
           <Pressable
-            onPress={() => router.push("/seller-dashboard")}
+            onPress={() => router.push("/(drawer)/(market)/seller-dashboard" as Href)}
             style={[styles.iconBtn, { backgroundColor: theme.card }]}
           >
             <Ionicons name="stats-chart" size={18} color={theme.primary} />
           </Pressable>
           <Pressable
-            onPress={() => router.push("/sell-form")}
+            onPress={() => router.push("/(drawer)/(market)/live" as Href)}
+            style={[styles.iconBtn, { backgroundColor: theme.card }]}
+          >
+            <Ionicons name="radio" size={18} color="#FE2C55" />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/(drawer)/(market)/sell-form" as Href)}
             style={[styles.sellBtn, { backgroundColor: theme.primary }]}
           >
             <Text style={{ color: theme.buttonText, fontWeight: "700" }}>
@@ -313,7 +332,7 @@ export default function MarketScreen() {
             item={item}
             theme={productTheme}
             index={index}
-            onPress={() => router.push(`/${item._id}`)}
+            onPress={() => openProduct(item._id)}
           />
         )}
       />

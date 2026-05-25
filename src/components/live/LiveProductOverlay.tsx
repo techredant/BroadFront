@@ -20,7 +20,10 @@ export function LiveProductOverlay({
   onPinPress,
 }: Props) {
   const openProduct = () => {
-    router.push(`/(drawer)/(market)/${product.productId}`);
+    router.push({
+      pathname: "/(drawer)/(market)/[id]",
+      params: { id: product.productId },
+    } as any);
   };
 
   return (
