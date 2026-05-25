@@ -7,11 +7,14 @@ import {
 } from "@stream-io/video-react-native-sdk";
 import { useLevel } from "@/context/LevelContext";
 import { fetchStreamToken } from "@/utils/streamToken";
+import ChatWrapper from "@/components/ChatWrapper";
+import { useTheme } from "@/context/ThemeContext";
 
 const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
 
 export default function StreamLayout() {
   const { userDetails } = useLevel();
+  const { theme } = useTheme();
   const router = useRouter();
 
   const [videoClient, setVideoClient] = useState<StreamVideoClient | null>(null);
@@ -84,16 +87,18 @@ export default function StreamLayout() {
 
   if (!videoClient) {
     return (
-      <View style={styles.loader}>
-        <ActivityIndicator />
+      <View style={[styles.loader, { backgroundColor: theme.background }]}>
+        <ActivityIndicator color={theme.text} />
       </View>
     );
   }
 
   return (
-    <StreamVideo client={videoClient}>
-      <Stack screenOptions={{ headerShown: false }} />
-    </StreamVideo>
+    <ChatWrapper userDetail={userDetails}>
+      <StreamVideo client={videoClient}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </StreamVideo>
+    </ChatWrapper>
   );
 }
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, StyleSheet, Switch } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/context/ThemeContext";
-import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
 
 const Notifications = () => {
   const { theme } = useTheme();

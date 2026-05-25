@@ -13,9 +13,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
-import { ProductCard } from "@/app/components/market/ProductCard";
-import { FilterSheet } from "@/app/components/market/FilterSheet";
-import { MarketSkeleton } from "@/app/components/market/MarketSkeleton";
+import { ProductCard } from "@/components/market/ProductCard";
+import { FilterSheet } from "@/components/market/FilterSheet";
+import { MarketSkeleton } from "@/components/market/MarketSkeleton";
 import { useMarketplaceFeed } from "@/hooks/useMarketplaceFeed";
 import type { ProductFilters } from "@/types/marketplace";
 

@@ -12,23 +12,23 @@ import axios from "axios";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { io, Socket } from "socket.io-client";
-import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useFollowContext } from "@/context/FollowContext";
-import { EditProfileModal } from "@/app/components/posts/EditProfileModal";
-import { PostCard } from "@/app/components/posts/PostCard";
+import { EditProfileModal } from "@/components/posts/EditProfileModal";
+import { PostCard } from "@/components/posts/PostCard";
 import { normalizePostId, upsertPostInList } from "@/utils/buildSharePost";
 import { useIsFocused } from "@react-navigation/native";
 import { useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
-import { VerifiedBadge } from "@/app/components/VerifiedBadge";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { isProfileUpdatePending } from "@/utils/profileUpdate";
-import { ProfileUpdateCountdown } from "@/app/components/profile/ProfileUpdateCountdown";
+import { ProfileUpdateCountdown } from "@/components/profile/ProfileUpdateCountdown";
 import {
   MemberListRow,
   ProfilePeopleListHint,
-} from "@/app/components/profile/MemberListRow";
+} from "@/components/profile/MemberListRow";
 import {
   useShowTabBarOnFocus,
   useTabBarScrollHandler,

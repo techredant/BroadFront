@@ -17,7 +17,9 @@ export const CHAT_COMPOSER_HEIGHT = Platform.OS === "android" ? 60 : 52;
  * Extra lift when keyboard is open: nav bar gap + full composer above keyboard keys.
  */
 export function getKeyboardOpenLift(navBarInset: number) {
-  return navBarInset + CHAT_COMPOSER_HEIGHT;
+  return Platform.OS === "android"
+    ? CHAT_COMPOSER_HEIGHT
+    : navBarInset + CHAT_COMPOSER_HEIGHT;
 }
 
 /**
@@ -30,12 +32,13 @@ export function useStreamChannelLayout(headerHeight: number) {
   return useMemo(
     () => ({
       bottomInset,
-      // Android adjustResize already shrinks the window — header offset adds a gap above the keyboard.
+      // ChatMessageInput owns the Instagram-style keyboard lift.
       keyboardVerticalOffset:
         Platform.OS === "android" ? 0 : headerHeight,
       keyboardBehavior: "padding" as KeyboardAvoidingViewProps["behavior"],
       additionalKeyboardAvoidingViewProps: {
-        keyboardOpenLift: getKeyboardOpenLift(bottomInset),
+        enabled: false,
+        keyboardOpenLift: 0,
       },
     }),
     [bottomInset, headerHeight],

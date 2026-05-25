@@ -1,9 +1,9 @@
-import { EmptyState } from "@/app/components/EmptyState";
-import { ChatGallery } from "@/app/components/ChatGallery";
-import { ChatKeyboardCompatibleView } from "@/app/components/ChatKeyboardCompatibleView";
-import { ChatMessageInput } from "@/app/components/ChatMessageInput";
-import { ChatMessageText } from "@/app/components/ChatMessageText";
-import { ChatVideoThumbnail } from "@/app/components/ChatVideoThumbnail";
+import { EmptyState } from "@/components/EmptyState";
+import { ChatGallery } from "@/components/ChatGallery";
+import { ChatKeyboardCompatibleView } from "@/components/ChatKeyboardCompatibleView";
+import { ChatMessageInput } from "@/components/ChatMessageInput";
+import { ChatMessageText } from "@/components/ChatMessageText";
+import { ChatVideoThumbnail } from "@/components/ChatVideoThumbnail";
 import { useAppContext } from "@/contexts/AppProvider";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { ActivityIndicator, View } from "react-native";

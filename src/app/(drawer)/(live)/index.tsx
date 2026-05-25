@@ -6,11 +6,11 @@ import {
   StreamVideo,
   StreamVideoClient,
 } from "@stream-io/video-react-native-sdk";
-import { HomeScreen } from "./src/HomeLivescreen";
+import { HomeScreen } from "@/components/live/HomeLivescreen";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { fetchStreamToken } from "@/utils/streamToken";
-import LiveScreen from "./src/LiveScreen";
+import LiveScreen from "@/components/live/LiveScreen";
 
 const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
 

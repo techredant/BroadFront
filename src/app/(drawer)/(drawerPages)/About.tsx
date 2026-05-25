@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
 import Constants from "expo-constants";
-import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
 
 const AboutScreen = () => {
   const { theme } = useTheme();

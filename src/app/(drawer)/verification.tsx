@@ -8,25 +8,85 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  StatusBar,
 } from "react-native";
 import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
-import { VerifiedBadge } from "@/app/components/VerifiedBadge";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ?? "https://cast-api-zeta.vercel.app";
 
 type Plan = {
-  type: "personal" | "business";
+  type: VerificationType;
   label: string;
   description: string;
   amount: number;
+  maxAmount?: number;
   currency: string;
   durationDays: number;
+  features?: string[];
+  pricing?: Record<
+    BillingCycle,
+    { amount: number; maxAmount?: number; durationDays: number }
+  >;
 };
+
+type VerificationType = "personal" | "business" | "government";
+type BillingCycle = "monthly" | "yearly";
+const VERIFICATION_TYPES: VerificationType[] = [
+  "personal",
+  "business",
+  "government",
+];
+
+const PLAN_FALLBACKS: Record<
+  VerificationType,
+  {
+    monthly: { amount: number; maxAmount?: number };
+    yearly: { amount: number; maxAmount?: number };
+  }
+> = {
+  personal: {
+    monthly: { amount: 300 },
+    yearly: { amount: 4000 },
+  },
+  business: {
+    monthly: { amount: 1499 },
+    yearly: { amount: 15000 },
+  },
+  government: {
+    monthly: { amount: 3500, maxAmount: 7000 },
+    yearly: { amount: 35000, maxAmount: 70000 },
+  },
+};
+
+function formatKes(amount?: number, maxAmount?: number) {
+  if (!amount) return "KES —";
+  const min = `KES ${amount.toLocaleString()}`;
+  return maxAmount ? `${min} - ${maxAmount.toLocaleString()}` : min;
+}
+
+function verificationColor(type: VerificationType) {
+  if (type === "business") return "#f5b22f";
+  if (type === "government") return "#ef4444";
+  return "#1D9BF0";
+}
+
+function verificationTint(type: VerificationType) {
+  if (type === "business") return "rgba(245,178,47,0.14)";
+  if (type === "government") return "rgba(239,68,68,0.12)";
+  return "rgba(29,155,240,0.12)";
+}
+
+function verificationLabel(type: VerificationType) {
+  if (type === "personal") return "Personal";
+  if (type === "business") return "Business";
+  return "Government";
+}
 
 type VerificationStatus = {
   isVerified: boolean;
@@ -54,7 +114,8 @@ export default function VerificationScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const [verificationType, setVerificationType] =
-    useState<"personal" | "business">("personal");
+    useState<VerificationType>("personal");
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("yearly");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [fullName, setFullName] = useState("");
   const [businessName, setBusinessName] = useState("");
@@ -133,8 +194,8 @@ export default function VerificationScreen() {
       return;
     }
 
-    if (verificationType === "business" && !businessName.trim()) {
-      Alert.alert("Missing info", "Business name is required.");
+    if (verificationType !== "personal" && !businessName.trim()) {
+      Alert.alert("Missing info", "Organization name is required.");
       return;
     }
 
@@ -149,6 +210,7 @@ export default function VerificationScreen() {
         idNumber: idNumber.trim(),
         website: website.trim(),
         applicationReason: applicationReason.trim(),
+        billingCycle,
       });
 
       const requestId = res.data.request?._id;
@@ -168,6 +230,25 @@ export default function VerificationScreen() {
   };
 
   const selectedPlan = plans.find((p) => p.type === verificationType);
+  const selectedPricing =
+    selectedPlan?.pricing?.[billingCycle] ??
+    (selectedPlan
+      ? {
+          amount: selectedPlan.amount,
+          maxAmount: selectedPlan.maxAmount,
+          durationDays: selectedPlan.durationDays,
+        }
+      : PLAN_FALLBACKS[verificationType][billingCycle]
+        ? {
+            ...PLAN_FALLBACKS[verificationType][billingCycle],
+            durationDays: billingCycle === "monthly" ? 30 : 365,
+          }
+      : null);
+  const selectedAmount = selectedPricing?.amount;
+  const selectedMaxAmount = selectedPricing?.maxAmount;
+  const activeColor = verificationColor(verificationType);
+  const selectedBillingLabel =
+    billingCycle === "monthly" ? "monthly" : "yearly";
   const expiresLabel = status?.verificationExpiresAt
     ? new Date(status.verificationExpiresAt).toLocaleDateString()
     : null;
@@ -185,16 +266,91 @@ export default function VerificationScreen() {
       style={[styles.container, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.content}
     >
-      <TouchableOpacity onPress={() => router.back()} style={styles.back}>
-        <Ionicons name="arrow-back" size={24} color={theme.text} />
-      </TouchableOpacity>
+      <StatusBar
+        translucent
+        backgroundColor="transparent"
+        barStyle={theme.background === "#000" ? "light-content" : "dark-content"}
+      />
 
-      <Text style={[styles.title, { color: theme.text }]}>
-        Get verified
-      </Text>
-      <Text style={[styles.subtitle, { color: theme.subtext }]}>
-        Premium verification with a blue badge — like X (Twitter).
-      </Text>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.back}>
+          <Ionicons name="arrow-back" size={25} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={[styles.title, { color: theme.text }]}>Get verified</Text>
+      </View>
+
+      <View style={[styles.card, { borderColor: theme.border }]}>
+        <Text style={[styles.cardTitle, { color: theme.text }]}>
+          Badge preview
+        </Text>
+        <Text style={[styles.cardSubtitle, { color: theme.subtext }]}>
+          Choose the badge that best matches your public identity.
+        </Text>
+
+        <View style={styles.previewItem}>
+          <Ionicons name="checkmark-circle" size={24} color="#1D9BF0" />
+          <View style={styles.previewCopy}>
+            <Text style={[styles.previewTitle, { color: "#1D9BF0" }]}>
+              Personal
+            </Text>
+            <Text style={[styles.previewText, { color: theme.subtext }]}>
+              Blue badge for verified public or personal accounts.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.previewItem}>
+          <Ionicons name="checkmark-circle" size={24} color="#f5b22f" />
+          <View style={styles.previewCopy}>
+            <Text style={[styles.previewTitle, { color: "#f5b22f" }]}>
+              Business / company
+            </Text>
+            <Text style={[styles.previewText, { color: theme.subtext }]}>
+              Gold badge for brands, businesses, and organizations.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.previewItem}>
+          <Ionicons name="shield-checkmark" size={25} color="#ef233c" />
+          <View style={styles.previewCopy}>
+            <Text style={[styles.previewTitle, { color: "#ef4444" }]}>
+              Government
+            </Text>
+            <Text style={[styles.previewText, { color: theme.subtext }]}>
+              Red coat-of-arms style badge for official government accounts.
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={[styles.card, styles.plansCard, { borderColor: theme.border }]}>
+        <Text style={[styles.cardTitle, { color: theme.text }]}>Plans</Text>
+        {VERIFICATION_TYPES.map((type) => {
+          const plan = plans.find((p) => p.type === type);
+          const fallback = PLAN_FALLBACKS[type];
+          const monthly = plan?.pricing?.monthly?.amount ?? fallback.monthly.amount;
+          const monthlyMax =
+            plan?.pricing?.monthly?.maxAmount ?? fallback.monthly.maxAmount;
+          const yearly =
+            plan?.pricing?.yearly?.amount ?? plan?.amount ?? fallback.yearly.amount;
+          const yearlyMax =
+            plan?.pricing?.yearly?.maxAmount ??
+            plan?.maxAmount ??
+            fallback.yearly.maxAmount;
+          return (
+            <View key={type} style={styles.planRow}>
+              <Text style={[styles.planName, { color: theme.text }]}>
+                {verificationLabel(type)} Verification
+              </Text>
+              <Text style={[styles.planPrice, { color: theme.subtext }]}>
+                {formatKes(monthly, monthlyMax)}/mo ·{" "}
+                {formatKes(yearly, yearlyMax).replace("KES ", "")}/yr
+              </Text>
+            </View>
+          );
+        })}
+      </View>
 
       {status?.isVerified && (
         <View style={[styles.card, { borderColor: theme.border }]}>
@@ -252,39 +408,84 @@ export default function VerificationScreen() {
             Verification type
           </Text>
           <View style={styles.typeRow}>
-            {(["personal", "business"] as const).map((t) => (
+            {VERIFICATION_TYPES.map((t) => {
+              const isActive = verificationType === t;
+              const optionColor = verificationColor(t);
+              return (
+                <TouchableOpacity
+                  key={t}
+                  onPress={() => setVerificationType(t)}
+                  style={[
+                    styles.typeBtn,
+                    {
+                      borderColor: isActive ? optionColor : theme.border,
+                      backgroundColor: isActive
+                        ? verificationTint(t)
+                        : "transparent",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: isActive ? optionColor : theme.text,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {verificationLabel(t)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.section, { color: theme.text }]}>Billing</Text>
+          <View style={styles.typeRow}>
+            {(["monthly", "yearly"] as const).map((cycle) => (
               <TouchableOpacity
-                key={t}
-                onPress={() => setVerificationType(t)}
+                key={cycle}
+                onPress={() => setBillingCycle(cycle)}
                 style={[
                   styles.typeBtn,
                   {
                     borderColor:
-                      verificationType === t ? "#1D9BF0" : theme.border,
+                      billingCycle === cycle ? activeColor : theme.border,
                     backgroundColor:
-                      verificationType === t
-                        ? "rgba(29,155,240,0.12)"
+                      billingCycle === cycle
+                        ? verificationTint(verificationType)
                         : "transparent",
                   },
                 ]}
               >
                 <Text
                   style={{
-                    color: verificationType === t ? "#1D9BF0" : theme.text,
-                    fontWeight: "600",
+                    color: billingCycle === cycle ? activeColor : theme.text,
+                    fontWeight: "700",
                   }}
                 >
-                  {t === "personal" ? "Personal" : "Business"}
+                  {cycle === "monthly" ? "Monthly" : "Yearly"}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
           {selectedPlan && (
-            <Text style={{ color: theme.subtext, marginBottom: 16 }}>
-              {selectedPlan.description} — {selectedPlan.currency}{" "}
-              {selectedPlan.amount}/year
-            </Text>
+            <View style={styles.planSummary}>
+              <Text style={[styles.summaryDescription, { color: theme.subtext }]}>
+                {selectedPlan.description}
+              </Text>
+              <Text style={[styles.summaryPrice, { color: theme.text }]}>
+                {formatKes(selectedAmount ?? selectedPlan.amount, selectedMaxAmount)} /{" "}
+                {selectedBillingLabel}
+              </Text>
+              {(selectedPlan.features ?? []).map((feature) => (
+                <Text
+                  key={feature}
+                  style={[styles.featureText, { color: theme.subtext }]}
+                >
+                  · {feature}
+                </Text>
+              ))}
+            </View>
           )}
 
           <Field
@@ -300,9 +501,13 @@ export default function VerificationScreen() {
             onChangeText={setFullName}
             theme={theme}
           />
-          {verificationType === "business" && (
+          {verificationType !== "personal" && (
             <Field
-              label="Business / organization name"
+              label={
+                verificationType === "government"
+                  ? "Government office / institution name"
+                  : "Business / organization name"
+              }
               value={businessName}
               onChangeText={setBusinessName}
               theme={theme}
@@ -330,14 +535,15 @@ export default function VerificationScreen() {
 
           <TouchableOpacity
             disabled={submitting}
-            style={[styles.submit, { backgroundColor: "#1D9BF0" }]}
+            style={[styles.submit, { backgroundColor: activeColor }]}
             onPress={handleApply}
           >
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.submitText}>
-                Pay with M-Pesa & submit · KES {selectedPlan?.amount ?? "—"}
+                Pay with M-Pesa & submit ·{" "}
+                {formatKes(selectedAmount, selectedMaxAmount)}
               </Text>
             )}
           </TouchableOpacity>
@@ -388,27 +594,101 @@ function Field({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 20, paddingBottom: 48 },
+  content: { paddingHorizontal: 24, paddingTop: 52, paddingBottom: 48 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  back: { marginBottom: 12 },
-  title: { fontSize: 25, fontWeight: "800" },
-  subtitle: { fontSize: 13, marginTop: 6, marginBottom: 20 },
-  section: { fontSize: 15, fontWeight: "700", marginBottom: 10 },
+  header: {
+    minHeight: 36,
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  back: {
+    position: "absolute",
+    left: -4,
+    zIndex: 2,
+    padding: 4,
+  },
+  title: { fontSize: 21, fontWeight: "800", textAlign: "center" },
+  section: { fontSize: 19, fontWeight: "800", marginBottom: 10 },
   card: {
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    marginBottom: 20,
   },
-  cardTitle: { fontSize: 15, fontWeight: "700" },
+  cardTitle: { fontSize: 18, fontWeight: "800" },
+  cardSubtitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  previewItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 18,
+    paddingLeft: 8,
+  },
+  previewCopy: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  previewTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  previewText: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  plansCard: {
+    paddingVertical: 18,
+  },
+  planRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 18,
+  },
+  planName: {
+    flex: 1.2,
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
+  planPrice: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 18,
+    textAlign: "right",
+  },
   row: { flexDirection: "row", alignItems: "center" },
-  typeRow: { flexDirection: "row", gap: 10, marginBottom: 12 },
+  typeRow: { flexDirection: "row", gap: 12, marginBottom: 18 },
   typeBtn: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 15,
     borderRadius: 10,
     borderWidth: 1,
     alignItems: "center",
+  },
+  planSummary: {
+    marginBottom: 18,
+  },
+  summaryDescription: {
+    fontSize: 16,
+    lineHeight: 21,
+    marginBottom: 8,
+  },
+  summaryPrice: {
+    fontSize: 16,
+    fontWeight: "900",
+    marginBottom: 6,
+  },
+  featureText: {
+    fontSize: 13,
+    lineHeight: 20,
   },
   submit: {
     marginTop: 8,

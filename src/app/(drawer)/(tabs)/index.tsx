@@ -5,26 +5,28 @@ import {
   Text,
   Pressable,
   StatusBar,
-  FlatList,
   Animated,
   ActivityIndicator,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
+import type { FlashListRef } from "@shopify/flash-list";
 
 import axios from "axios";
 import { useFocusEffect } from "expo-router";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { FloatingLevelButton } from "@/modals/LevelFloatingAction";
-import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
-import { MemoizedFeedPostRow } from "@/app/components/posts/FeedPostRow";
+import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
+import { MemoizedFeedPostRow } from "@/components/posts/FeedPostRow";
 import { useUser } from "@clerk/clerk-expo";
-import { PostCardSkeleton } from "@/app/components/PostCardSkeleton";
+import { PostCardSkeleton } from "@/components/PostCardSkeleton";
 import { usePushPrompt } from "@/context/PushPromptContext";
 import {
   useShowTabBarOnFocus,
   useTabBarScrollHandler,
 } from "@/context/TabBarVisibilityContext";
-import { MemoizedHomeFeedHeader } from "@/app/components/home/HomeFeedHeader";
+import { MemoizedHomeFeedHeader } from "@/components/home/HomeFeedHeader";
+import { setVisibleFeedItems } from "@/utils/feedVisibility";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -49,9 +51,8 @@ export default function HomeScreen() {
   const onTabBarScroll = useTabBarScrollHandler();
   useShowTabBarOnFocus();
 
-  const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<any[]>([]);
-  const listRef = useRef<FlatList>(null);
+  const listRef = useRef<FlashListRef<any>>(null);
   const lastPrependedId = useRef<string | null>(null);
   const showScrollTopRef = useRef(false);
 
@@ -83,9 +84,11 @@ export default function HomeScreen() {
   );
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    const id = viewableItems[0]?.item?._id;
-    if (!id) return;
-    setVisiblePostId((prev) => (prev === id ? prev : id));
+    setVisibleFeedItems(
+      viewableItems
+        .map(({ item }: any) => item?._id?.toString())
+        .filter(Boolean),
+    );
   }).current;
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
@@ -154,7 +157,6 @@ export default function HomeScreen() {
       return (
         <MemoizedFeedPostRow
           post={item}
-          isVisible={visiblePostId === item._id}
           onDeletePost={removePost}
           onUpdatePost={updatePost}
           onPrependPost={prependPost}
@@ -164,7 +166,6 @@ export default function HomeScreen() {
     },
     [
       showInitialSkeleton,
-      visiblePostId,
       removePost,
       updatePost,
       prependPost,
@@ -184,6 +185,54 @@ export default function HomeScreen() {
     [formattedLevel, levelType, theme, statuses, user?.id],
   );
 
+  const listFooter = useMemo(() => {
+    if (loadingMore) {
+      return (
+        <View style={{ paddingVertical: 24, alignItems: "center" }}>
+          <ActivityIndicator size="small" color={theme.primary} />
+        </View>
+      );
+    }
+
+    if (!hasMorePosts && posts.length > 0) {
+      return (
+        <View style={{ paddingVertical: 20, alignItems: "center" }}>
+          <Text style={{ color: theme.subtext, fontSize: 13 }}>
+            You&apos;ve seen it all
+          </Text>
+        </View>
+      );
+    }
+
+    return null;
+  }, [hasMorePosts, loadingMore, posts.length, theme.primary, theme.subtext]);
+
+  const listEmpty = useMemo(() => {
+    if (showInitialSkeleton) return null;
+
+    return (
+      <View
+        style={{
+          justifyContent: "center",
+          alignItems: "center",
+          paddingTop: 48,
+          paddingBottom: 48,
+          paddingHorizontal: 24,
+        }}
+      >
+        <Text
+          style={{
+            color: theme.subtext,
+            fontSize: 15,
+            textAlign: "center",
+          }}
+        >
+          No posts at the moment
+        </Text>
+      </View>
+    );
+  }, [showInitialSkeleton, theme.subtext]);
+
   const scrollToTop = useCallback(() => {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
@@ -198,12 +247,11 @@ export default function HomeScreen() {
 
       <DrawerMenuButton />
 
-      <FlatList
+      <FlashList
         ref={listRef}
         data={listData}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        extraData={visiblePostId}
         refreshing={false}
         onRefresh={refreshFeed}
         onEndReached={loadMore}
@@ -212,49 +260,12 @@ export default function HomeScreen() {
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         scrollEventThrottle={16}
-        initialNumToRender={4}
-        maxToRenderPerBatch={4}
-        windowSize={7}
-        updateCellsBatchingPeriod={50}
-        removeClippedSubviews
+        drawDistance={900}
+        overrideProps={{ initialDrawBatchSize: 4 }}
         contentContainerStyle={{ paddingBottom: 90 }}
         ListHeaderComponent={listHeader}
-        ListFooterComponent={
-          loadingMore ? (
-            <View style={{ paddingVertical: 24, alignItems: "center" }}>
-              <ActivityIndicator size="small" color={theme.primary} />
-            </View>
-          ) : !hasMorePosts && posts.length > 0 ? (
-            <View style={{ paddingVertical: 20, alignItems: "center" }}>
-              <Text style={{ color: theme.subtext, fontSize: 13 }}>
-                You&apos;ve seen it all
-              </Text>
-            </View>
-          ) : null
-        }
-        ListEmptyComponent={
-          !showInitialSkeleton ? (
-            <View
-              style={{
-                justifyContent: "center",
-                alignItems: "center",
-                paddingTop: 48,
-                paddingBottom: 48,
-                paddingHorizontal: 24,
-              }}
-            >
-              <Text
-                style={{
-                  color: theme.subtext,
-                  fontSize: 15,
-                  textAlign: "center",
-                }}
-              >
-                No posts at the moment
-              </Text>
-            </View>
-          ) : null
-        }
+        ListFooterComponent={listFooter}
+        ListEmptyComponent={listEmpty}
       />
 
       <Animated.View

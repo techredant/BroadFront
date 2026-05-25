@@ -1,4 +1,4 @@
-import ExploreUserCard from "@/app/components/ExploreUserCard";
+import ExploreUserCard from "@/components/ExploreUserCard";
 import { useFollowContext } from "@/context/FollowContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useAppContext } from "@/contexts/AppProvider";

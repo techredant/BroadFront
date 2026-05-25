@@ -3,9 +3,9 @@ import {
   BroadcastActiveCallControls,
   BroadcastIncomingCallControls,
   BroadcastOutgoingCallControls,
-} from "@/app/components/call/BroadcastCallControls";
-import { BroadcastParticipantLabel } from "@/app/components/call/BroadcastParticipantLabel";
-import { BroadcastRingingCall } from "@/app/components/call/BroadcastRingingCall";
+} from "@/components/call/BroadcastCallControls";
+import { BroadcastParticipantLabel } from "@/components/call/BroadcastParticipantLabel";
+import { BroadcastRingingCall } from "@/components/call/BroadcastRingingCall";
 import {
   buildCallMemberDisplayNames,
   displayNameFromChatUser,

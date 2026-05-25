@@ -8,7 +8,7 @@ import {
   Pressable,
 } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
-import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
 
 const Privacy = () => {
   const { theme } = useTheme(); // 👈 get current theme

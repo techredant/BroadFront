@@ -30,13 +30,14 @@ export async function setupIncomingCallNotifications() {
       const data = notification.request.content.data as CallNotificationData;
       const isCall = isIncomingCallNotification(data);
       const isChat = isChatNotification(data);
+      const useNotifeeOnAndroid = Platform.OS === "android";
 
       return {
-        shouldShowAlert: true,
-        shouldPlaySound: true,
+        shouldShowAlert: !useNotifeeOnAndroid,
+        shouldPlaySound: !useNotifeeOnAndroid,
         shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
+        shouldShowBanner: !useNotifeeOnAndroid,
+        shouldShowList: !useNotifeeOnAndroid,
         priority:
           isCall || isChat
             ? Notifications.AndroidNotificationPriority.MAX

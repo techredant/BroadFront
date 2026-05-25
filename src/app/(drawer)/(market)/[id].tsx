@@ -30,7 +30,8 @@ import {
   MenuTrigger,
 } from "react-native-popup-menu";
 import EditProduct from "./editProduct";
-import { MediaViewerModal } from "@/app/components/posts/MediaViewModal";
+import { MediaViewerModal } from "@/components/posts/MediaViewModal";
+import { LikeBubbles } from "@/components/posts/LikeBubbles";
 import {
   useAnimatedStyle,
   useSharedValue,
@@ -38,9 +39,9 @@ import {
 } from "react-native-reanimated";
 import { Gesture } from "react-native-gesture-handler";
 import Video from "react-native-video";
-import { VerifiedBadge } from "@/app/components/VerifiedBadge";
-import { ProductCard } from "@/app/components/market/ProductCard";
-import { BoostListingModal } from "@/app/components/market/BoostListingModal";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { ProductCard } from "@/components/market/ProductCard";
+import { BoostListingModal } from "@/components/market/BoostListingModal";
 import {
   fetchProduct,
   fetchRelated,
@@ -65,6 +66,7 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [favorited, setFavorited] = useState(false);
+  const [favoriteBurstKey, setFavoriteBurstKey] = useState(0);
   const [reviewVisible, setReviewVisible] = useState(false);
   const [rating, setRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
@@ -185,6 +187,7 @@ export default function ProductDetail() {
     if (!user?.id || !product) return;
     try {
       const res = await toggleFavorite(product._id, user.id);
+      if (res.favorited) setFavoriteBurstKey((key) => key + 1);
       setFavorited(res.favorited);
     } catch {
       Alert.alert("Error", "Could not update favorites");
@@ -276,7 +279,11 @@ export default function ProductDetail() {
         </TouchableOpacity>
 
         <View style={styles.fabRow}>
-          <TouchableOpacity onPress={onFavorite} style={styles.fab}>
+          <TouchableOpacity
+            onPress={onFavorite}
+            style={[styles.fab, styles.fabBubbleHost]}
+          >
+            <LikeBubbles burstKey={favoriteBurstKey} color="#FF3B30" />
             <Ionicons
               name={favorited ? "heart" : "heart-outline"}
               size={22}
@@ -697,6 +704,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.4)",
     padding: 10,
     borderRadius: 999,
+  },
+  fabBubbleHost: {
+    position: "relative",
+    overflow: "visible",
   },
   fabRow: { flexDirection: "row", gap: 8 },
   dots: { flexDirection: "row", justifyContent: "center", marginTop: 8 },

@@ -18,12 +18,12 @@ import {
 } from "stream-chat-expo";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
-import { EmptyState } from "@/app/components/EmptyState";
-import { ChatGallery } from "@/app/components/ChatGallery";
-import { ChatMessageInput } from "@/app/components/ChatMessageInput";
-import { ChatVideoThumbnail } from "@/app/components/ChatVideoThumbnail";
-import { ChatKeyboardCompatibleView } from "@/app/components/ChatKeyboardCompatibleView";
-import { ChatWallpaper } from "@/app/components/ChatWallpaper";
+import { EmptyState } from "@/components/EmptyState";
+import { ChatGallery } from "@/components/ChatGallery";
+import { ChatMessageInput } from "@/components/ChatMessageInput";
+import { ChatVideoThumbnail } from "@/components/ChatVideoThumbnail";
+import { ChatKeyboardCompatibleView } from "@/components/ChatKeyboardCompatibleView";
+import { ChatWallpaper } from "@/components/ChatWallpaper";
 import { useStreamChannelLayout } from "@/utils/chatLayout";
 import { AI_MODEL, AI_PLATFORM } from "@/constants/ai";
 

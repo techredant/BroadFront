@@ -12,7 +12,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
-import { PostCard } from "@/app/components/posts/PostCard";
+import { PostCard } from "@/components/posts/PostCard";
 import { upsertPostInList } from "@/utils/buildSharePost";
 import { useIsFocused } from "@react-navigation/native";
 import {

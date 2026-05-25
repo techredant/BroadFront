@@ -23,16 +23,16 @@ import { io, Socket } from "socket.io-client";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useFollowContext } from "@/context/FollowContext";
-import { EditProfileModal } from "@/app/components/posts/EditProfileModal";
-import { PostCard } from "@/app/components/posts/PostCard";
+import { EditProfileModal } from "@/components/posts/EditProfileModal";
+import { PostCard } from "@/components/posts/PostCard";
 import { upsertPostInList } from "@/utils/buildSharePost";
 import { useIsFocused } from "@react-navigation/native";
-import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
-import { VerifiedBadge } from "@/app/components/VerifiedBadge";
+import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import {
   MemberListRow,
   ProfilePeopleListHint,
-} from "@/app/components/profile/MemberListRow";
+} from "@/components/profile/MemberListRow";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 

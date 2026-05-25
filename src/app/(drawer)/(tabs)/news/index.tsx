@@ -14,10 +14,10 @@ import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 
 import { FloatingLevelButton } from "@/modals/LevelFloatingAction";
-import { PostCard } from "@/app/components/posts/PostCard";
+import { PostCard } from "@/components/posts/PostCard";
 import { upsertPostInList } from "@/utils/buildSharePost";
-import { LevelHeader } from "@/app/components/level/NewsHeader";
-import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import { LevelHeader } from "@/components/level/NewsHeader";
+import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
 import {
   useShowTabBarOnFocus,
   useTabBarScrollHandler,

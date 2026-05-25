@@ -7,14 +7,22 @@ import React, {
   useState,
   useCallback,
 } from "react";
+import { AppState } from "react-native";
 
 import axios from "axios";
 import { useAuth, useUser } from "@clerk/clerk-expo";
-import io, { Socket } from "socket.io-client";
+import { Socket } from "socket.io-client";
 
 import { Post } from "@/types/post";
+import { API_PUBLIC_URL, SOCKET_IO_DISABLED_ON_HOST } from "@/constants/api";
+import {
+  bindLevelRooms,
+  createFeedSocket,
+} from "@/utils/feedSocket";
+import { getFeedRoomsForViewer } from "@/utils/feedRooms";
 
-const BASE_URL = "https://cast-api-zeta.vercel.app";
+const BASE_URL = API_PUBLIC_URL;
+const HOSTED_FEED_REFRESH_MS = 6000;
 
 /** Keep feed lists free of duplicate _id keys (FlatList / React warnings). */
 function dedupePostsById<T extends { _id?: string }>(posts: T[]): T[] {
@@ -27,6 +35,19 @@ function dedupePostsById<T extends { _id?: string }>(posts: T[]): T[] {
     result.push(post);
   }
   return result;
+}
+
+function postTimestamp(post: { createdAt?: string; updatedAt?: string }) {
+  const raw = post.createdAt || post.updatedAt;
+  const parsed = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** Keep the feed stable: no duplicate IDs and newest posts first. */
+function normalizeFeedPosts<T extends { _id?: string; createdAt?: string; updatedAt?: string }>(
+  posts: T[],
+): T[] {
+  return dedupePostsById(posts).sort((a, b) => postTimestamp(b) - postTimestamp(a));
 }
 
 interface Level {
@@ -89,6 +110,7 @@ export const LevelProvider = ({ children }: { children: React.ReactNode }) => {
   const feedCache = useRef<Record<string, Post[]>>({});
   const feedPage = useRef<Record<string, number>>({});
   const hasMoreRef = useRef<Record<string, boolean>>({});
+  const deleteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const getKey = (level: Level) => {
     return `${level.type}-${level.value}`;
@@ -161,10 +183,11 @@ export const LevelProvider = ({ children }: { children: React.ReactNode }) => {
 const fetchPosts = useCallback(
   async (
     level: Level,
-    options?: { refresh?: boolean; loadMore?: boolean },
+    options?: { refresh?: boolean; loadMore?: boolean; silent?: boolean },
   ) => {
     const refresh = options?.refresh ?? false;
     const loadMorePage = options?.loadMore ?? false;
+    const silent = options?.silent ?? false;
     const key = getKey(level);
 
     const cached = feedCache.current[key];
@@ -174,9 +197,9 @@ const fetchPosts = useCallback(
       loadingMoreRef.current = true;
       setLoadingMore(true);
     } else if (cached && !refresh) {
-      setPosts(dedupePostsById(cached));
+      setPosts(normalizeFeedPosts(cached));
       setHasMorePosts(hasMoreRef.current[key] !== false);
-    } else {
+    } else if (!silent) {
       setLoadingPosts(true);
     }
 
@@ -187,14 +210,14 @@ const fetchPosts = useCallback(
         `${BASE_URL}/api/posts?levelType=${level.type}&levelValue=${level.value}&page=${page}&limit=10`,
       );
 
-      const data = dedupePostsById(res.data ?? []);
+      const data = normalizeFeedPosts(res.data ?? []);
 
       if (refresh || page === 1) {
         feedCache.current[key] = data;
         setPosts(data);
         feedPage.current[key] = 2;
       } else {
-        const merged = dedupePostsById([
+        const merged = normalizeFeedPosts([
           ...(feedCache.current[key] || []),
           ...data,
         ]);
@@ -227,7 +250,7 @@ const fetchPosts = useCallback(
       const cached = feedCache.current[key];
 
       if (cached) {
-        setPosts(dedupePostsById(cached));
+        setPosts(normalizeFeedPosts(cached));
         setHasMorePosts(hasMoreRef.current[key] !== false);
       } else {
         setPosts([]);
@@ -275,18 +298,20 @@ const fetchPosts = useCallback(
     if (!currentLevel) return;
 
     socketRef.current?.disconnect();
+    setSocket(null);
 
-    const newSocket = io(BASE_URL, {
-      transports: ["websocket"],
-    });
+    if (SOCKET_IO_DISABLED_ON_HOST) {
+      return;
+    }
+
+    const newSocket = createFeedSocket();
 
     socketRef.current = newSocket;
 
     setSocket(newSocket);
 
-    const room = `level-${currentLevel.type}-${currentLevel.value}`;
-
-    newSocket.emit("joinRoom", room);
+    const rooms = getFeedRoomsForViewer(currentLevel.type, currentLevel.value);
+    const leaveRooms = bindLevelRooms(newSocket, rooms);
 
     newSocket.on("newPost", (post: Post) => {
       setPosts((prev) => {
@@ -309,7 +334,7 @@ const fetchPosts = useCallback(
         }
 
         const normalized = { ...(post as any), _id: incomingId };
-        const updated = dedupePostsById([
+        const updated = normalizeFeedPosts([
           normalized,
           ...withoutMatchingTemp,
         ]);
@@ -330,12 +355,65 @@ const fetchPosts = useCallback(
       });
     });
 
-    return () => {
-      newSocket.emit("leaveRoom", room);
+    const handlePostUpdated = (updatedPost: Post) => {
+      const updatedId = String(updatedPost?._id ?? "");
+      if (!updatedId) return;
 
+      setPosts((prev) => {
+        const index = prev.findIndex((p) => String(p._id) === updatedId);
+        if (index === -1) return prev;
+
+        const next = [...prev];
+        next[index] = { ...(next[index] as any), ...(updatedPost as any) };
+        const normalized = normalizeFeedPosts(next);
+        feedCache.current[getKey(currentLevel)] = normalized;
+        return normalized;
+      });
+    };
+
+    newSocket.on("updatePost", handlePostUpdated);
+    newSocket.on("postUpdated", handlePostUpdated);
+
+    return () => {
+      newSocket.off("updatePost", handlePostUpdated);
+      newSocket.off("postUpdated", handlePostUpdated);
+      leaveRooms();
       newSocket.disconnect();
     };
   }, [currentLevel]);
+
+  useEffect(() => {
+    if (!SOCKET_IO_DISABLED_ON_HOST || !currentLevel) return;
+
+    let currentAppState = AppState.currentState;
+    let isRefreshing = false;
+
+    const refreshHostedFeed = async () => {
+      if (currentAppState !== "active" || isRefreshing) return;
+      isRefreshing = true;
+      try {
+        await fetchPosts(currentLevel, { refresh: true, silent: true });
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      currentAppState = nextState;
+      if (nextState === "active") {
+        void refreshHostedFeed();
+      }
+    });
+
+    const interval = setInterval(() => {
+      void refreshHostedFeed();
+    }, HOSTED_FEED_REFRESH_MS);
+
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
+  }, [currentLevel, fetchPosts]);
 
   /* ---------------- INIT ---------------- */
 
@@ -363,7 +441,7 @@ useEffect(() => {
   const syncCache = useCallback(
     (nextPosts: Post[]) => {
       if (!currentLevel) return;
-      feedCache.current[getKey(currentLevel)] = nextPosts;
+      feedCache.current[getKey(currentLevel)] = normalizeFeedPosts(nextPosts);
     },
     [currentLevel],
   );
@@ -376,8 +454,9 @@ useEffect(() => {
 
         const newPosts = [...prev];
         newPosts[index] = updated;
-        syncCache(newPosts);
-        return newPosts;
+        const normalized = normalizeFeedPosts(newPosts);
+        syncCache(normalized);
+        return normalized;
       });
     },
     [syncCache],
@@ -388,7 +467,7 @@ useEffect(() => {
       const id = String(post._id);
       setPosts((prev) => {
         if (prev.some((p) => String(p._id) === id)) return prev;
-        const updated = dedupePostsById([{ ...post, _id: id }, ...prev]);
+        const updated = normalizeFeedPosts([{ ...post, _id: id }, ...prev]);
         syncCache(updated);
         return updated;
       });
@@ -403,7 +482,7 @@ useEffect(() => {
         const withoutTempAndDup = prev.filter(
           (p) => String(p._id) !== tempId && String(p._id) !== realId,
         );
-        const updated = dedupePostsById([
+        const updated = normalizeFeedPosts([
           { ...realPost, _id: realId },
           ...withoutTempAndDup,
         ]);
@@ -416,11 +495,36 @@ useEffect(() => {
 
   const removePost = useCallback(
     (postId: string) => {
+      const id = String(postId);
       setPosts((prev) => {
-        const updated = prev.filter((p) => p._id !== postId);
+        const hasPost = prev.some((p) => String(p._id) === id);
+        if (!hasPost) return prev;
+
+        const updated = normalizeFeedPosts(
+          prev.map((p) =>
+            String(p._id) === id
+              ? ({ ...(p as any), __isDeleting: true } as Post)
+              : p,
+          ),
+        );
         syncCache(updated);
         return updated;
       });
+
+      if (deleteTimers.current[id]) {
+        clearTimeout(deleteTimers.current[id]);
+      }
+
+      deleteTimers.current[id] = setTimeout(() => {
+        setPosts((prev) => {
+          const updated = normalizeFeedPosts(
+            prev.filter((p) => String(p._id) !== id),
+          );
+          syncCache(updated);
+          return updated;
+        });
+        delete deleteTimers.current[id];
+      }, 220);
     },
     [syncCache],
   );

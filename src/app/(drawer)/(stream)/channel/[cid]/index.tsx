@@ -1,20 +1,32 @@
-import { CallMissedMessage } from "@/app/components/CallMissedMessage";
-import { ChatMessageText } from "@/app/components/ChatMessageText";
-import { EmptyState } from "@/app/components/EmptyState";
-import { ChatGallery } from "@/app/components/ChatGallery";
-import { ChatMessageInput } from "@/app/components/ChatMessageInput";
-import { ChatVideoThumbnail } from "@/app/components/ChatVideoThumbnail";
-import { ChatKeyboardCompatibleView } from "@/app/components/ChatKeyboardCompatibleView";
-import { ChatWallpaper } from "@/app/components/ChatWallpaper";
+import { CallMissedMessage } from "@/components/CallMissedMessage";
+import { ChatMessageText } from "@/components/ChatMessageText";
+import { EmptyState } from "@/components/EmptyState";
+import { ChatGallery } from "@/components/ChatGallery";
+import { ChatMessageInput } from "@/components/ChatMessageInput";
+import { ChatVideoThumbnail } from "@/components/ChatVideoThumbnail";
+import { ChatKeyboardCompatibleView } from "@/components/ChatKeyboardCompatibleView";
+import { ChatWallpaper } from "@/components/ChatWallpaper";
 import { useTheme } from "@/context/ThemeContext";
 import { useAppContext } from "@/contexts/AppProvider";
 import { Ionicons } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { Image } from "expo-image";
-import { useNavigation, useRouter } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useMemo } from "react";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+} from "react";
 import { useChatMemberProfiles } from "@/context/ChatMemberProfilesContext";
 import { resolveChatDisplayName } from "@/utils/streamUser";
+import {
+  getGroupChannelImage,
+  getGroupChannelName,
+  isGroupChannel,
+} from "@/utils/groupChat";
 import {
   ActivityIndicator,
   Pressable,
@@ -32,10 +44,17 @@ import {
   useMessageContext,
   type DeepPartial,
   type Theme as StreamTheme,
+  type VideoThumbnailProps,
 } from "stream-chat-expo";
 
+const StreamVideoThumbnail =
+  ChatVideoThumbnail as ComponentType<VideoThumbnailProps>;
+
 const ChannelScreen = () => {
-  const { channel, setThread } = useAppContext();
+  const { cid: routeCidParam } = useLocalSearchParams<{
+    cid?: string | string[];
+  }>();
+  const { channel, setChannel, setThread } = useAppContext();
   const { client } = useChatContext();
   const { theme } = useTheme();
   const { getProfile, ensureProfiles } = useChatMemberProfiles();
@@ -60,25 +79,72 @@ const ChannelScreen = () => {
   const navigation = useNavigation();
   const headerHeight = useHeaderHeight();
   const channelLayout = useStreamChannelLayout(headerHeight);
+  const [hydratingChannel, setHydratingChannel] = useState(false);
+  const routeCid = Array.isArray(routeCidParam)
+    ? routeCidParam[0]
+    : routeCidParam;
+  const routeChannelId = useMemo(
+    () => (routeCid?.includes(":") ? routeCid.split(":").pop() : routeCid),
+    [routeCid],
+  );
+
+  useEffect(() => {
+    if (!client || !routeChannelId) return;
+    if (
+      channel?.id === routeChannelId ||
+      channel?.cid === `messaging:${routeChannelId}`
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    setHydratingChannel(true);
+
+    const hydrate = async () => {
+      try {
+        const watchedChannel = client.channel("messaging", routeChannelId);
+        await watchedChannel.watch();
+        if (!cancelled) {
+          setChannel(watchedChannel);
+        }
+      } catch (err) {
+        console.warn("Failed to open chat channel:", err);
+      } finally {
+        if (!cancelled) {
+          setHydratingChannel(false);
+        }
+      }
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [channel?.cid, channel?.id, client, routeChannelId, setChannel]);
 
   let displayName = "";
   let avatarUrl = "";
   let otherUserId = "";
+  let isGroup = false;
 
   const isAiChannel = channel?.id?.startsWith("ai-assistant-") ?? false;
 
   if (channel) {
+    isGroup = isGroupChannel(channel, client.userID);
+
     if (isAiChannel) {
       displayName = "AI Assistant";
-    }
+    } else if (isGroup) {
+      displayName = getGroupChannelName(channel);
+      avatarUrl = getGroupChannelImage(channel) ?? "";
+    } else {
+      const members = Object.values(channel.state.members);
+      const otherMember = members.find(
+        (member) => member.user_id !== client.userID,
+      );
 
-    const members = Object.values(channel.state.members);
-    const otherMember = members.find(
-      (member) => member.user_id !== client.userID,
-    );
-
-    otherUserId = otherMember?.user?.id || otherMember?.user_id || "";
-    if (!isAiChannel) {
+      otherUserId = otherMember?.user?.id || otherMember?.user_id || "";
       const profile = getProfile(otherUserId);
       displayName = resolveChatDisplayName(
         otherUserId,
@@ -135,6 +201,13 @@ const ChannelScreen = () => {
      headerTitle: () => (
        <Pressable
          onPress={() => {
+           if (isGroup && channel) {
+             router.push({
+               pathname: "/(drawer)/(stream)/group-info/[channelId]",
+               params: { channelId: channel.cid },
+             });
+             return;
+           }
            if (otherUserId) {
              router.push(`/(profileId)/${otherUserId}`);
            }
@@ -230,11 +303,13 @@ const ChannelScreen = () => {
    navigation,
    displayName,
    avatarUrl,
+   channel,
    channel?.cid,
    channel?.id,
    router,
    startCall,
    isAiChannel,
+   isGroup,
    theme.background,
    theme.text,
    theme.card,
@@ -243,7 +318,7 @@ const ChannelScreen = () => {
  ]);
 
 
-  if (!channel) {
+  if (!channel || hydratingChannel) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator />
@@ -266,7 +341,7 @@ function CallMissedCard() {
         KeyboardCompatibleView={ChatKeyboardCompatibleView}
         myMessageTheme={myMessageTheme}
         Gallery={ChatGallery}
-        VideoThumbnail={ChatVideoThumbnail}
+        VideoThumbnail={StreamVideoThumbnail}
         MessageText={ChatMessageText}
         Card={(props) => {
           if (props.type === "call_missed") {
@@ -289,6 +364,7 @@ function CallMissedCard() {
             contentContainerStyle: { backgroundColor: "transparent" },
           }}
           onThreadSelect={(thread) => {
+            if (!thread?.cid) return;
             setThread(thread);
             router.push(`/channel/${channel.cid}/thread/${thread.cid}`);
           }}

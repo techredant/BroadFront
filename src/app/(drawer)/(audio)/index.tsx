@@ -1,7 +1,7 @@
 import React from "react";
 import { StatusBar, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { HomeScreen } from "./src/HomeScreen";
+import { HomeScreen } from "@/components/audio/HomeScreen";
 import { useTheme } from "@/context/ThemeContext";
 
 export default function AudioIndex() {

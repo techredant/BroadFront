@@ -14,6 +14,8 @@ import { NotificationProvider } from "@/context/notification";
 import { FollowProvider } from "@/context/FollowContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { PushPromptProvider } from "@/context/PushPromptContext";
+import { NotificationBridge } from "@/components/notifications/NotificationBridge";
+import { IncomingCallProvider } from "@/components/notifications/IncomingCallOverlay";
 
 /* ===========================
    NOTIFICATION CLICK HANDLER
@@ -26,6 +28,8 @@ import {
   handleNotificationRedirect,
   shouldAutoOpenInForeground,
 } from "@/utils/notificationRouting";
+
+void SplashScreen.preventAutoHideAsync();
 
 function useNotificationObserver() {
   const router = useRouter();
@@ -126,10 +130,6 @@ function SplashController() {
 export default function RootLayout() {
   useNotificationObserver();
 
-  useEffect(() => {
-    SplashScreen.preventAutoHideAsync();
-  }, []);
-
   return (
     <SafeAreaProvider>
       <ClerkProvider
@@ -150,6 +150,7 @@ export default function RootLayout() {
 function RootInnerLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
+  const { theme } = useTheme();
 
   const router = useRouter();
   const segments = useSegments();
@@ -196,8 +197,16 @@ function RootInnerLayout() {
             <MenuProvider>
               <NotificationProvider>
                 <AppProvider>
-                  <SplashController />
-                  <Stack screenOptions={{ headerShown: false }} />
+                  <IncomingCallProvider>
+                    <SplashController />
+                    <NotificationBridge />
+                    <Stack
+                      screenOptions={{
+                        headerShown: false,
+                        contentStyle: { backgroundColor: theme.background },
+                      }}
+                    />
+                  </IncomingCallProvider>
                 </AppProvider>
               </NotificationProvider>
             </MenuProvider>

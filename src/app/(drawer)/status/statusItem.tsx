@@ -9,11 +9,11 @@ import {
 } from "react-native";
 import { useMemo } from "react";
 import { useTheme } from "@/context/ThemeContext";
-import StatusListRow from "./drawer_status";
+import StatusListRow from "@/components/status/StatusListRow";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
+import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
 import { useUser } from "@clerk/clerk-expo";
-import { MyStatusRow } from "@/app/(drawer)/(status)/MyStatusRow";
+import { MyStatusRow } from "@/components/status/MyStatusRow";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { enrichStatusGroup } from "@/utils/statusUser";

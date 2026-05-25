@@ -10,15 +10,16 @@ import {
   FlatList,
   TextInput,
   KeyboardAvoidingView,
+  PixelRatio,
   Platform,
   Alert,
   StatusBar,
+  Image,
 } from "react-native";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Video from "react-native-video";
-import { Image } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useUser } from "@clerk/clerk-expo";
 import { useTheme } from "@/context/ThemeContext";
@@ -33,7 +34,11 @@ import { useChatContext } from "stream-chat-expo";
 import { useAppContext } from "@/contexts/AppProvider";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { statusAvatarUri, statusDisplayName } from "@/utils/statusUser";
-import { isVideoMedia, resolveMediaUrl } from "@/utils/mediaUtils";
+import {
+  buildCloudinaryUrl,
+  isVideoMedia,
+  resolveMediaUrl,
+} from "@/utils/mediaUtils";
 import {
   buildStreamDisplayName,
   upsertStreamUser,
@@ -43,6 +48,7 @@ import {
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 const POSTER_REPLY_BAR_HEIGHT = 58;
 const { width, height } = Dimensions.get("window");
+const STORY_PIXEL_WIDTH = Math.round(width * PixelRatio.get());
 
 export type StatusViewRow = {
   userId: string;
@@ -179,6 +185,16 @@ export default function Viewer() {
   const current = storiesReady ? statuses[currentIndex] : undefined;
   const slideKey = current?._id ? String(current._id) : null;
   const isVideo = current?.media?.[0]?.includes(".mp4");
+  const rawSlideMedia: string | undefined = current?.media?.[0];
+  const optimizedSlideMedia = useMemo(() => {
+    if (!rawSlideMedia) return rawSlideMedia;
+    return (
+      buildCloudinaryUrl(rawSlideMedia, {
+        width: STORY_PIXEL_WIDTH,
+        kind: isVideo ? "video" : "image",
+      }) ?? rawSlideMedia
+    );
+  }, [rawSlideMedia, isVideo]);
   const [posterReplyText, setPosterReplyText] = useState("");
   const [posterBarFocused, setPosterBarFocused] = useState(false);
   const [sendingToPoster, setSendingToPoster] = useState(false);
@@ -743,10 +759,11 @@ export default function Viewer() {
 
       <View style={styles.mediaLayer} pointerEvents="box-none">
         {current.media?.length > 0 &&
+          optimizedSlideMedia &&
           (isVideo ? (
             <Video
               key={slideKey}
-              source={{ uri: current.media[0] }}
+              source={{ uri: optimizedSlideMedia }}
               style={[styles.media, videoLoading && styles.mediaHidden]}
               resizeMode="contain"
               paused={paused || overlayBlocksProgress || !isFocused}
@@ -756,7 +773,7 @@ export default function Viewer() {
           ) : (
             <Image
               key={slideKey}
-              source={{ uri: current.media[0] }}
+              source={{ uri: optimizedSlideMedia }}
               style={[styles.media, videoLoading && styles.mediaHidden]}
               resizeMode="contain"
               onLoadStart={() => setVideoLoading(true)}

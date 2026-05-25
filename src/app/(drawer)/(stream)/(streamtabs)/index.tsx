@@ -1,5 +1,5 @@
-import { DrawerMenuButton } from "@/app/components/Button/DrawerMenuButton";
-import { BroadCastChannelPreview } from "@/app/components/ChatChannelPreview";
+import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
+import { BroadCastChannelPreview } from "@/components/ChatChannelPreview";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useAppContext } from "@/contexts/AppProvider";
@@ -8,8 +8,8 @@ import { getGreetingForHour } from "@/lib/utils";
 import { resolveChatDisplayName } from "@/utils/streamUser";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useCallback, useState } from "react";
-import { Text, TextInput, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { Channel } from "stream-chat";
 import { ChannelList } from "stream-chat-expo";
@@ -29,7 +29,15 @@ const ChatsScreen = () => {
   const { theme } = useTheme();
 
   const myId = userDetails?.clerkId;
-  const filters = { members: { $in: [myId!] }, type: "messaging" };
+  const filters = useMemo(
+    () => ({ members: { $in: [myId ?? ""] }, type: "messaging" }),
+    [myId],
+  );
+  const options = useMemo(() => ({ state: true, watch: true }), []);
+  const sort = useMemo(
+    () => ({ pinned_at: -1 as const, last_message_at: -1 as const }),
+    [],
+  );
   const firstName = userDetails?.firstName || "there";
 
   const syncProfilesFromChannels = useCallback(
@@ -94,36 +102,56 @@ const ChatsScreen = () => {
         />
       </View>
 
-      <View className="flex-row items-center px-5 my-1.5 gap-2">
-        <Ionicons name="chatbubbles" size={16} color={theme.text} />
-        <Text
-          className="text-[14px] font-semibold"
-          style={{ color: theme.primary }}
+      <View className="flex-row items-center justify-between px-5 my-1.5">
+        <View className="flex-row items-center gap-2">
+          <Ionicons name="chatbubbles" size={16} color={theme.text} />
+          <Text
+            className="text-[14px] font-semibold"
+            style={{ color: theme.primary }}
+          >
+            Your Chats
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => router.push("/(drawer)/(stream)/create-group")}
+          className="flex-row items-center gap-1.5 rounded-full border px-2.5 py-2"
+          style={{
+            backgroundColor: theme.background,
+            borderColor: theme.primary,
+          }}
         >
-          Your Chats
-        </Text>
+          <Ionicons name="people" size={14} color={theme.primary} />
+          <Text
+            className="text-[14px] font-medium"
+            style={{ color: theme.primary }}
+          >
+            Group
+          </Text>
+        </Pressable>
       </View>
 
-      <ChannelList
-        filters={filters}
-        options={{ state: true, watch: true }}
-        sort={{ last_updated: -1 }}
-        Preview={BroadCastChannelPreview}
-        channelRenderFilterFn={channelRenderFilterFn}
-        onSelect={(channel) => {
-          setChannel(channel);
-          router.push(`/channel/${channel.id}`);
-        }}
-        additionalFlatListProps={{
-          contentContainerStyle: {
-            flexGrow: 1,
-            backgroundColor: theme.background,
-          },
-          style: {
-            backgroundColor: theme.background,
-          },
-        }}
-      />
+      {myId ? (
+        <ChannelList
+          filters={filters}
+          options={options}
+          sort={sort}
+          Preview={BroadCastChannelPreview}
+          channelRenderFilterFn={channelRenderFilterFn}
+          onSelect={(channel) => {
+            setChannel(channel);
+            router.push(`/channel/${channel.id}`);
+          }}
+          additionalFlatListProps={{
+            contentContainerStyle: {
+              flexGrow: 1,
+              backgroundColor: theme.background,
+            },
+            style: {
+              backgroundColor: theme.background,
+            },
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 };

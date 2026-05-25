@@ -7,7 +7,7 @@ import { Image, Pressable, View } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
 import { TabBarVisibilityProvider } from "@/context/TabBarVisibilityContext";
-import { AnimatedTabBar } from "@/app/components/navigation/AnimatedTabBar";
+import { AnimatedTabBar } from "@/components/navigation/AnimatedTabBar";
 
 function TabsNavigator() {
   const { theme } = useTheme();

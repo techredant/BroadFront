@@ -147,18 +147,55 @@ export const getStreamTheme = (
     messageInput: {
       container: {
         backgroundColor: bg,
-        borderTopWidth: 1,
-        borderTopColor: borderColor,
-        paddingBottom: 10,
+        borderTopWidth: 0,
+        paddingTop: 6,
+        paddingHorizontal: 8,
+        paddingBottom: 0,
+      },
+      composerContainer: {
+        backgroundColor: isDark ? "#171717" : "#F3F4F6",
+        borderRadius: 26,
+        borderWidth: 1,
+        borderColor,
+        paddingHorizontal: 8,
+        minHeight: 48,
+        alignItems: "center",
       },
       inputBox: {
-        backgroundColor: surface,
-        borderRadius: 22,
+        backgroundColor: "transparent",
+        borderRadius: 24,
         color: text,
-        paddingHorizontal: 14,
+        fontSize: 15,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        maxHeight: 110,
       },
       inputBoxContainer: {
-        backgroundColor: surface,
+        backgroundColor: "transparent",
+        borderWidth: 0,
+        flex: 1,
+      },
+      focusedInputBoxContainer: {
+        backgroundColor: "transparent",
+        borderWidth: 0,
+      },
+      attachButtonContainer: {
+        backgroundColor: "transparent",
+      },
+      sendButtonContainer: {
+        backgroundColor: primary,
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 2,
+      },
+      sendButton: {
+        margin: 0,
+      },
+      sendUpIcon: {
+        pathFill: "#ffffff",
       },
     },
 

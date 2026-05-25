@@ -3,7 +3,7 @@ import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
-import { PostCard } from "@/app/components/posts/PostCard";
+import { PostCard } from "@/components/posts/PostCard";
 import { useIsFocused } from "@react-navigation/native";
 import { Socket } from "socket.io-client";
 import { useLevel } from "@/context/LevelContext";

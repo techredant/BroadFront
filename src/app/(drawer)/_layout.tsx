@@ -1,419 +1,958 @@
-import React, { useMemo } from "react";
+import React, { useContext, useMemo } from "react";
+
 import { Drawer } from "expo-router/drawer";
+
 import {
+
   DrawerContentComponentProps,
+
   DrawerContentScrollView,
+
 } from "@react-navigation/drawer";
-import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useUser } from "@clerk/clerk-expo";
-import { router, usePathname } from "expo-router";
-import { useLevel } from "@/context/LevelContext";
-import { useTheme } from "@/context/ThemeContext";
-import ChatWrapper from "../components/ChatWrapper";
+
 import {
-  formatDrawerBadge,
-  useStreamUnreadCount,
-} from "@/utils/chatLayout";
-import { useChatContext } from "stream-chat-expo";
 
-/* =======================
-   CUSTOM DRAWER CONTENT
-======================= */
-const CustomDrawerContent = (props: DrawerContentComponentProps) => {
-  const { user } = useUser();
-  const { userDetails, isLoadingUser, switchLevel } = useLevel();
-  const { theme } = useTheme();
-  const { client } = useChatContext();
-  const pathname = usePathname();
+  ActivityIndicator,
 
-  const chatUnread = useStreamUnreadCount(client);
+  Dimensions,
 
-  const drawerItems = useMemo(
-    () => [
-    {
-      name: "(tabs)",
-      label: "Home",
-      icon: "home-outline",
-      onPress: () => {
-        switchLevel({ type: "home", value: "home" });
+  Image,
 
-        props.navigation.closeDrawer(); // ✅ CLOSE DRAWER FIRST
+  Pressable,
 
-        setTimeout(() => {
-          router.replace("/(tabs)"); // ✅ THEN NAVIGATE
-        }, 50); // small delay prevents glitch
-      },
-      badge: 0,
-    },
-    // {
-    //   name: "trends",
-    //   label: "Trends",
-    //   icon: "flame-outline",
-    //   badge: 0,
-    // },
-    {
-      name: "(stream)",
-      label: "Chat",
-      icon: "chatbubble-ellipses-outline",
-      badge: chatUnread,
-    },
-    {
-      name: "status",
-      label: "Status",
-      icon: "time-outline",
-      badge: 0,
-    },
-    {
-      name: "(market)",
-      label: "Market",
-      icon: "cart-outline",
-      badge: 0,
-    },
-    {
-      name: "members",
-      label: "Members",
-      icon: "people-outline",
-      badge: 0,
-    },
-    {
-      name: "media",
-      label: "Media",
-      icon: "images-outline",
-      badge: 0,
-    },
-    {
-      name: "settings",
-      label: "Settings",
-      icon: "settings-outline",
-      badge: 0,
-    },
-    {
-      name: "(live)",
-      label: "Live Streams",
-      icon: "radio-outline",
-      badge: 0,
-    },
-    {
-      name: "(audio)",
-      label: "Audio Rooms",
-      icon: "mic-circle",
-      badge: 0,
-    },
-  ],
-    [chatUnread, props.navigation, switchLevel],
-  );
+  StyleSheet,
 
-  return (
-    <DrawerContentScrollView
-      {...props}
-      contentContainerStyle={{
-        paddingTop: 0,
-        backgroundColor: theme.card,
-        flex: 1,
-      }}
-    >
-      {/* HEADER */}
-      <Pressable
-        onPress={() => router.push("/(drawer)/(tabs)/profile")}
-        style={{
-          paddingTop: 48,
-          paddingBottom: 16,
-          paddingHorizontal: 16,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.border,
-          flexDirection: "row",
-          alignItems: "center",
-        }}
-      >
-        <Image
-          source={{
-            uri: userDetails?.image || user?.imageUrl,
-          }}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 32,
-            backgroundColor: theme.border,
-          }}
-        />
+  Text,
 
-        <View style={{ marginLeft: 12, flex: 1 }}>
-          {!userDetails && isLoadingUser ? (
-            <ActivityIndicator size="small" color={theme.text} />
-          ) : (
-            <>
-              <Text
-                style={{
-                  fontSize: 15,
-                  fontWeight: "600",
-                  color: theme.text,
-                }}
-                numberOfLines={1}
-              >
-                {userDetails?.firstName} {userDetails?.lastName}{" "}
-                {userDetails?.companyName}
-              </Text>
+  View,
 
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: theme.subtext,
-                  marginTop: 2,
-                }}
-                numberOfLines={1}
-              >
-                {userDetails?.nickName ||
-                  user?.username ||
-                  user?.primaryEmailAddress?.emailAddress ||
-                  "guest"}
-              </Text>
-            </>
-          )}
-        </View>
+} from "react-native";
 
-        <Ionicons name="chevron-forward" size={18} color={theme.subtext} />
-      </Pressable>
+import { Ionicons } from "@expo/vector-icons";
 
-      {/* DRAWER ITEMS */}
-      <View style={{ paddingTop: 8 }}>
-        {drawerItems.map((item) => (
-          <Pressable
-            key={item.name}
-            onPress={() => {
-              if (item.onPress) {
-                item.onPress();
-              } else {
-                props.navigation.navigate(item.name);
-              }
-            }}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              paddingVertical: 12,
-              paddingHorizontal: 16,
-              marginHorizontal: 0,
-            }}
-          >
-            <Ionicons
-              name={item.icon as any}
-              size={24}
-              color={pathname.includes(item.name) ? theme.primary : theme.text}
-            />
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: "700",
-                color: pathname.includes(item.name)
-                  ? theme.primary
-                  : theme.text,
-                marginLeft: 16,
-                flex: 1,
-              }}
-            >
-              {item.label}
-            </Text>
-            {formatDrawerBadge(item.badge) ? (
-              <View
-                style={{
-                  backgroundColor: theme.danger,
-                  borderRadius: 10,
-                  minWidth: 20,
-                  height: 20,
-                  justifyContent: "center",
-                  alignItems: "center",
-                  paddingHorizontal: 6,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "white",
-                    fontSize: 11,
-                    fontWeight: "700",
-                  }}
-                >
-                  {formatDrawerBadge(item.badge)}
-                </Text>
-              </View>
-            ) : null}
-          </Pressable>
-        ))}
-      </View>
-    </DrawerContentScrollView>
-  );
+import { useUser } from "@clerk/clerk-expo";
+
+import { router } from "expo-router";
+
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { useLevel } from "@/context/LevelContext";
+
+import {
+
+  NotificationContext,
+
+} from "@/context/notification";
+
+import { useTheme } from "@/context/ThemeContext";
+
+
+
+const DRAWER_WIDTH = Dimensions.get("window").width * 0.8;
+
+
+
+const ACCENTS = {
+
+  liveIconBg: "rgba(239, 68, 68, 0.18)",
+
+  liveIcon: "#FF453A",
+
+  audioIconBg: "rgba(175, 82, 222, 0.2)",
+
+  audioIcon: "#BF5AF2",
+
 };
 
-/* =======================
-   ROOT LAYOUT (FIXED)
-======================= */
-export default function DrawerLayout() {
-  const { theme } = useTheme();
-  const { userDetails, switchLevel } = useLevel();
-  const { user } = useUser();
+
+
+type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
+
+
+
+type DrawerNavItem = {
+
+  key: string;
+
+  label: string;
+
+  icon: IoniconName;
+
+  drawerRoute?: string;
+
+  href?: string;
+
+  iconBg?: string;
+
+  iconColor?: string;
+
+  badge?: number;
+
+  trailing?: "live-dot";
+
+};
+
+
+
+const MAIN_NAV: DrawerNavItem[] = [
+
+  { key: "home", label: "Home", icon: "home-outline", drawerRoute: "(tabs)" },
+
+  {
+
+    key: "activity",
+
+    label: "Activity",
+
+    icon: "notifications-outline",
+
+    href: "/(drawer)/(drawerPages)/ActivityInbox",
+
+  },
+
+  {
+
+    key: "chat",
+
+    label: "Chat",
+
+    icon: "chatbubble-ellipses-outline",
+
+    drawerRoute: "(stream)",
+
+  },
+
+  {
+
+    key: "status",
+
+    label: "Status",
+
+    icon: "ellipse-outline",
+
+    href: "/(drawer)/(status)/StatusInput",
+
+  },
+
+  { key: "members", label: "Members", icon: "people-outline", drawerRoute: "members" },
+
+  { key: "market", label: "Market", icon: "cart-outline", drawerRoute: "(market)" },
+
+  {
+
+    key: "promote",
+
+    label: "Promote",
+
+    icon: "megaphone-outline",
+
+    drawerRoute: "advertiser",
+
+  },
+
+  { key: "media", label: "Media", icon: "images-outline", drawerRoute: "media" },
+
+  { key: "polls", label: "Polls", icon: "bar-chart-outline", drawerRoute: "polls" },
+
+];
+
+
+
+const LIVE_NAV: DrawerNavItem[] = [
+
+  {
+
+    key: "live",
+
+    label: "Live streams",
+
+    icon: "radio-outline",
+
+    drawerRoute: "(live)",
+
+    iconBg: ACCENTS.liveIconBg,
+
+    iconColor: ACCENTS.liveIcon,
+
+    trailing: "live-dot",
+
+  },
+
+  {
+
+    key: "audio",
+
+    label: "Audio rooms",
+
+    icon: "mic-outline",
+
+    drawerRoute: "(audio)",
+
+    iconBg: ACCENTS.audioIconBg,
+
+    iconColor: ACCENTS.audioIcon,
+
+  },
+
+];
+
+
+
+const SETTINGS_NAV: DrawerNavItem[] = [
+
+  {
+
+    key: "settings",
+
+    label: "Settings",
+
+    icon: "settings-outline",
+
+    drawerRoute: "settings",
+
+  },
+
+];
+
+
+
+function createDrawerStyles(theme: ReturnType<typeof useTheme>["theme"], isDark: boolean) {
+
+  const iconSquareBg = isDark ? (theme.badge ?? theme.border) : theme.border;
+
+
+
+  return StyleSheet.create({
+
+    scroll: {
+
+      backgroundColor: theme.background,
+
+    },
+
+    scrollContent: {
+
+      flexGrow: 1,
+
+      backgroundColor: theme.background,
+
+    },
+
+    header: {
+
+      flexDirection: "row",
+
+      alignItems: "flex-start",
+
+      justifyContent: "space-between",
+
+      paddingHorizontal: 20,
+
+      marginBottom: 20,
+
+    },
+
+    headerProfile: {
+
+      flexDirection: "row",
+
+      alignItems: "center",
+
+      flex: 1,
+
+      paddingRight: 12,
+
+    },
+
+    avatar: {
+
+      width: 48,
+
+      height: 48,
+
+      borderRadius: 24,
+
+      backgroundColor: iconSquareBg,
+
+    },
+
+    headerText: {
+
+      marginLeft: 12,
+
+      flex: 1,
+
+      justifyContent: "center",
+
+      minHeight: 48,
+
+    },
+
+    displayName: {
+
+      fontSize: 16,
+
+      fontWeight: "700",
+
+      color: theme.text,
+
+    },
+
+    handle: {
+
+      fontSize: 13,
+
+      color: theme.subtext,
+
+      marginTop: 2,
+
+    },
+
+    closeButton: {
+
+      padding: 4,
+
+    },
+
+    card: {
+
+      backgroundColor: theme.card,
+
+      borderRadius: 18,
+
+      marginHorizontal: 16,
+
+      marginBottom: 18,
+
+      paddingVertical: 16,
+
+      paddingHorizontal: 14,
+
+      gap: 12,
+
+      overflow: "hidden",
+
+    },
+
+    row: {
+
+      flexDirection: "row",
+
+      alignItems: "center",
+
+      width: "100%",
+
+      paddingHorizontal: 0,
+
+      paddingVertical: 18,
+
+    },
+
+    rowContent: {
+
+      flex: 1,
+
+      flexDirection: "row",
+
+      alignItems: "center",
+
+      gap: 12,
+
+      minWidth: 0,
+
+    },
+
+    rowLeading: {
+
+      flex: 1,
+
+      flexDirection: "row",
+
+      alignItems: "center",
+
+      gap: 12,
+
+      flexShrink: 1,
+
+      minWidth: 0,
+
+    },
+
+    rowDivider: {
+
+      borderBottomWidth: StyleSheet.hairlineWidth,
+
+      borderBottomColor: theme.border,
+
+    },
+
+    rowPressed: {
+
+      opacity: 0.75,
+
+    },
+
+    iconSquare: {
+
+      width: 36,
+
+      height: 36,
+
+      borderRadius: 10,
+
+      alignItems: "center",
+
+      justifyContent: "center",
+
+      flexShrink: 0,
+
+      backgroundColor: iconSquareBg,
+
+    },
+
+    rowLabel: {
+
+      flexShrink: 1,
+
+      minWidth: 0,
+
+      fontSize: 15,
+
+      lineHeight: 19,
+
+      fontWeight: "500",
+
+      color: theme.text,
+
+      includeFontPadding: false,
+
+    },
+
+    rowTrailing: {
+
+      flexDirection: "row",
+
+      alignItems: "center",
+
+      justifyContent: "center",
+
+      alignSelf: "center",
+
+      gap: 8,
+
+      flexShrink: 0,
+
+    },
+
+    badge: {
+
+      minWidth: 22,
+
+      height: 22,
+
+      borderRadius: 11,
+
+      backgroundColor: theme.danger ?? "#FF3B30",
+
+      alignItems: "center",
+
+      justifyContent: "center",
+
+      paddingHorizontal: 6,
+
+    },
+
+    badgeText: {
+
+      color: theme.buttonText ?? "#fff",
+
+      fontSize: 11,
+
+      fontWeight: "700",
+
+    },
+
+    liveDot: {
+
+      width: 8,
+
+      height: 8,
+
+      borderRadius: 4,
+
+      backgroundColor: theme.danger ?? "#FF3B30",
+
+      alignSelf: "center",
+
+    },
+
+  });
+
+}
+
+
+
+type DrawerStyles = ReturnType<typeof createDrawerStyles>;
+
+
+
+function DrawerCard({
+
+  children,
+
+  styles,
+
+}: {
+
+  children: React.ReactNode;
+
+  styles: DrawerStyles;
+
+}) {
+
+  return <View style={styles.card}>{children}</View>;
+
+}
+
+
+
+function DrawerNavRow({
+
+  item,
+
+  isLast,
+
+  onPress,
+
+  styles,
+
+  theme,
+
+}: {
+
+  item: DrawerNavItem;
+
+  isLast?: boolean;
+
+  onPress: () => void;
+
+  styles: DrawerStyles;
+
+  theme: ReturnType<typeof useTheme>["theme"];
+
+}) {
+
+  const showBadge = item.key === "activity" && (item.badge ?? 0) > 0;
+
+
+
+  const hasTrailing = showBadge || item.trailing === "live-dot";
+
+
 
   return (
-    <ChatWrapper userDetail={userDetails}>
-      <Drawer
-        drawerContent={(props) => <CustomDrawerContent {...props} />}
-        screenOptions={{
-          headerShown: false,
-          drawerStyle: {
-            backgroundColor: theme.card,
-            width: 260,
-            borderRightWidth: 0,
-          },
-          sceneContainerStyle: {
-            backgroundColor: theme.background,
-          },
-          overlayColor: "rgba(0,0,0,0.45)",
-          drawerLabelStyle: {
-            fontSize: 14,
-            fontWeight: "bold",
-            color: theme.text,
-          },
-          drawerActiveTintColor: theme.primary,
-          drawerInactiveTintColor: theme.text,
-          // "back" keeps the drawer behind content when closed — avoids a 1px
-          // light edge peeking on dark fullscreen routes (e.g. status viewer).
-          drawerType: "back",
-          swipeEnabled: false,
-        }}
-        initialRouteName="(tabs)"
-      >
-        {/* HOME */}
-        <Drawer.Screen
-          name="(tabs)"
-          options={{
-            drawerLabel: "Home",
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="home-outline" size={size} color={color} />
-            ),
-          }}
-     
-        />
 
-        {/* CHAT */}
-        <Drawer.Screen
-          name="(stream)"
-          options={{
-            drawerLabel: "Chat",
-            drawerIcon: ({ color, size }) => (
-              <Ionicons
-                name="chatbubble-ellipses-outline"
-                size={size}
-                color={color}
-              />
-            ),
-          }}
-        />
+    <Pressable
 
-        {/* STATUS */}
-        <Drawer.Screen
-          name="status"
-          options={{
-            drawerLabel: "Status",
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="time-outline" size={size} color={color} />
-            ),
-          }}
-        />
+      onPress={onPress}
 
-        {/* MARKET */}
-        <Drawer.Screen
-          name="(market)"
-          options={{
-            drawerLabel: "Market",
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="cart-outline" size={size} color={color} />
-            ),
-          }}
-        />
+      style={({ pressed }) => [
 
-        {/* MEMBERS */}
-        <Drawer.Screen
-          name="members"
-          options={{
-            drawerLabel: "Members",
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="people-outline" size={size} color={color} />
-            ),
-          }}
-        />
+        styles.row,
 
-        {/* MEDIA */}
-        <Drawer.Screen
-          name="media"
-          options={{
-            drawerLabel: "Media",
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="images-outline" size={size} color={color} />
-            ),
-          }}
-        />
+        !isLast && styles.rowDivider,
 
-        {/* SETTINGS */}
-        <Drawer.Screen
-          name="settings"
-          options={{
-            drawerLabel: "Settings",
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="settings-outline" size={size} color={color} />
-            ),
-          }}
-        />
+        pressed && styles.rowPressed,
 
-        {/* LIVE */}
-        <Drawer.Screen
-          name="(live)"
-          options={{
-            drawerLabel: "Live Streams",
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="radio-outline" size={size} color={color} />
-            ),
-          }}
-        />
+      ]}
 
-        {/* AUDIO */}
-        <Drawer.Screen
-          name="(audio)"
-          options={{
-            drawerLabel: "Audio Rooms",
-            drawerIcon: ({ color, size }) => (
-              <Ionicons name="mic-circle" size={size} color={color} />
-            ),
-          }}
-        />
+    >
 
-        {/* HIDDEN SCREENS */}
-        <Drawer.Screen
-          name="(status)"
-          options={{
-            drawerItemStyle: { display: "none" },
-            sceneContainerStyle: { backgroundColor: "#000" },
-          }}
-        />
+      <View style={styles.rowContent}>
 
-        <Drawer.Screen
-          name="(drawerPages)"
-          options={{
-            drawerItemStyle: { display: "none" },
-          }}
-        />
+        <View style={styles.rowLeading}>
 
-        <Drawer.Screen
-          name="(ai)"
-          options={{
-            drawerItemStyle: { display: "none" },
-          }}
-        />
+          <View
 
-        <Drawer.Screen
-          name="(profileId)"
-          options={{
-            drawerItemStyle: { display: "none" },
-          }}
-        />
-      </Drawer>
-    </ChatWrapper>
+            style={[
+
+              styles.iconSquare,
+
+              item.iconBg ? { backgroundColor: item.iconBg } : null,
+
+            ]}
+
+          >
+
+            <Ionicons
+
+              name={item.icon}
+
+              size={20}
+
+              color={item.iconColor ?? theme.text}
+
+            />
+
+          </View>
+
+
+
+          <Text style={styles.rowLabel} numberOfLines={1}>
+
+            {item.label}
+
+          </Text>
+
+        </View>
+
+
+
+        {hasTrailing ? (
+
+          <View style={styles.rowTrailing}>
+
+            {showBadge ? (
+
+              <View style={styles.badge}>
+
+                <Text style={styles.badgeText}>
+
+                  {(item.badge ?? 0) > 99 ? "99+" : item.badge}
+
+                </Text>
+
+              </View>
+
+            ) : null}
+
+            {item.trailing === "live-dot" ? <View style={styles.liveDot} /> : null}
+
+          </View>
+
+        ) : null}
+
+      </View>
+
+    </Pressable>
+
   );
+
 }
+
+
+
+const CustomDrawerContent = (props: DrawerContentComponentProps) => {
+
+  const { navigation } = props;
+
+  const { user } = useUser();
+
+  const { userDetails, isLoadingUser } = useLevel();
+
+  const insets = useSafeAreaInsets();
+
+  const { theme, isDark } = useTheme();
+
+  const styles = useMemo(() => createDrawerStyles(theme, isDark), [theme, isDark]);
+
+  const activityUnread =
+
+    useContext(NotificationContext)?.unreadCount ?? 0;
+
+
+
+  const mainNav = MAIN_NAV.map((item) =>
+
+    item.key === "activity" ? { ...item, badge: activityUnread } : item,
+
+  );
+
+
+
+  const navigateItem = (item: DrawerNavItem) => {
+
+    navigation.closeDrawer();
+
+    if (item.drawerRoute) {
+
+      navigation.navigate(item.drawerRoute);
+
+      return;
+
+    }
+
+    if (item.href) {
+
+      router.push(item.href as never);
+
+    }
+
+  };
+
+
+
+  const displayName = userDetails?.firstName
+
+    ? `${userDetails.firstName}${userDetails.lastName ? ` ${userDetails.lastName}` : ""}`
+
+    : "Anonymous";
+
+
+
+  return (
+
+    <DrawerContentScrollView
+
+      {...props}
+
+      contentContainerStyle={[
+
+        styles.scrollContent,
+
+        { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 18 },
+
+      ]}
+
+      style={styles.scroll}
+
+    >
+
+      <View style={styles.header}>
+
+        <View style={styles.headerProfile}>
+
+          <Image
+
+            source={{
+
+              uri: userDetails?.image || user?.imageUrl,
+
+            }}
+
+            style={styles.avatar}
+
+          />
+
+
+
+          <View style={styles.headerText}>
+
+            {isLoadingUser ? (
+
+              <ActivityIndicator size="small" color={theme.text} />
+
+            ) : (
+
+              <>
+
+                <Text style={styles.displayName} numberOfLines={1}>
+
+                  {displayName}
+
+                </Text>
+
+                <Text style={styles.handle} numberOfLines={1}>
+
+                  {userDetails?.nickName || "guest"}
+
+                </Text>
+
+              </>
+
+            )}
+
+          </View>
+
+        </View>
+
+
+
+        <Pressable
+
+          onPress={() => navigation.closeDrawer()}
+
+          hitSlop={12}
+
+          style={styles.closeButton}
+
+        >
+
+          <Ionicons name="close" size={24} color={theme.text} />
+
+        </Pressable>
+
+      </View>
+
+
+
+      <DrawerCard styles={styles}>
+
+        {mainNav.map((item, index) => (
+
+          <DrawerNavRow
+
+            key={item.key}
+
+            item={item}
+
+            isLast={index === mainNav.length - 1}
+
+            onPress={() => navigateItem(item)}
+
+            styles={styles}
+
+            theme={theme}
+
+          />
+
+        ))}
+
+      </DrawerCard>
+
+
+
+      <DrawerCard styles={styles}>
+
+        {LIVE_NAV.map((item, index) => (
+
+          <DrawerNavRow
+
+            key={item.key}
+
+            item={item}
+
+            isLast={index === LIVE_NAV.length - 1}
+
+            onPress={() => navigateItem(item)}
+
+            styles={styles}
+
+            theme={theme}
+
+          />
+
+        ))}
+
+      </DrawerCard>
+
+
+
+      <DrawerCard styles={styles}>
+
+        {SETTINGS_NAV.map((item, index) => (
+
+          <DrawerNavRow
+
+            key={item.key}
+
+            item={item}
+
+            isLast={index === SETTINGS_NAV.length - 1}
+
+            onPress={() => navigateItem(item)}
+
+            styles={styles}
+
+            theme={theme}
+
+          />
+
+        ))}
+
+      </DrawerCard>
+
+    </DrawerContentScrollView>
+
+  );
+
+};
+
+
+
+const hiddenDrawerItem = { drawerItemStyle: { display: "none" as const } };
+
+
+
+export default function DrawerLayout() {
+  const { theme } = useTheme();
+
+
+
+  return (
+
+    <Drawer
+
+        drawerContent={(props) => <CustomDrawerContent {...props} />}
+
+        screenOptions={{
+
+          headerShown: false,
+
+          drawerStyle: {
+
+            backgroundColor: theme.background,
+
+            width: DRAWER_WIDTH,
+
+          },
+
+          drawerType: "front",
+
+          swipeEdgeWidth: 200,
+
+          sceneStyle: {
+
+            backgroundColor: theme.background,
+
+          },
+
+          ...hiddenDrawerItem,
+
+        }}
+
+        initialRouteName="(tabs)"
+
+      >
+
+        <Drawer.Screen name="(tabs)" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="(stream)" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="status" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="(market)" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="members" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="media" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="settings" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="(live)" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="(audio)" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="(status)" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="(drawerPages)" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="(ai)" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="(profileId)" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="verification" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="polls" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="ads" options={hiddenDrawerItem} />
+
+        <Drawer.Screen name="advertiser" options={hiddenDrawerItem} />
+
+      </Drawer>
+
+  );
+
+}
+
+

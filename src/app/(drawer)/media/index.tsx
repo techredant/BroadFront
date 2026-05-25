@@ -13,10 +13,10 @@ import axios from "axios";
 import LoaderKitView from "react-native-loader-kit";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
-import { DrawerMenuButton } from "../../components/Button/DrawerMenuButton";
+import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Post } from "@/types/post";
-import { LightMediaTile } from "@/app/components/posts/LightMediaTile";
+import { LightMediaTile } from "@/components/posts/LightMediaTile";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 const SCREEN_WIDTH = Dimensions.get("window").width;

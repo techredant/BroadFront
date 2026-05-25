@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DrawerActions } from "@react-navigation/native";
 import { useTheme } from "@/context/ThemeContext";
-import { VerifiedBadge } from "@/app/components/VerifiedBadge";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { useFollowContext } from "@/context/FollowContext";
 import { useUser } from "@clerk/clerk-expo";
 import { router, useFocusEffect, useNavigation } from "expo-router";

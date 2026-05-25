@@ -1,21 +1,44 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { AppState, type AppStateStatus } from "react-native";
+import { AppState, Platform, type AppStateStatus } from "react-native";
+import * as Device from "expo-device";
 import { getPushTokenIfGranted } from "@/utils/notification";
+import { getFcmToken } from "@/utils/fcmMessaging";
 import { API_PUBLIC_URL } from "@/constants/api";
 
-async function savePushToken(userId: string, token: string): Promise<boolean> {
+export async function savePushToken(
+  userId: string,
+  token: string,
+): Promise<boolean> {
   try {
-    await axios.post(`${API_PUBLIC_URL}/api/notification-token/token`, {
-      userId,
-      token,
-    });
+    const fcmToken = await getFcmToken();
+
+    await axios.post(
+      `${API_PUBLIC_URL}/api/notification-token/device/register`,
+      {
+        userId,
+        deviceId:
+          Device.osInternalBuildId ||
+          Device.osBuildId ||
+          `${Platform.OS}-${userId}`,
+        token,
+        fcmToken,
+        platform: Platform.OS,
+        osVersion: Device.osVersion,
+        deviceName: Device.deviceName,
+      },
+      { timeout: 10_000 },
+    );
     return true;
   } catch (err: unknown) {
     const status = axios.isAxiosError(err) ? err.response?.status : undefined;
     if (status === 404) {
       console.warn(
         "Push token not saved yet — user profile may still be syncing.",
+      );
+    } else if (axios.isAxiosError(err) && err.message === "Network Error") {
+      console.warn(
+        `Push token save failed: cannot reach ${API_PUBLIC_URL}. Check that the phone and backend are on the same network, or use USB reverse/proxy.`,
       );
     } else {
       console.error("Push token save failed:", err);

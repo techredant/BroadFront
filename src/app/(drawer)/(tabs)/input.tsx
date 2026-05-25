@@ -36,6 +36,7 @@ import {
   buildOptimisticNewPost,
   normalizePostId,
 } from "@/utils/buildSharePost";
+import { API_PUBLIC_URL } from "@/constants/api";
 import Video from "react-native-video";
 import { Image } from "expo-image";
 
@@ -339,7 +340,10 @@ export default function InputScreen() {
             nickName: stripNickPrefix(member.nickName),
           };
         })
-        .filter(Boolean);
+        .filter(
+          (mention): mention is { userId: string; nickName: string } =>
+            mention !== null,
+        );
 
       const payload = {
         userId: user.id,
@@ -370,7 +374,7 @@ export default function InputScreen() {
       prependPost(optimistic);
 
       const res = await axios.post(
-        `https://cast-api-zeta.vercel.app/api/posts`,
+        `${API_PUBLIC_URL}/api/posts`,
         payload,
       );
 

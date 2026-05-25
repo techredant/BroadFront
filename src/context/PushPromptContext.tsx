@@ -8,16 +8,17 @@ import React, {
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
-import axios from "axios";
 import { useAuth } from "@clerk/clerk-expo";
 import { useLevel } from "@/context/LevelContext";
-import { NotificationPermissionModal } from "@/app/components/NotificationPermissionModal";
+import { NotificationPermissionModal } from "@/components/NotificationPermissionModal";
 import {
   ensureNotificationChannels,
   requestPushPermissionsAndToken,
 } from "@/utils/notification";
-import { usePushNotifications } from "@/utils/usePushNotifications";
-import { API_PUBLIC_URL } from "@/constants/api";
+import {
+  savePushToken,
+  usePushNotifications,
+} from "@/utils/usePushNotifications";
 
 const PROMPT_STORAGE_KEY = "broadcast_push_prompt_v1";
 
@@ -96,12 +97,11 @@ export function PushPromptProvider({
     const token = await requestPushPermissionsAndToken();
     if (token && pushUserId) {
       try {
-        await axios.post(`${API_PUBLIC_URL}/api/notification-token/token`, {
-          userId: pushUserId,
-          token,
-        });
-        setPermissionGranted(true);
-        await AsyncStorage.setItem(PROMPT_STORAGE_KEY, "granted");
+        const saved = await savePushToken(pushUserId, token);
+        if (saved) {
+          setPermissionGranted(true);
+          await AsyncStorage.setItem(PROMPT_STORAGE_KEY, "granted");
+        }
       } catch (err) {
         console.error("Push token save failed:", err);
       }
