@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@clerk/clerk-expo";
 import { fetchMarketPlans, payBoost } from "@/services/marketplaceApi";
 import type { BoostPlan } from "@/types/marketplace";
+import { KeyboardAvoidingView, Platform } from "react-native";
 
 type Props = {
   visible: boolean;
@@ -109,8 +110,13 @@ export function BoostListingModal({
     }
   };
 
-  return (
-    <Modal visible={visible} animationType="slide" transparent>
+return (
+  <Modal visible={visible} animationType="slide" transparent>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={20}
+    >
       <View style={styles.overlay}>
         <View style={[styles.sheet, { backgroundColor: theme.card }]}>
           <View style={styles.handle} />
@@ -122,25 +128,37 @@ export function BoostListingModal({
                 Boost listing
               </Text>
             </View>
+
             <TouchableOpacity onPress={onClose} hitSlop={12}>
               <Ionicons name="close" size={24} color={theme.subtext} />
             </TouchableOpacity>
           </View>
 
-          <Text style={[styles.subtitle, { color: theme.subtext }]} numberOfLines={2}>
+          <Text
+            style={[styles.subtitle, { color: theme.subtext }]}
+            numberOfLines={2}
+          >
             {productTitle}
           </Text>
+
           <Text style={[styles.hint, { color: theme.subtext }]}>
             Boosted listings appear in Promoted and rank higher until the timer
             expires.
           </Text>
 
           {loadingPlans ? (
-            <ActivityIndicator style={{ marginVertical: 24 }} color={theme.primary} />
+            <ActivityIndicator
+              style={{ marginVertical: 24 }}
+              color={theme.primary}
+            />
           ) : (
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               {plans.map((plan) => {
                 const selected = selectedPlan === plan.id;
+
                 return (
                   <TouchableOpacity
                     key={plan.id}
@@ -159,13 +177,21 @@ export function BoostListingModal({
                       <Text style={[styles.planLabel, { color: theme.text }]}>
                         {plan.label}
                       </Text>
-                      <Text style={{ color: theme.subtext, fontSize: 12 }}>
+
+                      <Text
+                        style={{
+                          color: theme.subtext,
+                          fontSize: 12,
+                        }}
+                      >
                         {plan.durationDays} days · higher visibility
                       </Text>
                     </View>
+
                     <Text style={[styles.planPrice, { color: theme.primary }]}>
                       KES {plan.amount}
                     </Text>
+
                     {selected && (
                       <Ionicons
                         name="checkmark-circle"
@@ -181,6 +207,7 @@ export function BoostListingModal({
               <Text style={[styles.inputLabel, { color: theme.text }]}>
                 M-Pesa phone number
               </Text>
+
               <TextInput
                 placeholder="07XX XXX XXX"
                 placeholderTextColor={theme.subtext}
@@ -189,7 +216,10 @@ export function BoostListingModal({
                 onChangeText={setPhone}
                 style={[
                   styles.input,
-                  { color: theme.text, borderColor: theme.border },
+                  {
+                    color: theme.text,
+                    borderColor: theme.border,
+                  },
                 ]}
               />
             </ScrollView>
@@ -214,8 +244,9 @@ export function BoostListingModal({
           </TouchableOpacity>
         </View>
       </View>
-    </Modal>
-  );
+    </KeyboardAvoidingView>
+  </Modal>
+);
 }
 
 const styles = StyleSheet.create({
