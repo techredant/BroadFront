@@ -5,6 +5,7 @@ import { ChatGallery } from "@/components/ChatGallery";
 import { ChatMessageInput } from "@/components/ChatMessageInput";
 import { ChatVideoThumbnail } from "@/components/ChatVideoThumbnail";
 import { ChatKeyboardCompatibleView } from "@/components/ChatKeyboardCompatibleView";
+import { ChatStreamThemeProvider } from "@/components/ChatStreamThemeProvider";
 import { ChatWallpaper } from "@/components/ChatWallpaper";
 import { useTheme } from "@/context/ThemeContext";
 import { useAppContext } from "@/contexts/AppProvider";
@@ -22,6 +23,7 @@ import {
 } from "react";
 import { useChatMemberProfiles } from "@/context/ChatMemberProfilesContext";
 import { resolveChatDisplayName } from "@/utils/streamUser";
+import { streamVideoCallId } from "@/utils/callDisplay";
 import {
   getGroupChannelImage,
   getGroupChannelName,
@@ -161,12 +163,13 @@ const ChannelScreen = () => {
 
   const startCall = useCallback(
     (callMode: "video" | "audio") => {
-      const callId = channel?.cid?.split(":").pop() ?? channel?.id ?? "";
-      if (!callId) return;
+      const channelId = channel?.cid?.split(":").pop() ?? channel?.id ?? "";
+      if (!channelId) return;
+      const videoCallId = streamVideoCallId(channelId);
       router.push({
         pathname: "/(drawer)/(stream)/call/[callId]",
         params: {
-          callId,
+          callId: videoCallId,
           isCaller: "true",
           callMode,
         },
@@ -335,43 +338,45 @@ function CallMissedCard() {
   return (
     <View style={{ flex: 1 }}>
       <ChatWallpaper />
-      <Channel
-        channel={channel}
-        {...channelLayout}
-        KeyboardCompatibleView={ChatKeyboardCompatibleView}
-        myMessageTheme={myMessageTheme}
-        Gallery={ChatGallery}
-        VideoThumbnail={StreamVideoThumbnail}
-        MessageText={ChatMessageText}
-        Card={(props) => {
-          if (props.type === "call_missed") {
-            return <CallMissedCard />;
-          }
-          return <StreamCard {...props} />;
-        }}
-        EmptyStateIndicator={() => (
-          <EmptyState
-            icon="chatbubble-outline"
-            title="No messages yet"
-            subtitle="Start the conversation"
+      <ChatStreamThemeProvider>
+        <Channel
+          channel={channel}
+          {...channelLayout}
+          KeyboardCompatibleView={ChatKeyboardCompatibleView}
+          myMessageTheme={myMessageTheme}
+          Gallery={ChatGallery}
+          VideoThumbnail={StreamVideoThumbnail}
+          MessageText={ChatMessageText}
+          Card={(props) => {
+            if (props.type === "call_missed") {
+              return <CallMissedCard />;
+            }
+            return <StreamCard {...props} />;
+          }}
+          EmptyStateIndicator={() => (
+            <EmptyState
+              icon="chatbubble-outline"
+              title="No messages yet"
+              subtitle="Start the conversation"
+            />
+          )}
+        >
+          {/* 🔥 CUSTOM MESSAGE RENDER */}
+          <MessageList
+            additionalFlatListProps={{
+              style: { backgroundColor: "transparent" },
+              contentContainerStyle: { backgroundColor: "transparent" },
+            }}
+            onThreadSelect={(thread) => {
+              if (!thread?.cid) return;
+              setThread(thread);
+              router.push(`/channel/${channel.cid}/thread/${thread.cid}`);
+            }}
           />
-        )}
-      >
-        {/* 🔥 CUSTOM MESSAGE RENDER */}
-        <MessageList
-          additionalFlatListProps={{
-            style: { backgroundColor: "transparent" },
-            contentContainerStyle: { backgroundColor: "transparent" },
-          }}
-          onThreadSelect={(thread) => {
-            if (!thread?.cid) return;
-            setThread(thread);
-            router.push(`/channel/${channel.cid}/thread/${thread.cid}`);
-          }}
-        />
 
-        <ChatMessageInput audioRecordingEnabled />
-      </Channel>
+          <ChatMessageInput audioRecordingEnabled />
+        </Channel>
+      </ChatStreamThemeProvider>
     </View>
   );
 };

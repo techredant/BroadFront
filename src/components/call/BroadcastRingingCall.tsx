@@ -9,6 +9,7 @@ type Props = {
   isCaller: boolean;
   isVideoCall: boolean;
   controls: React.ReactNode;
+  statusText?: string;
 };
 
 export function BroadcastRingingCall({
@@ -17,7 +18,16 @@ export function BroadcastRingingCall({
   isCaller,
   isVideoCall,
   controls,
+  statusText,
 }: Props) {
+  const defaultStatus = isCaller
+    ? isVideoCall
+      ? "Video calling…"
+      : "Calling…"
+    : isVideoCall
+      ? "Incoming video call…"
+      : "Incoming call…";
+
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.body}>
@@ -35,15 +45,7 @@ export function BroadcastRingingCall({
         <Text style={styles.name} numberOfLines={2}>
           {remoteName}
         </Text>
-        <Text style={styles.status}>
-          {isCaller
-            ? isVideoCall
-              ? "Video calling…"
-              : "Calling…"
-            : isVideoCall
-              ? "Incoming video call…"
-              : "Incoming call…"}
-        </Text>
+        <Text style={styles.status}>{statusText ?? defaultStatus}</Text>
         <View style={styles.controls}>{controls}</View>
       </View>
     </SafeAreaView>

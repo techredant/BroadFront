@@ -220,3 +220,16 @@ export const getStreamTheme = (
     },
   };
 };
+
+/** Overlay for wallpaper chat screens — transparent Stream message-list empty state. */
+export const chatWallpaperStreamThemeStyle = (): DeepPartial<Theme> => ({
+  colors: {
+    white_snow: "transparent",
+  },
+  messageList: {
+    unreadMessagesNotification: {
+      text: { color: "#ffffff" },
+      closeIcon: { pathFill: "#ffffff" },
+    },
+  },
+});

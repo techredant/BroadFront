@@ -1,6 +1,6 @@
 {
   "name": "broadcast",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "version": "2.1.90",
   "scripts": {
     "start": "expo start",

@@ -14,12 +14,21 @@ type ResolveOptions = {
  * Incoming calls trust the ring route param (from event.video + settings).
  */
 export function resolveCallModeFromCall(
-  _call: Call | null | undefined,
+  call: Call | null | undefined,
   { urlMode, isCaller }: ResolveOptions,
 ): CallMode {
   if (isCaller) {
     return urlMode;
   }
+
+  const custom = call?.state?.custom as { callMode?: string } | undefined;
+  if (custom?.callMode === "audio") return "audio";
+  if (custom?.callMode === "video") return "video";
+
+  const videoEnabled = call?.state?.settings?.video?.enabled;
+  if (videoEnabled === false) return "audio";
+  if (videoEnabled === true) return "video";
+
   return urlMode;
 }
 

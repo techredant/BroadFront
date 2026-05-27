@@ -2,8 +2,8 @@ import { useEffect } from "react";
 import { useAudioPlayer } from "expo-audio";
 import * as Haptics from "expo-haptics";
 
-const incomingSource = require("@/assets/notifications/callings.mp3");
-const outgoingSource = require("@/assets/notifications/outgoing.mp3");
+const incomingSource = require("@/assets/notifications/inComing.wav");
+const outgoingSource = require("@/assets/notifications/outgoing.wav");
 
 export function useCallRingtone(
   enabled: boolean,

@@ -23,6 +23,7 @@ import { ChatGallery } from "@/components/ChatGallery";
 import { ChatMessageInput } from "@/components/ChatMessageInput";
 import { ChatVideoThumbnail } from "@/components/ChatVideoThumbnail";
 import { ChatKeyboardCompatibleView } from "@/components/ChatKeyboardCompatibleView";
+import { ChatStreamThemeProvider } from "@/components/ChatStreamThemeProvider";
 import { ChatWallpaper } from "@/components/ChatWallpaper";
 import { useStreamChannelLayout } from "@/utils/chatLayout";
 import { AI_MODEL, AI_PLATFORM } from "@/constants/ai";
@@ -116,26 +117,28 @@ export default function AIChatScreen() {
   return (
     <View style={styles.root}>
       <ChatWallpaper />
-      <Channel
-        channel={channel}
-        {...channelLayout}
-        KeyboardCompatibleView={ChatKeyboardCompatibleView}
-        hasCameraPicker={false}
-        audioRecordingEnabled={false}
-        Gallery={ChatGallery}
-        VideoThumbnail={ChatVideoThumbnail}
-        EmptyStateIndicator={() => (
-          <EmptyState
-            icon="sparkles-outline"
-            title="Ask me anything"
-            subtitle="Messages stream in real time with typing indicators."
-          />
-        )}
-      >
-        <MessageList />
-        <AITypingIndicatorView channel={channel} />
-        <ChatMessageInput />
-      </Channel>
+      <ChatStreamThemeProvider>
+        <Channel
+          channel={channel}
+          {...channelLayout}
+          KeyboardCompatibleView={ChatKeyboardCompatibleView}
+          hasCameraPicker={false}
+          audioRecordingEnabled={false}
+          Gallery={ChatGallery}
+          VideoThumbnail={ChatVideoThumbnail}
+          EmptyStateIndicator={() => (
+            <EmptyState
+              icon="sparkles-outline"
+              title="Ask me anything"
+              subtitle="Messages stream in real time with typing indicators."
+            />
+          )}
+        >
+          <MessageList />
+          <AITypingIndicatorView channel={channel} />
+          <ChatMessageInput />
+        </Channel>
+      </ChatStreamThemeProvider>
     </View>
   );
 }

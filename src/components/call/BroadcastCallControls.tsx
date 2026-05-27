@@ -1,12 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
   CallingState,
-  callManager,
   useCall,
   useCallStateHooks,
 } from "@stream-io/video-react-native-sdk";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { joinCallWithMedia } from "@/utils/callMedia";
 
 const RED = "#ef4444";
 const GREEN = "#22c55e";
@@ -40,17 +40,7 @@ export function BroadcastIncomingCallControls({
     if (!call) return;
     setBusy("accept");
     try {
-      if (isVideoCall) {
-        await call.camera.enable();
-      } else {
-        await call.camera.disable();
-      }
-      await call.microphone.enable();
-      await call.join();
-      callManager.start({
-        audioRole: "communicator",
-        deviceEndpointType: "speaker",
-      });
+      await joinCallWithMedia(call, isVideoCall);
     } finally {
       setBusy(null);
     }
@@ -108,9 +98,17 @@ export function BroadcastOutgoingCallControls({ onDone }: ControlProps) {
 export function BroadcastActiveCallControls({
   onHangup,
   showCamera = true,
+  showSpeakerToggle = false,
+  showFlipCamera = false,
+  onToggleSpeaker,
+  onFlipCamera,
 }: {
   onHangup: () => void | Promise<void>;
   showCamera?: boolean;
+  showSpeakerToggle?: boolean;
+  showFlipCamera?: boolean;
+  onToggleSpeaker?: () => void;
+  onFlipCamera?: () => void;
 }) {
   const call = useCall();
   const micOn = call?.microphone.state.status === "enabled";
@@ -118,6 +116,9 @@ export function BroadcastActiveCallControls({
 
   return (
     <View style={styles.activeRow}>
+      {showSpeakerToggle ? (
+        <SmallButton icon="volume-high" onPress={() => onToggleSpeaker?.()} />
+      ) : null}
       <SmallButton
         icon={micOn ? "mic" : "mic-off"}
         onPress={() => call?.microphone.toggle()}
@@ -129,7 +130,9 @@ export function BroadcastActiveCallControls({
         onPress={onHangup}
         size={72}
       />
-      {showCamera ? (
+      {showFlipCamera ? (
+        <SmallButton icon="camera-reverse" onPress={() => onFlipCamera?.()} />
+      ) : showCamera ? (
         <SmallButton
           icon={camOn ? "videocam" : "videocam-off"}
           onPress={() => call?.camera.toggle()}

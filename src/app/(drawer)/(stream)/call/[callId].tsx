@@ -6,26 +6,25 @@ import {
 } from "@/components/call/BroadcastCallControls";
 import { BroadcastParticipantLabel } from "@/components/call/BroadcastParticipantLabel";
 import { BroadcastRingingCall } from "@/components/call/BroadcastRingingCall";
-import {
-  buildCallMemberDisplayNames,
-  displayNameFromChatUser,
-  getRemoteChatMember,
-} from "@/utils/callDisplayName";
-import { upsertStreamUser } from "@/utils/streamUser";
+import { BroadcastFloatingLocalVideo } from "@/components/call/BroadcastFloatingLocalVideo";
+import { useCallManager } from "@/hooks/useCallManager";
 import { useCallRingtone } from "@/hooks/useCallRingtone";
+import { useWebRTC } from "@/hooks/useWebRTC";
+import {
+  mapCallingStateToStatus,
+  statusLabel,
+} from "@/utils/callStatus";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  Call,
   CallContent,
   CallingState,
   StreamCall,
-  callManager,
   useCall,
   useCallStateHooks,
   useStreamVideoClient,
 } from "@stream-io/video-react-native-sdk";
-import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ActivityIndicator,
   Pressable,
@@ -35,12 +34,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useChatContext } from "stream-chat-expo";
+import type { CallMode } from "@/utils/callMode";
 
 function resolveCallId(raw: string) {
   return raw.includes(":") ? raw.split(":").pop()! : raw;
 }
-
-export type CallMode = "video" | "audio";
 
 const CallScreen = () => {
   const {
@@ -56,112 +54,26 @@ const CallScreen = () => {
   const callId = rawCallId ? resolveCallId(rawCallId) : "";
   const isCaller = callerParam === "true";
   const callMode: CallMode = callModeParam === "audio" ? "audio" : "video";
-  const isVideoCall = callMode === "video";
 
   const videoClient = useStreamVideoClient();
   const { client: chatClient } = useChatContext();
-  const [call, setCall] = useState<Call | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [effectiveCallMode, setEffectiveCallMode] =
-    useState<CallMode>(callMode);
-  const [displayNames, setDisplayNames] = useState<Record<string, string>>({});
-  const [remotePeer, setRemotePeer] = useState<{
-    name: string;
-    image?: string;
-  }>({ name: "User" });
+  const router = useRouter();
 
-  useEffect(() => {
-    if (!videoClient || !callId || !chatClient?.userID) return;
-
-    let cancelled = false;
-
-    const startCall = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const channel = chatClient.channel("messaging", callId);
-        await channel.watch();
-
-        const myId = chatClient.userID!;
-        const nameMap = buildCallMemberDisplayNames(channel, myId);
-        setDisplayNames(nameMap);
-
-        const remote = getRemoteChatMember(channel, myId);
-        const remoteName = displayNameFromChatUser(remote?.user);
-        const remoteImage = remote?.user?.image;
-        setRemotePeer({ name: remoteName, image: remoteImage });
-
-        await Promise.all(
-          Object.entries(nameMap).map(([userId, name]) =>
-            userId === myId
-              ? Promise.resolve()
-              : upsertStreamUser({
-                  userId,
-                  name,
-                  image: channel.state.members[userId]?.user?.image,
-                }).catch(() => {}),
-          ),
-        );
-
-        // Reuse the call instance the SDK registered on call.ring (critical for ringing flow).
-        let _call = videoClient.call("default", callId, {
-          reuseInstance: true,
-        });
-        if (!isCaller && !_call.ringing) {
-          await new Promise((r) => setTimeout(r, 400));
-          _call = videoClient.call("default", callId, { reuseInstance: true });
-        }
-
-        if (isCaller) {
-          const memberIds = new Set<string>([myId]);
-          Object.values(channel.state.members).forEach((m) => {
-            if (m.user_id) memberIds.add(m.user_id);
-          });
-
-          await _call.getOrCreate({
-            ring: true,
-            video: isVideoCall,
-            data: {
-              members: Array.from(memberIds).map((user_id) => ({ user_id })),
-              custom: { triggeredBy: myId, callMode },
-            },
-          });
-
-          if (isVideoCall) {
-            await _call.camera.enable();
-          } else {
-            await _call.camera.disable();
-          }
-          await _call.microphone.enable();
-        } else {
-          if (!_call.ringing) {
-            await _call.get({ ring: true });
-          }
-          const custom = _call.state?.custom as
-            | { callMode?: string }
-            | undefined;
-          if (custom?.callMode === "audio" && !cancelled) {
-            setEffectiveCallMode("audio");
-          }
-        }
-
-        if (!cancelled) setCall(_call);
-      } catch (err) {
-        console.error("Failed to start call:", err);
-        if (!cancelled) setError("Failed to start the call. Try again.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    startCall();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [videoClient, callId, isCaller, isVideoCall, callMode, chatClient]);
+  const {
+    call,
+    loading,
+    error,
+    remotePeer,
+    displayNames,
+    effectiveCallMode,
+  } = useCallManager({
+    videoClient,
+    chatClient,
+    rawCallId: callId,
+    isCaller,
+    urlCallMode: callMode,
+    userId: chatClient?.userID,
+  });
 
   if (loading) {
     return (
@@ -203,8 +115,33 @@ function CallUI({
   const router = useRouter();
   const { useCallCallingState } = useCallStateHooks();
   const callingState = useCallCallingState();
+  const [calleeConnected, setCalleeConnected] = useState(!isCaller);
 
+  useEffect(() => {
+    if (!call || !isCaller) return;
+
+    const markConnected = (userId?: string) => {
+      if (!userId || userId === call.currentUserId) return;
+      setCalleeConnected(true);
+    };
+
+    const unsubAccepted = call.on("call.accepted", (event) => {
+      markConnected(event.user?.id);
+    });
+    const unsubJoined = call.on("call.session_participant_joined", (event) => {
+      markConnected(event.participant?.user?.id);
+    });
+
+    return () => {
+      unsubAccepted();
+      unsubJoined();
+    };
+  }, [call, isCaller]);
+
+  const isJoined = callingState === CallingState.JOINED;
+  const waitingForCallee = isCaller && !calleeConnected;
   const isRinging =
+    waitingForCallee ||
     [CallingState.RINGING, CallingState.JOINING, CallingState.IDLE].includes(
       callingState,
     ) ||
@@ -214,54 +151,41 @@ function CallUI({
         callingState !== CallingState.LEFT,
     );
 
+  const sessionStatus = mapCallingStateToStatus(callingState, {
+    ringing: Boolean(call?.ringing),
+    isCaller,
+  });
+
   useCallRingtone(
     callingState !== CallingState.JOINED &&
       callingState !== CallingState.LEFT,
     !isCaller,
   );
 
-  // Caller auto-joins when callee accepts (Stream docs); ensure we join + publish.
-  useEffect(() => {
-    if (!call || !isCaller) return;
+  const { toggleSpeaker, flipCamera, permissionError } = useWebRTC(
+    call,
+    isVideoCall,
+    isJoined && !waitingForCallee,
+  );
 
-    const onAccepted = async (event: { user: { id?: string } }) => {
-      if (event.user?.id === call.currentUserId) return;
-      if (call.state.callingState === CallingState.JOINED) return;
-
-      try {
-        if (isVideoCall) {
-          await call.camera.enable();
-        } else {
-          await call.camera.disable();
-        }
-        await call.microphone.enable();
-        await call.join();
-        callManager.start({
-          audioRole: "communicator",
-          deviceEndpointType: "speaker",
-        });
-      } catch (e) {
-        console.error("Caller join on accept failed:", e);
-      }
-    };
-
-    return call.on("call.accepted", onAccepted);
-  }, [call, isCaller, isVideoCall]);
-
-  useEffect(() => {
-    if (!call || callingState !== CallingState.JOINED) return;
-    callManager.start({
-      audioRole: "communicator",
-      deviceEndpointType: "speaker",
-    });
-  }, [call, callingState]);
+  const hangup = async () => {
+    if (call?.isCreatedByMe) {
+      await call.endCall();
+    } else {
+      await call?.leave();
+    }
+    router.back();
+  };
 
   useEffect(() => {
     if (callingState === CallingState.LEFT) {
-      callManager.stop();
       router.back();
     }
   }, [callingState, router]);
+
+  if (permissionError && isJoined) {
+    return <ErrorCallUI error={permissionError} />;
+  }
 
   if (isRinging) {
     return (
@@ -270,6 +194,7 @@ function CallUI({
         remoteImage={remotePeer.image}
         isCaller={isCaller}
         isVideoCall={isVideoCall}
+        statusText={statusLabel(sessionStatus)}
         controls={
           isCaller ? (
             <BroadcastOutgoingCallControls onDone={() => router.back()} />
@@ -290,27 +215,25 @@ function CallUI({
         <View style={styles.audioCallBody}>
           <Ionicons name="call" size={48} color="rgba(255,255,255,0.9)" />
           <Text style={styles.audioCallLabel}>{remotePeer.name}</Text>
-          <Text style={styles.audioCallSub}>Voice call</Text>
+          <Text style={styles.audioCallSub}>
+            {statusLabel(sessionStatus) || "Voice call"}
+          </Text>
         </View>
         <BroadcastActiveCallControls
           showCamera={false}
-          onHangup={async () => {
-            if (call?.isCreatedByMe) {
-              await call.endCall();
-            } else {
-              await call?.leave();
-            }
-            router.back();
-          }}
+          showSpeakerToggle
+          onToggleSpeaker={toggleSpeaker}
+          onHangup={hangup}
         />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.activeRoot}>
+    <SafeAreaView style={styles.activeRoot} edges={["top"]}>
       <CallContent
-        layout="spotlight"
+        layout="grid"
+        FloatingParticipantView={BroadcastFloatingLocalVideo}
         ParticipantLabel={(props) => (
           <BroadcastParticipantLabel
             {...props}
@@ -320,14 +243,11 @@ function CallUI({
         CallControls={() => (
           <BroadcastActiveCallControls
             showCamera
-            onHangup={async () => {
-              if (call?.isCreatedByMe) {
-                await call.endCall();
-              } else {
-                await call?.leave();
-              }
-              router.back();
-            }}
+            showSpeakerToggle
+            showFlipCamera
+            onToggleSpeaker={toggleSpeaker}
+            onFlipCamera={() => void flipCamera()}
+            onHangup={hangup}
           />
         )}
       />

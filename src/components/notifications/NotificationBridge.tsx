@@ -3,7 +3,10 @@ import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";
 import { useLevel } from "@/context/LevelContext";
-import { useIncomingCallOverlay } from "@/components/notifications/IncomingCallOverlay";
+import { useIncomingCall } from "@/components/notifications/IncomingCallOverlay";
+import { rejectRingingCall } from "@/utils/callBusy";
+import { getCallVideoClient } from "@/utils/callSessionRegistry";
+import { cancelIncomingCallNotification } from "@/utils/notifeeNotifications";
 import { usePushNotifications } from "@/utils/usePushNotifications";
 import {
   getNotificationData,
@@ -35,7 +38,7 @@ export function NotificationBridge() {
   const router = useRouter();
   const { userDetails } = useLevel();
   const pushUserId = userDetails?.clerkId;
-  const { showIncomingCall } = useIncomingCallOverlay();
+  const { showIncomingCall, acceptIncomingCall } = useIncomingCall();
 
   usePushNotifications(pushUserId, Boolean(pushUserId));
 
@@ -45,14 +48,11 @@ export function NotificationBridge() {
     void consumePendingNotifeeAction().then((pending) => {
       if (!pending) return;
       if (pending.actionId === "call_answer" && pending.data.callId) {
-        router.push({
-          pathname: "/(drawer)/(stream)/call/[callId]",
-          params: {
-            callId: String(pending.data.callId),
-            isCaller: "false",
-            callMode: pending.data.callMode === "audio" ? "audio" : "video",
-          },
-        } as never);
+        void acceptIncomingCall({
+          callId: String(pending.data.callId),
+          callMode: pending.data.callMode === "audio" ? "audio" : "video",
+          callerName: "Incoming call",
+        });
         return;
       }
       if (pending.actionId !== "call_decline") {
@@ -64,16 +64,20 @@ export function NotificationBridge() {
       onNavigate: (data) => navigateFromPayload(router, data),
       onAnswerCall: (data) => {
         if (!data.callId) return;
-        router.push({
-          pathname: "/(drawer)/(stream)/call/[callId]",
-          params: {
-            callId: String(data.callId),
-            isCaller: "false",
-            callMode: data.callMode === "audio" ? "audio" : "video",
-          },
-        } as never);
+        void acceptIncomingCall({
+          callId: String(data.callId),
+          callMode: data.callMode === "audio" ? "audio" : "video",
+          callerName: "Incoming call",
+        });
       },
-      onDeclineCall: () => {},
+      onDeclineCall: (data) => {
+        if (!data.callId) return;
+        const client = getCallVideoClient();
+        if (client) {
+          void rejectRingingCall(client, String(data.callId), "decline");
+        }
+        void cancelIncomingCallNotification(String(data.callId));
+      },
     });
 
     const receivedSub = Notifications.addNotificationReceivedListener(
@@ -138,7 +142,7 @@ export function NotificationBridge() {
       receivedSub.remove();
       responseSub.remove();
     };
-  }, [router, showIncomingCall]);
+  }, [router, showIncomingCall, acceptIncomingCall]);
 
   return null;
 }

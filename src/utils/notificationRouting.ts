@@ -127,7 +127,7 @@ export function handleNotificationRedirect(
   handleNotificationDataRedirect(router, data);
 }
 
-/** Only incoming calls should auto-open while the app is in the foreground. */
-export function shouldAutoOpenInForeground(notification: Notification) {
-  return isIncomingCallNotification(getNotificationData(notification));
+/** Incoming calls use the global overlay — never auto-navigate in foreground. */
+export function shouldAutoOpenInForeground(_notification: Notification) {
+  return false;
 }

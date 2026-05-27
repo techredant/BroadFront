@@ -98,8 +98,6 @@ const Section = ({ title, children }: SectionProps) => {
 
       <View
         style={{
-          borderBottomWidth: 1,
-          borderBottomColor: theme.border,
           marginVertical: 8,
         }}
       />
@@ -279,7 +277,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     padding: 16,
-    borderBottomWidth: 1,
+   
   },
   rowContent: {
     flexDirection: "row",

@@ -7,6 +7,11 @@ import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/context/ThemeContext";
 import { useCallRingtone } from "@/hooks/useCallRingtone";
+import { getCallVideoClient } from "@/utils/callSessionRegistry";
+import { rejectRingingCall } from "@/utils/callBusy";
+import { cancelIncomingCallNotification } from "@/utils/notifeeNotifications";
+import { callDebug } from "@/utils/callDebug";
+import { joinCallWithMedia } from "@/utils/callMedia";
 
 export type IncomingCallPayload = {
   callId: string;
@@ -19,34 +24,24 @@ type IncomingCallContextValue = {
   incomingCall: IncomingCallPayload | null;
   showIncomingCall: (payload: IncomingCallPayload) => void;
   dismissIncomingCall: () => void;
+  acceptIncomingCall: (payload?: IncomingCallPayload) => Promise<void>;
+  declineIncomingCall: (payload?: IncomingCallPayload) => Promise<void>;
 };
 
 const IncomingCallContext = createContext<IncomingCallContextValue | null>(null);
 
 function IncomingCallModal({
   incomingCall,
-  onDismiss,
+  onAccept,
+  onDecline,
 }: {
   incomingCall: IncomingCallPayload;
-  onDismiss: () => void;
+  onAccept: () => void;
+  onDecline: () => void;
 }) {
-  const router = useRouter();
   const { isDark } = useTheme();
 
   useCallRingtone(true, true);
-
-  const acceptCall = () => {
-    const { callId, callMode = "video" } = incomingCall;
-    onDismiss();
-    router.push({
-      pathname: "/(drawer)/(stream)/call/[callId]",
-      params: {
-        callId,
-        isCaller: "false",
-        callMode,
-      },
-    } as any);
-  };
 
   return (
     <Modal
@@ -54,7 +49,7 @@ function IncomingCallModal({
       animationType="fade"
       transparent
       statusBarTranslucent
-      onRequestClose={onDismiss}
+      onRequestClose={onDecline}
     >
       <BlurView intensity={80} tint={isDark ? "dark" : "light"} style={styles.backdrop}>
         <View style={styles.sheet}>
@@ -78,10 +73,10 @@ function IncomingCallModal({
           </Text>
 
           <View style={styles.actions}>
-            <Pressable style={[styles.btn, styles.decline]} onPress={onDismiss}>
+            <Pressable style={[styles.btn, styles.decline]} onPress={onDecline}>
               <Ionicons name="close" size={28} color="#fff" />
             </Pressable>
-            <Pressable style={[styles.btn, styles.accept]} onPress={acceptCall}>
+            <Pressable style={[styles.btn, styles.accept]} onPress={onAccept}>
               <Ionicons name="call" size={26} color="#fff" />
             </Pressable>
           </View>
@@ -92,6 +87,7 @@ function IncomingCallModal({
 }
 
 export function IncomingCallProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [incomingCall, setIncomingCall] = useState<IncomingCallPayload | null>(null);
 
   const dismissIncomingCall = useCallback(() => {
@@ -100,30 +96,104 @@ export function IncomingCallProvider({ children }: { children: React.ReactNode }
 
   const showIncomingCall = useCallback((payload: IncomingCallPayload) => {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    setIncomingCall(payload);
+    setIncomingCall((current) => current ?? payload);
   }, []);
 
+  const acceptIncomingCall = useCallback(
+    async (payload?: IncomingCallPayload) => {
+      const call = payload ?? incomingCall;
+      if (!call) return;
+
+      dismissIncomingCall();
+      await cancelIncomingCallNotification(call.callId).catch(() => {});
+
+      const client = getCallVideoClient();
+      if (client) {
+        try {
+          const streamCall = client.call("default", call.callId, {
+            reuseInstance: true,
+          });
+          if (!streamCall.ringing) {
+            await streamCall
+              .get({ ring: true, video: call.callMode !== "audio" })
+              .catch(() => {});
+          }
+          await joinCallWithMedia(streamCall, call.callMode !== "audio");
+        } catch (err) {
+          callDebug.warn("accept-incoming-join-failed", err);
+        }
+      }
+
+      router.push({
+        pathname: "/(drawer)/(stream)/call/[callId]",
+        params: {
+          callId: call.callId,
+          isCaller: "false",
+          callMode: call.callMode ?? "video",
+        },
+      } as never);
+    },
+    [dismissIncomingCall, incomingCall, router],
+  );
+
+  const declineIncomingCall = useCallback(
+    async (payload?: IncomingCallPayload) => {
+      const call = payload ?? incomingCall;
+      if (!call) return;
+
+      dismissIncomingCall();
+      const client = getCallVideoClient();
+      if (client) {
+        await rejectRingingCall(client, call.callId, "decline");
+      }
+      await cancelIncomingCallNotification(call.callId).catch(() => {});
+      callDebug.log("decline-incoming", call.callId);
+    },
+    [dismissIncomingCall, incomingCall],
+  );
+
   const value = useMemo(
-    () => ({ incomingCall, showIncomingCall, dismissIncomingCall }),
-    [incomingCall, showIncomingCall, dismissIncomingCall],
+    () => ({
+      incomingCall,
+      showIncomingCall,
+      dismissIncomingCall,
+      acceptIncomingCall,
+      declineIncomingCall,
+    }),
+    [
+      incomingCall,
+      showIncomingCall,
+      dismissIncomingCall,
+      acceptIncomingCall,
+      declineIncomingCall,
+    ],
   );
 
   return (
     <IncomingCallContext.Provider value={value}>
       {children}
       {incomingCall ? (
-        <IncomingCallModal incomingCall={incomingCall} onDismiss={dismissIncomingCall} />
+        <IncomingCallModal
+          incomingCall={incomingCall}
+          onAccept={() => void acceptIncomingCall()}
+          onDecline={() => void declineIncomingCall()}
+        />
       ) : null}
     </IncomingCallContext.Provider>
   );
 }
 
-export function useIncomingCallOverlay() {
+export function useIncomingCall() {
   const ctx = useContext(IncomingCallContext);
   if (!ctx) {
-    throw new Error("useIncomingCallOverlay must be used inside IncomingCallProvider");
+    throw new Error("useIncomingCall must be used inside IncomingCallProvider");
   }
   return ctx;
+}
+
+/** @deprecated Use useIncomingCall */
+export function useIncomingCallOverlay() {
+  return useIncomingCall();
 }
 
 const styles = StyleSheet.create({

@@ -1,23 +1,34 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { Stack } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   StreamVideo,
   StreamVideoClient,
 } from "@stream-io/video-react-native-sdk";
 import { useLevel } from "@/context/LevelContext";
 import { fetchStreamToken } from "@/utils/streamToken";
+import { registerCallVideoClient } from "@/utils/callSessionRegistry";
+import { CallRingBridge } from "@/components/call/CallRingBridge";
 
 const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
+const STREAM_USER_KEY = "@broadcast/stream_push_user";
 
-export default function AudioLayout() {
+/** Keeps Stream Video connected for the whole signed-in app session. */
+export function GlobalStreamVideoProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const { userDetails } = useLevel();
   const [videoClient, setVideoClient] = useState<StreamVideoClient | null>(null);
   const clientRef = useRef<StreamVideoClient | null>(null);
 
   useEffect(() => {
     const clerkId = userDetails?.clerkId;
-    if (!clerkId) return;
+    if (!clerkId) {
+      setVideoClient(null);
+      registerCallVideoClient(null);
+      return;
+    }
 
     let cancelled = false;
 
@@ -42,42 +53,51 @@ export default function AudioLayout() {
             }),
         });
 
+        void AsyncStorage.setItem(
+          STREAM_USER_KEY,
+          JSON.stringify({
+            id: clerkId,
+            name: displayName,
+            image: userDetails.image,
+          }),
+        );
+
         if (!cancelled) {
           clientRef.current = client;
+          registerCallVideoClient(client);
           setVideoClient(client);
         }
       } catch (err) {
-        console.error("Failed to initialize audio Stream Video:", err);
+        console.error("Failed to initialize global Stream Video:", err);
       }
     };
 
-    init();
+    void init();
 
     return () => {
       cancelled = true;
+      clientRef.current?.disconnectUser().catch(() => {});
       clientRef.current = null;
+      registerCallVideoClient(null);
+      setVideoClient(null);
     };
-  }, [userDetails?.clerkId]);
+  }, [
+    userDetails?.clerkId,
+    userDetails?.firstName,
+    userDetails?.lastName,
+    userDetails?.companyName,
+    userDetails?.nickName,
+    userDetails?.image,
+  ]);
 
   if (!videoClient) {
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator />
-      </View>
-    );
+    return <>{children}</>;
   }
 
   return (
     <StreamVideo client={videoClient}>
-      <Stack screenOptions={{ headerShown: false }} />
+      <CallRingBridge />
+      {children}
     </StreamVideo>
   );
 }
-
-const styles = StyleSheet.create({
-  loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-});

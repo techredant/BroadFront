@@ -10,14 +10,42 @@ type EmptyStateProps = {
 };
 
 export function EmptyState({ icon, title, subtitle }: EmptyStateProps) {
-  const { theme } =useTheme()
+  const { theme } = useTheme();
   return (
-    <View className="flex-1 items-center justify-center bg-surface-light px-5" style={{ backgroundColor: theme.background}}>
-      <View className="mb-4">
-        <Ionicons name={icon} size={64} color={theme.text} />
+    <View
+      style={{
+        flex: 1,
+        width: "100%",
+        alignSelf: "stretch",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "transparent",
+        paddingHorizontal: 20,
+      }}
+    >
+      <View style={{ marginBottom: 16 }}>
+        <Ionicons name={icon} size={64} color={theme.subtext} />
       </View>
-      <Text className="text-center text-base text-foreground-muted">{title}</Text>
-      <Text className="mt-1 text-center text-sm text-foreground-subtle">{subtitle}</Text>
+      <Text
+        style={{
+          textAlign: "center",
+          fontSize: 16,
+          color: theme.subtext,
+        }}
+      >
+        {title}
+      </Text>
+      <Text
+        style={{
+          marginTop: 4,
+          textAlign: "center",
+          fontSize: 14,
+          color: theme.subtext,
+          opacity: 0.75,
+        }}
+      >
+        {subtitle}
+      </Text>
     </View>
   );
 }

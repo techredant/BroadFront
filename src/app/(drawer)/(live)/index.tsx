@@ -103,7 +103,6 @@ export default function App() {
 
     return () => {
       cancelled = true;
-      clientRef.current?.disconnectUser().catch(() => {});
       clientRef.current = null;
       setClient(null);
     };
