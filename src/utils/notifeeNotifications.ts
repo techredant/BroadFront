@@ -180,6 +180,8 @@ export async function displayIncomingCallNotification(params: {
     callId: params.callId,
     callMode: params.callMode || "video",
     isCaller: "false",
+    callerName: params.title,
+    callerImage: params.callerImage,
     ...asPayload(params.data),
   };
 

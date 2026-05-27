@@ -177,14 +177,8 @@ export default function MarketScreen() {
       <DrawerMenuButton />
 
       <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.text, textAlign: "center" }]}>Marketplace</Text>
+        <Text style={[styles.title, { color: theme.text, textAlign: "center", marginLeft: 40 }]}>Marketplace</Text>
         <View style={styles.headerActions}>
-          <Pressable
-            onPress={() => router.push("/(drawer)/(market)/seller-dashboard" as Href)}
-            style={[styles.iconBtn, { backgroundColor: theme.card }]}
-          >
-            <Ionicons name="stats-chart" size={18} color={theme.primary} />
-          </Pressable>
           <Pressable
             onPress={() => router.push("/(drawer)/(market)/live" as Href)}
             style={[styles.iconBtn, { backgroundColor: theme.card }]}
@@ -192,10 +186,17 @@ export default function MarketScreen() {
             <Ionicons name="radio" size={18} color="#FE2C55" />
           </Pressable>
           <Pressable
-            onPress={() => router.push("/(drawer)/(market)/sell-form" as Href)}
-            style={[styles.sellBtn, { backgroundColor: theme.primary }]}
+            onPress={() => router.push("/(drawer)/(market)/seller-dashboard" as Href)}
+            style={[styles.iconBtn, { backgroundColor: theme.card }]}
           >
-            <Text style={{ color: theme.buttonText, fontWeight: "700" }}>
+            <Ionicons name="stats-chart" size={18} color="#4caf50" />
+          </Pressable>
+          
+          <Pressable
+            onPress={() => router.push("/(drawer)/(market)/sell-form" as Href)}
+            style={[styles.sellBtn, { backgroundColor: "#4caf50" }]}
+          >
+            <Text style={{ color: "white", fontWeight: "700" }}>
               Sell
             </Text>
           </Pressable>
@@ -224,7 +225,7 @@ export default function MarketScreen() {
             <Ionicons
               name="options-outline"
               size={22}
-              color={theme.primary}
+              color="#4caf50"
             />
           </Pressable>
         </View>
@@ -242,7 +243,7 @@ export default function MarketScreen() {
             styles.categoryChip,
             {
               backgroundColor:
-                selectedCategory === null ? theme.primary : theme.card,
+                selectedCategory === null ? "#4caf50" : theme.card,
             },
           ]}
         >
@@ -264,7 +265,7 @@ export default function MarketScreen() {
               style={[
                 styles.categoryChip,
                 {
-                  backgroundColor: selected ? theme.primary : theme.card,
+                  backgroundColor: selected ? "#4caf50" : theme.card,
                 },
               ]}
             >
@@ -376,7 +377,7 @@ const styles = StyleSheet.create({
   categoryContainer: { paddingHorizontal: 12, alignItems: "center" },
   categoryChip: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 20,
     marginRight: 8,
   },

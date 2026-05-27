@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";
@@ -6,19 +6,21 @@ import { useLevel } from "@/context/LevelContext";
 import { useIncomingCall } from "@/components/notifications/IncomingCallOverlay";
 import { rejectRingingCall } from "@/utils/callBusy";
 import { getCallVideoClient } from "@/utils/callSessionRegistry";
-import { cancelIncomingCallNotification } from "@/utils/notifeeNotifications";
+import {
+  cancelIncomingCallNotification,
+  displayIncomingCallNotification,
+  displayChatNotification,
+  displayActivityNotification,
+} from "@/utils/notifeeNotifications";
 import { usePushNotifications } from "@/utils/usePushNotifications";
 import {
   getNotificationData,
   handleNotificationDataRedirect,
 } from "@/utils/notificationRouting";
-import { isIncomingCallNotification } from "@/utils/callNotifications";
 import {
-  displayIncomingCallNotification,
-  displayChatNotification,
-  displayActivityNotification,
-} from "@/utils/notifeeNotifications";
-import { isChatNotification } from "@/utils/callNotifications";
+  isChatNotification,
+  isIncomingCallNotification,
+} from "@/utils/callNotifications";
 import {
   consumePendingNotifeeAction,
   registerNotifeeForegroundHandler,
@@ -51,7 +53,8 @@ export function NotificationBridge() {
         void acceptIncomingCall({
           callId: String(pending.data.callId),
           callMode: pending.data.callMode === "audio" ? "audio" : "video",
-          callerName: "Incoming call",
+          callerName: pending.data.callerName || "Incoming call",
+          callerImage: pending.data.callerImage,
         });
         return;
       }
@@ -67,7 +70,8 @@ export function NotificationBridge() {
         void acceptIncomingCall({
           callId: String(data.callId),
           callMode: data.callMode === "audio" ? "audio" : "video",
-          callerName: "Incoming call",
+          callerName: data.callerName || "Incoming call",
+          callerImage: data.callerImage,
         });
       },
       onDeclineCall: (data) => {

@@ -24,11 +24,27 @@ import { SOCKET_IO_DISABLED_ON_HOST, SOCKET_IO_URL } from "@/constants/api";
 import { bindPresenceSocket } from "@/utils/presenceSocket";
 import { useActiveLiveHosts } from "@/context/ActiveLiveHostsContext";
 import { filterActiveLivestreamNotifications } from "@/utils/livestreamNotifications";
+import { dispatchIncomingCall } from "@/utils/incomingCallDispatch";
 
 const HOSTED_NOTIFICATION_REFRESH_MS = 8000;
 
 function countUnread(list: AppNotification[]) {
   return list.filter((n) => !n.read).length;
+}
+
+function incomingCallPayloadFromNotification(data: AppNotification) {
+  const callId = data.data?.callId || data.callId || data.entityId;
+  if (!callId) return null;
+
+  return {
+    callId,
+    callerName:
+      data.actor?.name ||
+      data.title?.replace(/^Incoming\s+/i, "") ||
+      "Incoming call",
+    callerImage: data.actor?.image,
+    callMode: data.data?.callMode === "audio" ? "audio" : "video",
+  } as const;
 }
 
 function matchesSection(item: AppNotification, section: NotificationSection) {
@@ -327,6 +343,14 @@ export const NotificationProvider = ({
     const unbindPresence = bindPresenceSocket(socket, clerkId);
 
     socket.on("newNotification", (data: AppNotification) => {
+      if (data.type === "incoming_call") {
+        const payload = incomingCallPayloadFromNotification(data);
+        if (payload) {
+          dispatchIncomingCall(payload);
+          return;
+        }
+      }
+
       void presentActivityNotificationInShade(data).catch((err) => {
         console.warn("Activity shade notification failed:", err);
       });

@@ -148,6 +148,21 @@ export function useCallManager({
             return;
           }
 
+          if (
+            streamCall.state.callingState === CallingState.JOINING ||
+            isCallJoinInProgress(videoCallId)
+          ) {
+            if (!cancelled && generation === setupGenerationRef.current) {
+              setEffectiveCallMode(mode);
+              setCall(streamCall);
+            }
+            void hydratePeerInfo().catch(() => {});
+            void joinCallWithMedia(streamCall, mode === "video").catch((err) =>
+              callDebug.warn("callee-join-failed", err),
+            );
+            return;
+          }
+
           if (streamCall.state.callingState !== CallingState.JOINED) {
             if (!streamCall.ringing) {
               await streamCall.get({
@@ -169,44 +184,22 @@ export function useCallManager({
           return;
         }
 
-        const channel = chatClient.channel("messaging", channelId);
-        await channel.watch();
-
-        const myId = chatUserId;
-        const nameMap = buildCallMemberDisplayNames(channel, myId);
-        const remote = getRemoteChatMember(channel, myId);
-
-        if (!cancelled) {
-          setDisplayNames(nameMap);
-          setRemotePeer({
-            name: displayNameFromChatUser(remote?.user),
-            image: remote?.user?.image,
-          });
-        }
-
-        void Promise.all(
-          Object.entries(nameMap).map(([uid, name]) =>
-            uid === myId
-              ? Promise.resolve()
-              : upsertStreamUser({
-                  userId: uid,
-                  name,
-                  image: channel.state.members[uid]?.user?.image,
-                }).catch(() => {}),
-          ),
-        );
-
         await endStaleCallBeforeOutgoing(videoClient, videoCallId);
 
+        const channel = chatClient.channel("messaging", channelId);
+        const myId = chatUserId;
         const streamCall = videoClient.call("default", videoCallId, {
           reuseInstance: false,
         });
         const isVideoCall = urlCallMode === "video";
-
         const memberIds = new Set<string>([myId]);
         Object.values(channel.state.members).forEach((m) => {
           if (m.user_id) memberIds.add(m.user_id);
         });
+
+        const watchPromise = hydratePeerInfo().catch((err) =>
+          callDebug.warn("hydrate-peer-failed", err),
+        );
 
         await streamCall.getOrCreate(
           buildOutgoingCallRequest(
@@ -226,6 +219,8 @@ export function useCallManager({
         if (!cancelled && generation === setupGenerationRef.current) {
           setCall(streamCall);
         }
+
+        void watchPromise;
       } catch (err) {
         callDebug.error("setup-failed", err);
         if (!cancelled && generation === setupGenerationRef.current) {
@@ -247,6 +242,7 @@ export function useCallManager({
     };
   }, [
     videoClient,
+    chatClient,
     videoCallId,
     channelId,
     chatUserId,

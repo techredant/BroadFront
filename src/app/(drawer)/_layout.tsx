@@ -128,7 +128,7 @@ const MAIN_NAV: DrawerNavItem[] = [
 
     label: "Status",
 
-    icon: "ellipse-outline",
+    icon: "time-outline",
 
     href: "/(drawer)/(status)/StatusInput",
 
@@ -152,7 +152,7 @@ const MAIN_NAV: DrawerNavItem[] = [
 
   { key: "media", label: "Media", icon: "images-outline", drawerRoute: "media" },
 
-  { key: "polls", label: "Polls", icon: "bar-chart-outline", drawerRoute: "polls" },
+  { key: "polls", label: "Polls", icon: "list-outline", drawerRoute: "polls" },
 
 ];
 

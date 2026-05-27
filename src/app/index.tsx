@@ -12,7 +12,6 @@ export default function StartupSplashScreen() {
           contentFit="cover"
         />
         <Text style={styles.title}>Broadcast</Text>
-        <Text style={styles.subtitle}>Loading your space...</Text>
         <ActivityIndicator color="#C9A227" style={styles.loader} />
       </View>
     </LinearGradient>

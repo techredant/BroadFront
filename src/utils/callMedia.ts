@@ -1,42 +1,52 @@
-import type { Call } from "@stream-io/video-react-native-sdk";
+import type { Call, StreamVideoClient } from "@stream-io/video-react-native-sdk";
 import { CallingState, callManager } from "@stream-io/video-react-native-sdk";
-import type { StreamVideoClient } from "@stream-io/video-react-native-sdk";
+import { combineLatest, filter, firstValueFrom, take } from "rxjs";
 
 let mediaLock: Promise<void> | null = null;
 let mediaLockCallId: string | null = null;
-
-const POLL_MS = 32;
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function waitUntilJoined(call: Call, timeoutMs = 12000): Promise<void> {
-  const started = Date.now();
+async function waitUntilJoined(call: Call): Promise<void> {
+  if (call.state.callingState === CallingState.JOINED) return;
+  if (call.state.callingState === CallingState.LEFT) {
+    throw new Error("Call ended before join completed");
+  }
 
-  while (call.state.callingState !== CallingState.JOINED) {
-    if (Date.now() - started > timeoutMs) {
-      throw new Error("Timed out waiting to join call");
-    }
-    if (call.state.callingState === CallingState.LEFT) {
-      throw new Error("Call ended before join completed");
-    }
-    await sleep(POLL_MS);
+  const state = await firstValueFrom(
+    call.state.callingState$.pipe(
+      filter(
+        (next) =>
+          next === CallingState.JOINED || next === CallingState.LEFT,
+      ),
+      take(1),
+    ),
+  );
+
+  if (state === CallingState.LEFT) {
+    throw new Error("Call ended before join completed");
   }
 }
 
-async function waitForLocalParticipant(call: Call, timeoutMs = 5000): Promise<void> {
-  const started = Date.now();
+async function waitForLocalParticipant(call: Call): Promise<void> {
+  if (call.state.localParticipant || isCallLeft(call)) return;
 
-  while (!call.state.localParticipant) {
-    if (Date.now() - started > timeoutMs) {
-      return;
-    }
-    if (call.state.callingState === CallingState.LEFT) {
-      return;
-    }
-    await sleep(POLL_MS);
-  }
+  const [, state] = await firstValueFrom(
+    combineLatest([
+      call.state.localParticipant$,
+      call.state.callingState$,
+    ]).pipe(
+      filter(
+        ([participant, next]) =>
+          Boolean(participant) || next === CallingState.LEFT,
+      ),
+      take(1),
+    ),
+  );
+
+  if (state === CallingState.LEFT) return;
 }
 
 /** Cache Stream call state while the incoming overlay is visible. */

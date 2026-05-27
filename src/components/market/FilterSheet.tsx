@@ -59,7 +59,7 @@ export function FilterSheet({
                     styles.chip,
                     {
                       backgroundColor:
-                        local.sort === opt.id ? theme.primary : theme.background,
+                        local.sort === opt.id ? "#4caf50" : theme.background,
                     },
                   ]}
                 >
@@ -111,7 +111,7 @@ export function FilterSheet({
                     styles.chip,
                     {
                       backgroundColor:
-                        local.condition === c ? theme.primary : theme.background,
+                        local.condition === c ? "#4caf50" : theme.background,
                     },
                   ]}
                 >
@@ -144,7 +144,7 @@ export function FilterSheet({
                       {
                         backgroundColor:
                           local.category === cat
-                            ? theme.primary
+                            ? "#4caf50"
                             : theme.background,
                       },
                     ]}
@@ -212,7 +212,7 @@ export function FilterSheet({
                 onApply(local);
                 onClose();
               }}
-              style={[styles.btnPrimary, { backgroundColor: theme.primary }]}
+              style={[styles.btnPrimary, { backgroundColor: "#4caf50" }]}
             >
               <Text style={{ color: "#fff", fontWeight: "700" }}>Apply</Text>
             </TouchableOpacity>
@@ -228,6 +228,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "flex-end",
     backgroundColor: "rgba(0,0,0,0.45)",
+    marginBottom: 40,
   },
   sheet: {
     borderTopLeftRadius: 24,

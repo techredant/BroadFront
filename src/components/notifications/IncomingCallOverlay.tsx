@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { BlurView } from "expo-blur";
@@ -10,7 +10,9 @@ import { useCallRingtone } from "@/hooks/useCallRingtone";
 import { getCallVideoClient } from "@/utils/callSessionRegistry";
 import { rejectRingingCall } from "@/utils/callBusy";
 import { cancelIncomingCallNotification } from "@/utils/notifeeNotifications";
-import { prewarmIncomingCall } from "@/utils/callMedia";
+import { callDebug } from "@/utils/callDebug";
+import { joinCallWithMedia, prewarmIncomingCall } from "@/utils/callMedia";
+import { setIncomingCallDispatcher } from "@/utils/incomingCallDispatch";
 
 export type IncomingCallPayload = {
   callId: string;
@@ -102,13 +104,37 @@ export function IncomingCallProvider({ children }: { children: React.ReactNode }
     setIncomingCall((current) => current ?? payload);
   }, []);
 
+  useEffect(() => {
+    setIncomingCallDispatcher(showIncomingCall);
+    return () => setIncomingCallDispatcher(null);
+  }, [showIncomingCall]);
+
   const acceptIncomingCall = useCallback(
     async (payload?: IncomingCallPayload) => {
       const call = payload ?? incomingCall;
       if (!call) return;
 
+      const isVideo = call.callMode !== "audio";
+
       dismissIncomingCall();
       void cancelIncomingCallNotification(call.callId).catch(() => {});
+
+      const client = getCallVideoClient();
+      if (client) {
+        const streamCall = client.call("default", call.callId, {
+          reuseInstance: true,
+        });
+        void (async () => {
+          try {
+            if (!streamCall.ringing) {
+              await streamCall.get({ ring: true, video: isVideo }).catch(() => {});
+            }
+            await joinCallWithMedia(streamCall, isVideo);
+          } catch (err) {
+            callDebug.warn("accept-incoming-join-failed", err);
+          }
+        })();
+      }
 
       router.push({
         pathname: "/(drawer)/(stream)/call/[callId]",

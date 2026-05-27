@@ -84,7 +84,7 @@ export default function SellerDashboard() {
       <SafeAreaView
         style={[styles.center, { backgroundColor: theme.background }]}
       >
-        <ActivityIndicator color={theme.primary} />
+        <ActivityIndicator color={""} />
       </SafeAreaView>
     );
   }
@@ -131,7 +131,7 @@ export default function SellerDashboard() {
               key={s.label}
               style={[styles.statCard, { backgroundColor: theme.card }]}
             >
-              <Ionicons name={s.icon as any} size={22} color={theme.primary} />
+              <Ionicons name={s.icon as any} size={22} color="#4caf50" />
               <Text style={[styles.statValue, { color: theme.text }]}>
                 {s.value}
               </Text>
@@ -167,7 +167,7 @@ export default function SellerDashboard() {
               style={[
                 styles.progressFill,
                 {
-                  backgroundColor: theme.primary,
+                  backgroundColor: "#4caf50",
                   width: `${Math.min(
                     100,
                     (analytics.listingQuota.count / analytics.listingQuota.limit) *
@@ -221,7 +221,7 @@ export default function SellerDashboard() {
         <TouchableOpacity
           onPress={subscribePremium}
           disabled={paying}
-          style={[styles.cta, { backgroundColor: theme.primary }]}
+          style={[styles.cta, { backgroundColor: "" }]}
         >
           <Text style={{ color: "#fff", fontWeight: "700" }}>
             {paying ? "Processing..." : "Subscribe with M-Pesa"}
@@ -230,9 +230,9 @@ export default function SellerDashboard() {
 
         <TouchableOpacity
           onPress={() => router.push("/verification")}
-          style={[styles.ctaOutline, { borderColor: theme.primary }]}
+          style={[styles.ctaOutline, { borderColor: "" }]}
         >
-          <Text style={{ color: theme.primary, fontWeight: "600" }}>
+          <Text style={{ color: "", fontWeight: "600" }}>
             Get verified seller badge
           </Text>
         </TouchableOpacity>

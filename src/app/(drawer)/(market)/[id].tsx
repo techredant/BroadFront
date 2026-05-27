@@ -94,7 +94,7 @@ export default function ProductDetail() {
     text: theme.text,
     success: theme.success ?? "#28a745",
     badge: theme.badge ?? "#e8e8e8",
-    primary: theme.primary,
+    primary: "#4caf50",
     subtext: theme.subtext,
   };
 
@@ -286,7 +286,7 @@ export default function ProductDetail() {
       <SafeAreaView
         style={[styles.center, { backgroundColor: theme.background }]}
       >
-        <ActivityIndicator size="large" color={theme.primary} />
+        <ActivityIndicator size="large" color={"#4caf50"} />
       </SafeAreaView>
     );
   }
@@ -411,7 +411,7 @@ export default function ProductDetail() {
               {
                 width: activeIndex === idx ? 20 : 8,
                 backgroundColor:
-                  activeIndex === idx ? theme.primary : theme.border,
+                  activeIndex === idx ? "#4caf50" : theme.border,
               },
             ]}
           />
@@ -488,7 +488,7 @@ export default function ProductDetail() {
 
         <View style={styles.metaRow}>
           <View style={[styles.chip, { backgroundColor: theme.card }]}>
-            <Text style={{ color: theme.primary }}>{product.category}</Text>
+            <Text style={{ color: "#4caf50" }}>{product.category}</Text>
           </View>
           {product.condition && (
             <View style={[styles.chip, { backgroundColor: theme.card }]}>
@@ -585,7 +585,7 @@ export default function ProductDetail() {
             </Text>
             {!owner ? (
               <TouchableOpacity onPress={() => setReviewVisible(true)}>
-                <Text style={{ color: theme.primary, fontWeight: "700" }}>
+                <Text style={{ color: "#4caf50", fontWeight: "700" }}>
                   Write
                 </Text>
               </TouchableOpacity>
@@ -689,10 +689,10 @@ export default function ProductDetail() {
               product.phoneNumber &&
               Linking.openURL(`tel:${product.phoneNumber}`)
             }
-            style={[styles.outlineBtn, { borderColor: theme.primary }]}
+            style={[styles.outlineBtn, { borderColor: "#4caf50" }]}
           >
-            <Ionicons name="call-outline" size={18} color={theme.primary} />
-            <Text style={{ color: theme.primary, fontWeight: "700" }}>
+            <Ionicons name="call-outline" size={18} color={"#4caf50"} />
+            <Text style={{ color: "#4caf50", fontWeight: "700" }}>
               Contact
             </Text>
           </TouchableOpacity>
@@ -704,7 +704,7 @@ export default function ProductDetail() {
 
           <TouchableOpacity
             onPress={startDM}
-            style={[styles.buyBtn, { backgroundColor: theme.primary }]}
+            style={[styles.buyBtn, { backgroundColor: "#4caf50" }]}
           >
             <Text style={{ color: "#fff", fontWeight: "800" }}>Buy now</Text>
           </TouchableOpacity>
@@ -758,7 +758,7 @@ export default function ProductDetail() {
             />
             <TouchableOpacity
               onPress={postReview}
-              style={[styles.buyBtn, { backgroundColor: theme.primary, marginTop: 12 }]}
+              style={[styles.buyBtn, { backgroundColor: "#4caf50", marginTop: 12 }]}
             >
               <Text style={{ color: "#fff", fontWeight: "700", textAlign: "center" }}>
                 Submit review
@@ -792,7 +792,7 @@ export default function ProductDetail() {
           text: theme.text,
           subtext: theme.subtext,
           border: theme.border,
-          primary: theme.primary,
+          primary: "#4caf50",
           background: theme.background,
         }}
       />
