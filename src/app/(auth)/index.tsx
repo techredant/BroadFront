@@ -10,7 +10,6 @@ import React, { useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -47,11 +46,7 @@ const AuthScreen = () => {
       style={styles.gradient}
     >
       <SafeAreaView style={styles.safe}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+        <View style={styles.content}>
           <Text style={[styles.version, { color: theme.subtext }]}>
             Version {appVersion}
           </Text>
@@ -139,7 +134,7 @@ const AuthScreen = () => {
               <Text style={styles.link}>Privacy Policy</Text>
             </Text>
           </View>
-        </ScrollView>
+        </View>
       </SafeAreaView>
     </LinearGradient>
   );
@@ -150,11 +145,10 @@ export default AuthScreen;
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
   safe: { flex: 1 },
-  scrollContent: {
-    flexGrow: 1,
+  content: {
+    flex: 1,
     paddingBottom: 28,
     justifyContent: "space-between",
-    minHeight: "100%",
   },
   version: {
     fontSize: 11,

@@ -11,6 +11,7 @@ import {
   rejectRingingCall,
 } from "@/utils/callBusy";
 import { callDebug } from "@/utils/callDebug";
+import { prewarmIncomingCall } from "@/utils/callMedia";
 
 /** App-wide Stream `call.ring` handler — incoming overlay on any screen. */
 export function CallRingBridge() {
@@ -32,6 +33,10 @@ export function CallRingBridge() {
       }
 
       showIncomingRef.current(payload);
+
+      if (payload.callMode !== "audio") {
+        prewarmIncomingCall(videoClient, payload.callId, true);
+      }
     };
 
     const unsubscribe = videoClient.on("call.ring", (event) => {

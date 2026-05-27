@@ -4,9 +4,8 @@ import {
   BroadcastIncomingCallControls,
   BroadcastOutgoingCallControls,
 } from "@/components/call/BroadcastCallControls";
-import { BroadcastParticipantLabel } from "@/components/call/BroadcastParticipantLabel";
 import { BroadcastRingingCall } from "@/components/call/BroadcastRingingCall";
-import { BroadcastFloatingLocalVideo } from "@/components/call/BroadcastFloatingLocalVideo";
+import { BroadcastVideoCallLayout } from "@/components/call/BroadcastVideoCallLayout";
 import { useCallManager } from "@/hooks/useCallManager";
 import { useCallRingtone } from "@/hooks/useCallRingtone";
 import { useWebRTC } from "@/hooks/useWebRTC";
@@ -16,7 +15,6 @@ import {
 } from "@/utils/callStatus";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  CallContent,
   CallingState,
   StreamCall,
   useCall,
@@ -45,14 +43,17 @@ const CallScreen = () => {
     callId: rawCallId,
     isCaller: callerParam,
     callMode: callModeParam,
+    accepted: acceptedParam,
   } = useLocalSearchParams<{
     callId: string;
     isCaller: string;
     callMode?: string;
+    accepted?: string;
   }>();
 
   const callId = rawCallId ? resolveCallId(rawCallId) : "";
   const isCaller = callerParam === "true";
+  const acceptedFromOverlay = acceptedParam === "true";
   const callMode: CallMode = callModeParam === "audio" ? "audio" : "video";
 
   const videoClient = useStreamVideoClient();
@@ -94,6 +95,7 @@ const CallScreen = () => {
         callMode={effectiveCallMode}
         displayNames={displayNames}
         remotePeer={remotePeer}
+        acceptedFromOverlay={acceptedFromOverlay}
       />
     </StreamCall>
   );
@@ -104,11 +106,13 @@ function CallUI({
   callMode,
   displayNames,
   remotePeer,
+  acceptedFromOverlay,
 }: {
   isCaller: boolean;
   callMode: CallMode;
   displayNames: Record<string, string>;
   remotePeer: { name: string; image?: string };
+  acceptedFromOverlay: boolean;
 }) {
   const isVideoCall = callMode === "video";
   const call = useCall();
@@ -140,16 +144,20 @@ function CallUI({
 
   const isJoined = callingState === CallingState.JOINED;
   const waitingForCallee = isCaller && !calleeConnected;
-  const isRinging =
-    waitingForCallee ||
-    [CallingState.RINGING, CallingState.JOINING, CallingState.IDLE].includes(
-      callingState,
-    ) ||
-    Boolean(
-      call?.ringing &&
-        callingState !== CallingState.JOINED &&
-        callingState !== CallingState.LEFT,
-    );
+
+  const isRinging = isCaller
+    ? waitingForCallee ||
+      [CallingState.RINGING, CallingState.JOINING, CallingState.IDLE].includes(
+        callingState,
+      ) ||
+      Boolean(
+        call?.ringing &&
+          callingState !== CallingState.JOINED &&
+          callingState !== CallingState.LEFT,
+      )
+    : callingState === CallingState.RINGING &&
+      Boolean(call?.ringing) &&
+      !acceptedFromOverlay;
 
   const sessionStatus = mapCallingStateToStatus(callingState, {
     ringing: Boolean(call?.ringing),
@@ -157,8 +165,10 @@ function CallUI({
   });
 
   useCallRingtone(
-    callingState !== CallingState.JOINED &&
-      callingState !== CallingState.LEFT,
+    isCaller
+      ? callingState !== CallingState.JOINED &&
+          callingState !== CallingState.LEFT
+      : callingState === CallingState.RINGING && Boolean(call?.ringing),
     !isCaller,
   );
 
@@ -209,21 +219,45 @@ function CallUI({
     );
   }
 
-  if (!isVideoCall) {
+  if (!isVideoCall || !isJoined) {
+    if (!isVideoCall) {
+      return (
+        <SafeAreaView style={styles.activeRoot}>
+          <View style={styles.audioCallBody}>
+            <Ionicons name="call" size={48} color="rgba(255,255,255,0.9)" />
+            <Text style={styles.audioCallLabel}>{remotePeer.name}</Text>
+            <Text style={styles.audioCallSub}>
+              {statusLabel(sessionStatus) || "Voice call"}
+            </Text>
+          </View>
+          <BroadcastActiveCallControls
+            showCamera={false}
+            showSpeakerToggle
+            onToggleSpeaker={toggleSpeaker}
+            onHangup={hangup}
+          />
+        </SafeAreaView>
+      );
+    }
+
     return (
       <SafeAreaView style={styles.activeRoot}>
-        <View style={styles.audioCallBody}>
-          <Ionicons name="call" size={48} color="rgba(255,255,255,0.9)" />
-          <Text style={styles.audioCallLabel}>{remotePeer.name}</Text>
-          <Text style={styles.audioCallSub}>
-            {statusLabel(sessionStatus) || "Voice call"}
-          </Text>
-        </View>
-        <BroadcastActiveCallControls
-          showCamera={false}
-          showSpeakerToggle
-          onToggleSpeaker={toggleSpeaker}
-          onHangup={hangup}
+        <BroadcastRingingCall
+          remoteName={remotePeer.name}
+          remoteImage={remotePeer.image}
+          isCaller={isCaller}
+          isVideoCall={isVideoCall}
+          statusText="Connecting video…"
+          controls={
+            <BroadcastActiveCallControls
+              showCamera
+              showSpeakerToggle
+              showFlipCamera
+              onToggleSpeaker={toggleSpeaker}
+              onFlipCamera={() => void flipCamera()}
+              onHangup={hangup}
+            />
+          }
         />
       </SafeAreaView>
     );
@@ -231,25 +265,17 @@ function CallUI({
 
   return (
     <SafeAreaView style={styles.activeRoot} edges={["top"]}>
-      <CallContent
-        layout="grid"
-        FloatingParticipantView={BroadcastFloatingLocalVideo}
-        ParticipantLabel={(props) => (
-          <BroadcastParticipantLabel
-            {...props}
-            displayNames={displayNames}
-          />
-        )}
-        CallControls={() => (
-          <BroadcastActiveCallControls
-            showCamera
-            showSpeakerToggle
-            showFlipCamera
-            onToggleSpeaker={toggleSpeaker}
-            onFlipCamera={() => void flipCamera()}
-            onHangup={hangup}
-          />
-        )}
+      <BroadcastVideoCallLayout
+        displayNames={displayNames}
+        remotePeer={remotePeer}
+      />
+      <BroadcastActiveCallControls
+        showCamera
+        showSpeakerToggle
+        showFlipCamera
+        onToggleSpeaker={toggleSpeaker}
+        onFlipCamera={() => void flipCamera()}
+        onHangup={hangup}
       />
     </SafeAreaView>
   );

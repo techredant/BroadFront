@@ -1,10 +1,17 @@
 import type { Call } from "@stream-io/video-react-native-sdk";
 import { CallingState, callManager } from "@stream-io/video-react-native-sdk";
+import type { StreamVideoClient } from "@stream-io/video-react-native-sdk";
 
 let mediaLock: Promise<void> | null = null;
 let mediaLockCallId: string | null = null;
 
-async function waitUntilJoined(call: Call, timeoutMs = 15000): Promise<void> {
+const POLL_MS = 32;
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function waitUntilJoined(call: Call, timeoutMs = 12000): Promise<void> {
   const started = Date.now();
 
   while (call.state.callingState !== CallingState.JOINED) {
@@ -14,57 +21,92 @@ async function waitUntilJoined(call: Call, timeoutMs = 15000): Promise<void> {
     if (call.state.callingState === CallingState.LEFT) {
       throw new Error("Call ended before join completed");
     }
-    await new Promise((r) => setTimeout(r, 100));
+    await sleep(POLL_MS);
   }
 }
 
-async function waitForLocalParticipant(call: Call, timeoutMs = 8000): Promise<void> {
+async function waitForLocalParticipant(call: Call, timeoutMs = 5000): Promise<void> {
   const started = Date.now();
 
   while (!call.state.localParticipant) {
     if (Date.now() - started > timeoutMs) {
-      throw new Error("Timed out waiting for local participant");
+      return;
     }
     if (call.state.callingState === CallingState.LEFT) {
       return;
     }
-    await new Promise((r) => setTimeout(r, 100));
+    await sleep(POLL_MS);
+  }
+}
+
+/** Cache Stream call state while the incoming overlay is visible. */
+export function prewarmIncomingCall(
+  client: StreamVideoClient,
+  callId: string,
+  isVideoCall: boolean,
+): void {
+  try {
+    const call = client.call("default", callId, { reuseInstance: true });
+    void call.get({ ring: true, video: isVideoCall }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
+}
+
+function isCallLeft(call: Call): boolean {
+  return call.state.callingState === CallingState.LEFT;
+}
+
+async function ensureJoined(call: Call, isVideoCall: boolean): Promise<void> {
+  if (call.state.callingState === CallingState.JOINING) {
+    await waitUntilJoined(call);
+    return;
+  }
+
+  if (call.state.callingState !== CallingState.JOINED) {
+    await call.join({ video: isVideoCall });
+    await waitUntilJoined(call);
   }
 }
 
 async function publishTracks(call: Call, isVideoCall: boolean): Promise<void> {
-  if (call.state.callingState === CallingState.LEFT) return;
+  if (isCallLeft(call)) return;
 
   await waitForLocalParticipant(call);
 
-  // Let the SFU session settle before negotiating tracks.
-  await new Promise((r) => setTimeout(r, 450));
-
   if (!isVideoCall) {
     await call.camera.disable();
+    if (call.microphone.state.status !== "enabled") {
+      await call.microphone.enable();
+    }
+    callManager.start({
+      audioRole: "communicator",
+      deviceEndpointType: "earpiece",
+    });
+    return;
   }
-  if (call.microphone.state.status !== "enabled") {
-    await call.microphone.enable();
-  }
-  if (isVideoCall && call.camera.state.status !== "enabled") {
-    await call.camera.enable();
-  }
+
+  // Publish video + audio together so remote video appears sooner.
+  await Promise.all([
+    call.camera.state.status !== "enabled"
+      ? call.camera.enable()
+      : Promise.resolve(),
+    call.microphone.state.status !== "enabled"
+      ? call.microphone.enable()
+      : Promise.resolve(),
+  ]);
 
   callManager.start({
     audioRole: "communicator",
-    deviceEndpointType: isVideoCall ? "speaker" : "earpiece",
+    deviceEndpointType: "speaker",
   });
 }
 
-/**
- * Join the SFU session, wait until joined, then publish tracks once.
- * Serialized per call id to avoid duplicate negotiation.
- */
 export async function joinCallWithMedia(
   call: Call,
   isVideoCall: boolean,
 ): Promise<void> {
-  if (call.state.callingState === CallingState.LEFT) {
+  if (isCallLeft(call)) {
     return;
   }
 
@@ -74,26 +116,21 @@ export async function joinCallWithMedia(
   }
 
   const task = (async () => {
-    if (call.state.callingState !== CallingState.JOINED) {
-      await call.join({ video: isVideoCall });
-      try {
-        await waitUntilJoined(call);
-      } catch (err) {
-        if (call.state.callingState === CallingState.LEFT) {
-          return;
-        }
-        throw err;
+    try {
+      await ensureJoined(call, isVideoCall);
+    } catch (err) {
+      if (isCallLeft(call)) {
+        return;
       }
+      throw err;
     }
 
-    const publish = async () => publishTracks(call, isVideoCall);
-
     try {
-      await publish();
+      await publishTracks(call, isVideoCall);
     } catch (firstErr) {
       console.warn("[Call] Publish failed, retrying…", firstErr);
-      await new Promise((r) => setTimeout(r, 800));
-      await publish();
+      await sleep(250);
+      await publishTracks(call, isVideoCall);
     }
   })();
 
@@ -110,11 +147,17 @@ export async function joinCallWithMedia(
   }
 }
 
-/** Re-publish tracks after reconnect without calling join again. */
 export async function syncCallMedia(
   call: Call,
   isVideoCall: boolean,
 ): Promise<void> {
   if (call.state.callingState !== CallingState.JOINED) return;
   await joinCallWithMedia(call, isVideoCall);
+}
+
+export function isCallJoinInProgress(callId: string): boolean {
+  const normalized = callId.includes(":")
+    ? callId.split(":").pop()!
+    : callId;
+  return mediaLockCallId === normalized && mediaLock !== null;
 }

@@ -10,8 +10,7 @@ import { useCallRingtone } from "@/hooks/useCallRingtone";
 import { getCallVideoClient } from "@/utils/callSessionRegistry";
 import { rejectRingingCall } from "@/utils/callBusy";
 import { cancelIncomingCallNotification } from "@/utils/notifeeNotifications";
-import { callDebug } from "@/utils/callDebug";
-import { joinCallWithMedia } from "@/utils/callMedia";
+import { prewarmIncomingCall } from "@/utils/callMedia";
 
 export type IncomingCallPayload = {
   callId: string;
@@ -96,6 +95,10 @@ export function IncomingCallProvider({ children }: { children: React.ReactNode }
 
   const showIncomingCall = useCallback((payload: IncomingCallPayload) => {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    const client = getCallVideoClient();
+    if (client) {
+      prewarmIncomingCall(client, payload.callId, payload.callMode !== "audio");
+    }
     setIncomingCall((current) => current ?? payload);
   }, []);
 
@@ -105,24 +108,7 @@ export function IncomingCallProvider({ children }: { children: React.ReactNode }
       if (!call) return;
 
       dismissIncomingCall();
-      await cancelIncomingCallNotification(call.callId).catch(() => {});
-
-      const client = getCallVideoClient();
-      if (client) {
-        try {
-          const streamCall = client.call("default", call.callId, {
-            reuseInstance: true,
-          });
-          if (!streamCall.ringing) {
-            await streamCall
-              .get({ ring: true, video: call.callMode !== "audio" })
-              .catch(() => {});
-          }
-          await joinCallWithMedia(streamCall, call.callMode !== "audio");
-        } catch (err) {
-          callDebug.warn("accept-incoming-join-failed", err);
-        }
-      }
+      void cancelIncomingCallNotification(call.callId).catch(() => {});
 
       router.push({
         pathname: "/(drawer)/(stream)/call/[callId]",
@@ -130,6 +116,7 @@ export function IncomingCallProvider({ children }: { children: React.ReactNode }
           callId: call.callId,
           isCaller: "false",
           callMode: call.callMode ?? "video",
+          accepted: "true",
         },
       } as never);
     },

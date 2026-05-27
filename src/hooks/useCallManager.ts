@@ -19,7 +19,7 @@ import {
   endStaleCallBeforeOutgoing,
   type CallMode,
 } from "@/utils/callMode";
-import { joinCallWithMedia } from "@/utils/callMedia";
+import { joinCallWithMedia, isCallJoinInProgress } from "@/utils/callMedia";
 import { upsertStreamUser } from "@/utils/streamUser";
 import { isUserBusyInAnotherCall, rejectRingingCall } from "@/utils/callBusy";
 import { callDebug } from "@/utils/callDebug";
@@ -63,13 +63,57 @@ export function useCallManager({
   const setupGenerationRef = useRef(0);
 
   useEffect(() => {
-    if (!videoClient || !videoCallId || !channelId || !chatUserId || !userId) {
+    if (!videoCallId || !channelId) {
+      setLoading(false);
+      setError("Invalid call.");
+      return;
+    }
+
+    if (!videoClient || !chatUserId || !userId) {
       return;
     }
 
     const generation = ++setupGenerationRef.current;
     let cancelled = false;
     acceptHandledRef.current = false;
+
+    const resolveCallMode = (streamCall: Call) => {
+      const custom = streamCall.state?.custom as
+        | { callMode?: string }
+        | undefined;
+      if (custom?.callMode === "audio") return "audio" as const;
+      if (custom?.callMode === "video") return "video" as const;
+      return urlCallMode;
+    };
+
+    const hydratePeerInfo = async () => {
+      const channel = chatClient.channel("messaging", channelId);
+      await channel.watch();
+
+      const myId = chatUserId;
+      const nameMap = buildCallMemberDisplayNames(channel, myId);
+      const remote = getRemoteChatMember(channel, myId);
+
+      if (!cancelled && generation === setupGenerationRef.current) {
+        setDisplayNames(nameMap);
+        setRemotePeer({
+          name: displayNameFromChatUser(remote?.user),
+          image: remote?.user?.image,
+        });
+      }
+
+      void Promise.all(
+        Object.entries(nameMap).map(([uid, name]) =>
+          uid === myId
+            ? Promise.resolve()
+            : upsertStreamUser({
+                userId: uid,
+                name,
+                image: channel.state.members[uid]?.user?.image,
+              }).catch(() => {}),
+        ),
+      );
+    };
 
     const setup = async () => {
       setLoading(true);
@@ -91,6 +135,40 @@ export function useCallManager({
           return;
         }
 
+        if (!isCaller) {
+          const streamCall = videoClient.call("default", videoCallId, {
+            reuseInstance: true,
+          });
+          const mode = resolveCallMode(streamCall);
+
+          if (streamCall.state.callingState === CallingState.LEFT) {
+            if (!cancelled) {
+              setError("Call ended.");
+            }
+            return;
+          }
+
+          if (streamCall.state.callingState !== CallingState.JOINED) {
+            if (!streamCall.ringing) {
+              await streamCall.get({
+                ring: true,
+                video: mode === "video",
+              });
+            }
+            await joinCallWithMedia(streamCall, mode === "video");
+          } else {
+            await joinCallWithMedia(streamCall, mode === "video");
+          }
+
+          if (!cancelled && generation === setupGenerationRef.current) {
+            setEffectiveCallMode(mode);
+            setCall(streamCall);
+          }
+
+          void hydratePeerInfo().catch(() => {});
+          return;
+        }
+
         const channel = chatClient.channel("messaging", channelId);
         await channel.watch();
 
@@ -106,7 +184,7 @@ export function useCallManager({
           });
         }
 
-        await Promise.all(
+        void Promise.all(
           Object.entries(nameMap).map(([uid, name]) =>
             uid === myId
               ? Promise.resolve()
@@ -118,51 +196,26 @@ export function useCallManager({
           ),
         );
 
-        if (isCaller) {
-          await endStaleCallBeforeOutgoing(videoClient, videoCallId);
-        }
+        await endStaleCallBeforeOutgoing(videoClient, videoCallId);
 
-        let streamCall = videoClient.call("default", videoCallId, {
-          reuseInstance: !isCaller,
+        const streamCall = videoClient.call("default", videoCallId, {
+          reuseInstance: false,
         });
-
-        if (!isCaller && !streamCall.ringing) {
-          await new Promise((r) => setTimeout(r, 400));
-          streamCall = videoClient.call("default", videoCallId, {
-            reuseInstance: true,
-          });
-        }
-
         const isVideoCall = urlCallMode === "video";
 
-        if (isCaller) {
-          const memberIds = new Set<string>([myId]);
-          Object.values(channel.state.members).forEach((m) => {
-            if (m.user_id) memberIds.add(m.user_id);
-          });
+        const memberIds = new Set<string>([myId]);
+        Object.values(channel.state.members).forEach((m) => {
+          if (m.user_id) memberIds.add(m.user_id);
+        });
 
-          await streamCall.getOrCreate(
-            buildOutgoingCallRequest(
-              isVideoCall,
-              myId,
-              Array.from(memberIds),
-              messagingChannelCid(channelId),
-            ),
-          );
-        } else {
-          if (!streamCall.ringing) {
-            await streamCall.get({ ring: true, video: isVideoCall });
-          }
-
-          const custom = streamCall.state?.custom as
-            | { callMode?: string }
-            | undefined;
-          if (!cancelled) {
-            if (custom?.callMode === "audio") setEffectiveCallMode("audio");
-            else if (custom?.callMode === "video") setEffectiveCallMode("video");
-            else setEffectiveCallMode(urlCallMode);
-          }
-        }
+        await streamCall.getOrCreate(
+          buildOutgoingCallRequest(
+            isVideoCall,
+            myId,
+            Array.from(memberIds),
+            messagingChannelCid(channelId),
+          ),
+        );
 
         callDebug.log("setup-complete", {
           videoCallId,
@@ -205,13 +258,20 @@ export function useCallManager({
   useEffect(() => {
     if (!call || !isCaller) return;
 
-    const onAccepted = async (event: { user: { id?: string } }) => {
-      if (event.user?.id === call.currentUserId) return;
-      if (call.state.callingState === CallingState.LEFT) return;
+    const joinCaller = async () => {
       if (acceptHandledRef.current) return;
+      if (call.state.callingState === CallingState.LEFT) return;
+      if (call.state.callingState === CallingState.JOINING) return;
+      if (isCallJoinInProgress(call.id)) return;
+
+      const shouldJoin =
+        call.state.callingState === CallingState.JOINED ||
+        !call.ringing ||
+        call.state.remoteParticipants.length > 0;
+
+      if (!shouldJoin) return;
 
       acceptHandledRef.current = true;
-
       try {
         await joinCallWithMedia(call, effectiveCallMode === "video");
         callDebug.log("caller-joined-on-accept");
@@ -221,7 +281,24 @@ export function useCallManager({
       }
     };
 
-    return call.on("call.accepted", onAccepted);
+    const onAccepted = (event: { user: { id?: string } }) => {
+      if (event.user?.id === call.currentUserId) return;
+      void joinCaller();
+    };
+    const onJoined = (event: { participant?: { user?: { id?: string } } }) => {
+      if (event.participant?.user?.id === call.currentUserId) return;
+      void joinCaller();
+    };
+
+    void joinCaller();
+
+    const unsubAccepted = call.on("call.accepted", onAccepted);
+    const unsubJoined = call.on("call.session_participant_joined", onJoined);
+
+    return () => {
+      unsubAccepted();
+      unsubJoined();
+    };
   }, [call, isCaller, effectiveCallMode]);
 
   useEffect(() => {
@@ -258,31 +335,32 @@ export function useCallManager({
       if (!activeCall) return;
 
       const state = activeCall.state.callingState;
-      if (state === CallingState.LEFT) return;
+      if (state === CallingState.LEFT || state === CallingState.JOINING) {
+        return;
+      }
 
-      // Only tear down ringing calls when leaving the screen without accepting.
-      if (
-        state === CallingState.JOINED ||
-        activeCall.ringing ||
-        state === CallingState.RINGING
-      ) {
+      if (state === CallingState.RINGING || activeCall.ringing) {
         try {
           callManager.stop();
         } catch {
           /* ignore */
         }
 
-        void (async () => {
-          try {
-            if (activeCall.isCreatedByMe && state !== CallingState.JOINED) {
-              await activeCall.leave({ reject: true, reason: "cancel" });
-            } else if (state !== CallingState.JOINED) {
-              await activeCall.leave({ reject: true, reason: "decline" });
-            }
-          } catch {
-            /* ignore */
-          }
-        })();
+        void activeCall
+          .leave({
+            reject: true,
+            reason: activeCall.isCreatedByMe ? "cancel" : "decline",
+          })
+          .catch(() => {});
+        return;
+      }
+
+      if (state === CallingState.JOINED) {
+        try {
+          callManager.stop();
+        } catch {
+          /* ignore */
+        }
       }
     };
   }, []);
