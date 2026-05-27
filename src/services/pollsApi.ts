@@ -82,6 +82,18 @@ export async function postPollComment(
   return res.data;
 }
 
+export async function likePollComment(
+  pollId: string,
+  commentId: string,
+  userId: string,
+): Promise<PollComment> {
+  const res = await apiClient.post<PollComment>(
+    `/api/polls/${pollId}/comments/${commentId}/like`,
+    { userId },
+  );
+  return res.data;
+}
+
 export async function sharePoll(pollId: string): Promise<{
   shareCount: number;
   url: string;

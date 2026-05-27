@@ -1,15 +1,18 @@
-import React, { useCallback, useMemo } from "react";
+import React, {
+  type MutableRefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   Modal,
-  View,
-  FlatList,
-  PixelRatio,
   Pressable,
   StyleSheet,
   StatusBar,
   Text,
+  View,
   useWindowDimensions,
-  type ViewToken,
 } from "react-native";
 import {
   AntDesign,
@@ -18,27 +21,29 @@ import {
   Ionicons,
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
-import Animated from "react-native-reanimated";
-import { GestureDetector } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Gesture } from "react-native-gesture-handler";
+import {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import Video from "react-native-video";
 import { Image } from "expo-image";
-import LoaderKitView from "react-native-loader-kit";
 import * as Haptics from "expo-haptics";
 import moment from "moment";
 import { router } from "expo-router";
-import {
-  buildCloudinaryUrl,
-  isVideoMedia,
-  resolveMediaUrls,
-} from "@/utils/mediaUtils";
-import { formatNickHandle } from "@/utils/nickName";
+import { MediaPostPager } from "@/components/posts/MediaPostPager";
+import { EdgeSwipeHint } from "@/components/posts/EdgeSwipeHint";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { LikeBubbles } from "@/components/posts/LikeBubbles";
+import { isVideoMedia, resolveMediaUrls } from "@/utils/mediaUtils";
+import { formatNickHandle } from "@/utils/nickName";
+import { useActivePostTracking } from "@/hooks/useActivePostTracking";
+import { formatConstituency } from "@/constants/politicalTheme";
 
 const LIKE_COLOR = "#E0245E";
 const ACTIVE_ACCENT = "#8AB4F8";
+const SPRING = { damping: 18, stiffness: 240, mass: 0.85 };
 
 export type MediaViewerEngagement = {
   commentsCount?: number;
@@ -55,16 +60,34 @@ export type MediaViewerEngagement = {
   onLike?: () => void;
 };
 
+type MediaViewerPost = {
+  _id?: string;
+  id?: string;
+  media?: string[];
+  [key: string]: any;
+};
+
 type Props = {
   modalVisible: boolean;
   setModalVisible: (v: boolean) => void;
   mediaList: string[];
   selectedIndex: number;
-  post?: any;
+  post?: MediaViewerPost;
+  posts?: MediaViewerPost[];
   engagement?: MediaViewerEngagement;
-  pinchGesture: any;
-  pinchStyle: any;
+  pinchGesture?: any;
+  pinchStyle?: any;
+  totalPosts?: number;
+  currentPostIndex?: number;
+  onPostChange?: (index: number, mediaIndex: number) => void;
+  onMediaIndexChange?: (index: number) => void;
+  getPostId?: (index: number) => string | undefined;
+  mediaIndexByPostIdRef?: MutableRefObject<Map<string, number>>;
 };
+
+function hasMedia(item: MediaViewerPost) {
+  return Array.isArray(item.media) && item.media.length > 0;
+}
 
 function PageDot({ active }: { active: boolean }) {
   return (
@@ -114,124 +137,185 @@ export function MediaViewerModal({
   mediaList,
   selectedIndex,
   post,
+  posts,
   engagement,
   pinchGesture,
   pinchStyle,
+  currentPostIndex = 0,
+  onPostChange,
+  onMediaIndexChange,
+  getPostId,
+  mediaIndexByPostIdRef,
 }: Props) {
-  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const fullScreenPixelWidth = useMemo(
-    () => Math.round(width * PixelRatio.get()),
-    [width],
-  );
-
-  const flatListRef = React.useRef<FlatList>(null);
-  const resolvedMedia = useMemo(
-    () => resolveMediaUrls(mediaList),
-    [mediaList],
-  );
-
-  const [currentIndex, setCurrentIndex] = React.useState(selectedIndex);
-  const [loadingVideoIndex, setLoadingVideoIndex] = React.useState<
-    number | null
-  >(null);
-  const [isVideoReady, setIsVideoReady] = React.useState<
-    Record<number, boolean>
+  const [captionExpanded, setCaptionExpanded] = useState(false);
+  const [isZooming, setIsZooming] = useState(false);
+  const [videoBuffering, setVideoBuffering] = useState(false);
+  const [likeBurstKey, setLikeBurstKey] = useState(0);
+  const [engagementOverrides, setEngagementOverrides] = useState<
+    Record<string, Partial<MediaViewerEngagement>>
   >({});
-  const [isZooming, setIsZooming] = React.useState(false);
-  const [captionExpanded, setCaptionExpanded] = React.useState(false);
-  const [likeBurstKey, setLikeBurstKey] = React.useState(0);
+  const [hintDirection, setHintDirection] = useState<"up" | "down" | undefined>();
+  const [hintVisible, setHintVisible] = useState(false);
+  const hintTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localPinchScale = useSharedValue(1);
 
-  const total = resolvedMedia.length;
-  const counterLabel = useMemo(
-    () => `${currentIndex + 1} / ${total}`,
-    [currentIndex, total],
+  const viewerPosts = useMemo(() => {
+    const source =
+      posts && posts.length > 0
+        ? posts
+        : post
+          ? [{ ...post, media: post.media ?? mediaList }]
+          : [{ _id: "standalone", media: mediaList }];
+    const mediaPosts = source.filter(hasMedia);
+    return mediaPosts.length > 0 ? mediaPosts : source;
+  }, [mediaList, post, posts]);
+
+  const {
+    activePost,
+    activePostIndex,
+    activeMediaIndex,
+    getId,
+    getMediaIndex,
+    setActivePost,
+    setMediaIndexForPost,
+  } = useActivePostTracking({
+    visible: modalVisible,
+    posts: viewerPosts,
+    initialPostIndex: currentPostIndex,
+    initialMediaIndex: selectedIndex,
+    onPostChange,
+    onMediaIndexChange,
+    getPostId,
+    mediaIndexByPostIdRef,
+  });
+
+  const activeMedia = useMemo(
+    () => resolveMediaUrls(Array.isArray(activePost?.media) ? activePost.media : []),
+    [activePost],
   );
+  const totalMedia = activeMedia.length;
+  const activeMediaItem = activeMedia[activeMediaIndex];
+  const activePostId = getId(activePostIndex);
+  const canNavigateNextPost = activePostIndex < viewerPosts.length - 1;
+  const canNavigatePrevPost = activePostIndex > 0;
 
   const authorName = useMemo(() => {
-    if (!post) return "";
+    if (!activePost) return "";
     return (
-      post.user?.firstName ||
-      post.user?.companyName ||
-      post.firstName ||
-      post.companyName ||
+      activePost.user?.firstName ||
+      activePost.user?.companyName ||
+      activePost.firstName ||
+      activePost.companyName ||
       "User"
     );
-  }, [post]);
+  }, [activePost]);
 
-  const authorAvatar = post?.user?.image || post?.image;
-  const authorNick = post?.user?.nickName || post?.nickName;
-  const authorId = post?.userId || post?.user?.clerkId || post?.user?._id;
-  const isVerified = post?.user?.isVerified ?? post?.isVerified;
-  const caption = (post?.caption || post?.content || "").trim();
-  const timeLabel = post?.createdAt
-    ? moment(post.createdAt).fromNow()
-    : "";
+  const authorAvatar = activePost?.user?.image || activePost?.image;
+  const authorNick = activePost?.user?.nickName || activePost?.nickName;
+  const authorId =
+    activePost?.userId || activePost?.user?.clerkId || activePost?.user?._id;
+  const isVerified = activePost?.user?.isVerified ?? activePost?.isVerified;
+  const caption = (activePost?.caption || activePost?.content || "").trim();
+  const timeLabel = activePost?.createdAt ? moment(activePost.createdAt).fromNow() : "";
+  const postLevelLabel = formatConstituency(
+    activePost?.levelValue,
+    activePost?.levelType,
+  );
+
+  const baseEngagement = useMemo<MediaViewerEngagement>(() => {
+    const likes = Array.isArray(activePost?.likes)
+      ? activePost.likes.length
+      : activePost?.likesCount;
+    return {
+      commentsCount:
+        engagement?.commentsCount ??
+        activePost?.commentsCount ??
+        activePost?.commentCount,
+      quoteCount:
+        engagement?.quoteCount ?? activePost?.quoteCount ?? activePost?.reciteCount,
+      recastCount: engagement?.recastCount ?? activePost?.recastCount,
+      likesCount: engagement?.likesCount ?? likes,
+      views: engagement?.views ?? activePost?.views,
+      isLiked: engagement?.isLiked,
+      recited: engagement?.recited,
+      reposted: engagement?.reposted,
+      onComment: engagement?.onComment,
+      onRecite: engagement?.onRecite,
+      onRecast: engagement?.onRecast,
+      onLike: engagement?.onLike,
+    };
+  }, [activePost, engagement]);
+
+  const viewerEngagement = useMemo<MediaViewerEngagement>(
+    () => ({
+      ...baseEngagement,
+      ...engagementOverrides[activePostId],
+    }),
+    [activePostId, baseEngagement, engagementOverrides],
+  );
 
   const hasEngagement = Boolean(
-    engagement?.onComment ||
-      engagement?.onRecite ||
-      engagement?.onRecast ||
-      engagement?.onLike,
+    activePost ||
+      viewerEngagement.onComment ||
+      viewerEngagement.onRecite ||
+      viewerEngagement.onRecast ||
+      viewerEngagement.onLike,
   );
-
-  const showBottomChrome = total > 1 || Boolean(post) || hasEngagement;
-
-  const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const index = viewableItems[0]?.index;
-      if (typeof index === "number") setCurrentIndex(index);
-    },
-    [],
-  );
-
-  const viewabilityConfig = React.useRef({
-    itemVisiblePercentThreshold: 80,
-  }).current;
 
   const enhancedPinchGesture = useMemo(
     () =>
       pinchGesture
-        .runOnJS(true)
-        .onStart(() => setIsZooming(true))
-        .onEnd(() => setIsZooming(false)),
-    [pinchGesture],
+        ? pinchGesture
+            .runOnJS(true)
+            .onStart(() => setIsZooming(true))
+            .onEnd(() => setIsZooming(false))
+        : Gesture.Pinch()
+            .runOnJS(true)
+            .onStart(() => setIsZooming(true))
+            .onUpdate((event) => {
+              localPinchScale.value = event.scale;
+            })
+            .onEnd(() => {
+              localPinchScale.value = withSpring(1, SPRING);
+              setIsZooming(false);
+            }),
+    [localPinchScale, pinchGesture],
   );
+
+  const localPinchStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: localPinchScale.value }],
+  }));
+
+  const showEdgeHint = useCallback((direction: "up" | "down") => {
+    setHintDirection(direction);
+    setHintVisible(true);
+    if (hintTimer.current) clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setHintVisible(false), 1400);
+  }, []);
+
+  useEffect(() => {
+    setCaptionExpanded(false);
+    setVideoBuffering(false);
+  }, [activePostIndex, activeMediaIndex]);
+
+  useEffect(() => {
+    if (!modalVisible) {
+      setEngagementOverrides({});
+    }
+  }, [modalVisible]);
+
+  useEffect(() => {
+    return () => {
+      if (hintTimer.current) clearTimeout(hintTimer.current);
+    };
+  }, []);
 
   const close = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setCaptionExpanded(false);
     setModalVisible(false);
   }, [setModalVisible]);
-
-  React.useEffect(() => {
-    setCurrentIndex(selectedIndex);
-  }, [selectedIndex]);
-
-  React.useEffect(() => {
-    if (!modalVisible) {
-      setIsVideoReady({});
-      setLoadingVideoIndex(null);
-      setCaptionExpanded(false);
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      flatListRef.current?.scrollToIndex({
-        index: selectedIndex,
-        animated: false,
-      });
-    });
-  }, [modalVisible, selectedIndex]);
-
-  const itemLayout = useCallback(
-    (_: unknown, index: number) => ({
-      length: width,
-      offset: width * index,
-      index,
-    }),
-    [width],
-  );
 
   const runAction = (fn?: () => void) => {
     if (!fn) return;
@@ -240,10 +324,25 @@ export function MediaViewerModal({
   };
 
   const runLikeAction = () => {
-    if (!engagement?.onLike) return;
+    if (!viewerEngagement.onLike) return;
+    const nextLiked = !viewerEngagement.isLiked;
+    const currentLikes = viewerEngagement.likesCount ?? 0;
+
+    setEngagementOverrides((prev) => ({
+      ...prev,
+      [activePostId]: {
+        ...prev[activePostId],
+        isLiked: nextLiked,
+        likesCount: Math.max(currentLikes + (nextLiked ? 1 : -1), 0),
+      },
+    }));
+
     setLikeBurstKey((key) => key + 1);
-    runAction(engagement.onLike);
+    runAction(viewerEngagement.onLike);
   };
+
+  const effectivePinchStyle = pinchStyle ?? localPinchStyle;
+  const showBottomChrome = totalMedia > 1 || Boolean(activePost) || hasEngagement;
 
   return (
     <Modal
@@ -254,99 +353,26 @@ export function MediaViewerModal({
       onRequestClose={close}
     >
       <StatusBar barStyle="light-content" backgroundColor="#000" />
-
       <View style={styles.root}>
-        <FlatList
-          ref={flatListRef}
-          horizontal
-          pagingEnabled
-          data={resolvedMedia}
-          initialScrollIndex={selectedIndex}
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(item, index) => `${item}-${index}`}
-          getItemLayout={itemLayout}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
-          scrollEnabled={!isZooming}
-          decelerationRate="fast"
-          bounces={total > 1}
-          renderItem={({ item, index }) => {
-            const video = isVideoMedia(item);
-            const active = index === currentIndex;
-            const isLoading = loadingVideoIndex === index;
-            const optimizedUri = video
-              ? buildCloudinaryUrl(item, {
-                  width: fullScreenPixelWidth,
-                  kind: "video",
-                }) ?? item
-              : buildCloudinaryUrl(item, { width: fullScreenPixelWidth }) ??
-                item;
-
-            return (
-              <View style={[styles.slide, { width, height }]}>
-                {video ? (
-                  <View style={styles.mediaFrame}>
-                    {isLoading && (
-                      <View style={styles.loadingOverlay}>
-                        <View style={styles.loadingBadge}>
-                          <LoaderKitView
-                            style={styles.loaderIcon}
-                            name="BallScaleRippleMultiple"
-                            color="#fff"
-                          />
-                        </View>
-                      </View>
-                    )}
-
-                    <Video
-                      source={{
-                        uri: optimizedUri,
-                        bufferConfig: {
-                          minBufferMs: 2500,
-                          maxBufferMs: 8000,
-                          bufferForPlaybackMs: 1000,
-                          bufferForPlaybackAfterRebufferMs: 1500,
-                        },
-                      }}
-                      style={styles.media}
-                      resizeMode="contain"
-                      paused={!active}
-                      repeat
-                      controls={isVideoReady[index] === true}
-                      onLoadStart={() => {
-                        setLoadingVideoIndex(index);
-                        setIsVideoReady((p) => ({ ...p, [index]: false }));
-                      }}
-                      onLoad={() => {
-                        setLoadingVideoIndex(null);
-                        setIsVideoReady((p) => ({ ...p, [index]: true }));
-                      }}
-                      onBuffer={({ isBuffering }) => {
-                        setLoadingVideoIndex(isBuffering ? index : null);
-                      }}
-                    />
-                  </View>
-                ) : (
-                  <GestureDetector gesture={enhancedPinchGesture}>
-                    <Animated.View style={[styles.mediaFrame, pinchStyle]}>
-                      <Image
-                        source={{ uri: optimizedUri }}
-                        style={StyleSheet.absoluteFill}
-                        contentFit="contain"
-                        cachePolicy="memory-disk"
-                        transition={200}
-                      />
-                    </Animated.View>
-                  </GestureDetector>
-                )}
-              </View>
-            );
-          }}
+        <MediaPostPager
+          posts={viewerPosts}
+          width={width}
+          height={height}
+          activePostIndex={activePostIndex}
+          getPostId={getId}
+          getMediaIndex={getMediaIndex}
+          setActivePost={setActivePost}
+          setMediaIndexForPost={setMediaIndexForPost}
+          onEdgeHint={showEdgeHint}
+          zoomStyle={effectivePinchStyle}
+          pinchGesture={enhancedPinchGesture}
+          isZooming={isZooming}
+          onBufferingChange={setVideoBuffering}
         />
 
         <LinearGradient
           colors={["rgba(0,0,0,0.78)", "rgba(0,0,0,0.4)", "transparent"]}
-          style={[styles.topGradient, { paddingTop: insets.top + 8 }]}
+          style={styles.topGradient}
           pointerEvents="box-none"
         >
           <View style={styles.headerRow}>
@@ -363,26 +389,23 @@ export function MediaViewerModal({
               <Feather name="x" size={22} color="#fff" />
             </Pressable>
 
-            {total > 1 && (
-              <View style={styles.counterCenter} pointerEvents="none">
-                <View style={styles.counterPill}>
-                  <Text style={styles.counterText}>{counterLabel}</Text>
-                </View>
+            <View style={styles.counterCenter} pointerEvents="none">
+              <View style={styles.counterPill}>
+                <Text style={styles.counterText}>
+                  {`${activeMediaIndex + 1} / ${Math.max(totalMedia, 1)}`}
+                </Text>
               </View>
-            )}
+            </View>
           </View>
         </LinearGradient>
 
-        {showBottomChrome && (
+        {showBottomChrome ? (
           <LinearGradient
             colors={["transparent", "rgba(0,0,0,0.55)", "rgba(0,0,0,0.92)"]}
-            style={[
-              styles.bottomGradient,
-              { paddingBottom: insets.bottom + 14 },
-            ]}
+            style={styles.bottomGradient}
             pointerEvents="box-none"
           >
-            {post ? (
+            {activePost ? (
               <View style={styles.postMeta} pointerEvents="box-none">
                 <Pressable
                   style={styles.authorRow}
@@ -423,6 +446,19 @@ export function MediaViewerModal({
                   </View>
                 </Pressable>
 
+                {postLevelLabel ? (
+                  <View style={styles.levelChip}>
+                    <Ionicons
+                      name="location-outline"
+                      size={11}
+                      color="rgba(255,255,255,0.9)"
+                    />
+                    <Text style={styles.levelChipText} numberOfLines={1}>
+                      {postLevelLabel.toUpperCase()}
+                    </Text>
+                  </View>
+                ) : null}
+
                 {caption ? (
                   <Pressable onPress={() => setCaptionExpanded((v) => !v)}>
                     <Text
@@ -439,43 +475,35 @@ export function MediaViewerModal({
               </View>
             ) : null}
 
-            {resolvedMedia[currentIndex] &&
-            isVideoMedia(resolvedMedia[currentIndex]) ? (
+            {activeMediaItem && isVideoMedia(activeMediaItem) ? (
               <View style={styles.mediaTypeRow}>
                 <Ionicons
-                  name="play-circle"
+                  name={videoBuffering ? "hourglass-outline" : "play-circle"}
                   size={16}
                   color="rgba(255,255,255,0.9)"
                 />
-                <Text style={styles.mediaTypeLabel}>Video</Text>
+                <Text style={styles.mediaTypeLabel}>
+                  {videoBuffering ? "Buffering" : "Video"}
+                </Text>
               </View>
             ) : null}
 
-            {total > 1 && (
+            {totalMedia > 1 ? (
               <View style={styles.dotsRow}>
-                {resolvedMedia.map((_, i) => (
-                  <PageDot key={i} active={i === currentIndex} />
+                {activeMedia.map((_, i) => (
+                  <PageDot key={i} active={i === activeMediaIndex} />
                 ))}
               </View>
-            )}
+            ) : null}
           </LinearGradient>
-        )}
+        ) : null}
 
         {hasEngagement ? (
-          <View
-            style={[
-              styles.actionRail,
-              {
-                top: insets.top + 72,
-                bottom: insets.bottom + (post ? 140 : 48),
-              },
-            ]}
-            pointerEvents="box-none"
-          >
+          <View style={styles.actionRail} pointerEvents="box-none">
             <View style={styles.actionRailInner} pointerEvents="auto">
               <ActionItem
-                onPress={() => runAction(engagement?.onComment)}
-                count={engagement?.commentsCount}
+                onPress={() => runAction(viewerEngagement.onComment)}
+                count={viewerEngagement.commentsCount}
               >
                 <View style={styles.actionIconWrap}>
                   <Feather
@@ -487,10 +515,10 @@ export function MediaViewerModal({
               </ActionItem>
 
               <ActionItem
-                onPress={() => runAction(engagement?.onRecite)}
-                count={engagement?.quoteCount}
+                onPress={() => runAction(viewerEngagement.onRecite)}
+                count={viewerEngagement.quoteCount}
                 countColor={
-                  engagement?.recited
+                  viewerEngagement.recited
                     ? ACTIVE_ACCENT
                     : "rgba(255,255,255,0.9)"
                 }
@@ -500,7 +528,7 @@ export function MediaViewerModal({
                     name="comment-quote-outline"
                     size={25}
                     color={
-                      engagement?.recited
+                      viewerEngagement.recited
                         ? ACTIVE_ACCENT
                         : "rgba(255,255,255,0.95)"
                     }
@@ -509,10 +537,10 @@ export function MediaViewerModal({
               </ActionItem>
 
               <ActionItem
-                onPress={() => runAction(engagement?.onRecast)}
-                count={engagement?.recastCount}
+                onPress={() => runAction(viewerEngagement.onRecast)}
+                count={viewerEngagement.recastCount}
                 countColor={
-                  engagement?.reposted
+                  viewerEngagement.reposted
                     ? ACTIVE_ACCENT
                     : "rgba(255,255,255,0.9)"
                 }
@@ -522,7 +550,7 @@ export function MediaViewerModal({
                     name="cycle"
                     size={24}
                     color={
-                      engagement?.reposted
+                      viewerEngagement.reposted
                         ? ACTIVE_ACCENT
                         : "rgba(255,255,255,0.95)"
                     }
@@ -532,14 +560,16 @@ export function MediaViewerModal({
 
               <ActionItem
                 onPress={runLikeAction}
-                count={engagement?.likesCount}
+                count={viewerEngagement.likesCount}
                 countColor={
-                  engagement?.isLiked ? LIKE_COLOR : "rgba(255,255,255,0.9)"
+                  viewerEngagement.isLiked
+                    ? LIKE_COLOR
+                    : "rgba(255,255,255,0.9)"
                 }
               >
                 <View style={styles.actionIconWrap}>
                   <LikeBubbles burstKey={likeBurstKey} color={LIKE_COLOR} />
-                  {engagement?.isLiked ? (
+                  {viewerEngagement.isLiked ? (
                     <AntDesign name="heart" size={24} color={LIKE_COLOR} />
                   ) : (
                     <Feather
@@ -551,64 +581,33 @@ export function MediaViewerModal({
                 </View>
               </ActionItem>
 
-              <ActionItem count={engagement?.views}>
+              <ActionItem count={viewerEngagement.views}>
                 <View style={styles.actionIconWrap}>
-                  <Feather
-                    name="eye"
-                    size={24}
-                    color="rgba(255,255,255,0.8)"
-                  />
+                  <Feather name="eye" size={24} color="rgba(255,255,255,0.8)" />
                 </View>
               </ActionItem>
             </View>
           </View>
         ) : null}
+
+        <EdgeSwipeHint
+          direction={hintDirection}
+          visible={hintVisible}
+          canNavigate={
+            hintDirection === "up"
+              ? canNavigateNextPost
+              : hintDirection === "down"
+                ? canNavigatePrevPost
+                : false
+          }
+        />
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  slide: {
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#000",
-  },
-  mediaFrame: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  media: {
-    width: "100%",
-    height: "100%",
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.25)",
-    zIndex: 2,
-  },
-  loadingBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loaderIcon: {
-    width: 36,
-    height: 36,
-  },
+  root: { flex: 1, backgroundColor: "#000" },
   topGradient: {
     position: "absolute",
     top: 0,
@@ -616,6 +615,7 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
     paddingHorizontal: 16,
+    paddingTop: 48,
     paddingBottom: 32,
   },
   bottomGradient: {
@@ -626,17 +626,10 @@ const styles = StyleSheet.create({
     zIndex: 10,
     paddingHorizontal: 16,
     paddingTop: 48,
+    paddingBottom: 30,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  counterCenter: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  counterCenter: { alignItems: "flex-end", justifyContent: "center" },
   iconButton: {
     width: 44,
     height: 44,
@@ -647,108 +640,67 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  iconButtonPressed: {
-    backgroundColor: "rgba(255,255,255,0.24)",
-    transform: [{ scale: 0.96 }],
-  },
+  iconButtonPressed: { backgroundColor: "rgba(255,255,255,0.24)", transform: [{ scale: 0.96 }] },
   counterPill: {
-    paddingHorizontal: 18,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 22,
     backgroundColor: "rgba(0,0,0,0.5)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.2)",
   },
-  counterText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.4,
-  },
-  postMeta: {
-    width: "100%",
-    marginBottom: 12,
-  },
-  authorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 8,
-  },
-  authorAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.15)",
-  },
-  avatarFallback: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  authorTextCol: {
-    flex: 1,
-  },
-  authorNameRow: {
+  counterText: { color: "#fff", fontSize: 14, fontWeight: "700", letterSpacing: 0.3 },
+  postMeta: { width: "100%", marginBottom: 12 },
+  authorRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
+  authorAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.15)" },
+  avatarFallback: { alignItems: "center", justifyContent: "center" },
+  authorTextCol: { flex: 1 },
+  authorNameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  authorName: { color: "#fff", fontSize: 15, fontWeight: "700", flexShrink: 1 },
+  authorHandle: { color: "rgba(255,255,255,0.72)", fontSize: 12, marginTop: 2 },
+  levelChip: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    maxWidth: "92%",
+    marginBottom: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.2)",
   },
-  authorName: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-    flexShrink: 1,
+  levelChipText: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.35,
   },
-  authorHandle: {
-    color: "rgba(255,255,255,0.72)",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  caption: {
-    color: "#fff",
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  captionMore: {
-    color: "rgba(255,255,255,0.65)",
-    fontSize: 13,
-    fontWeight: "600",
-    marginTop: 4,
-  },
+  caption: { color: "#fff", fontSize: 14, lineHeight: 21 },
+  captionMore: { color: "rgba(255,255,255,0.65)", fontSize: 13, fontWeight: "600", marginTop: 4 },
   actionRail: {
     position: "absolute",
     right: 10,
+    top: 120,
+    bottom: 160,
     zIndex: 12,
     justifyContent: "center",
     alignItems: "flex-end",
   },
-  actionRailInner: {
-    alignItems: "center",
-    gap: 4,
-  },
+  actionRailInner: { alignItems: "center", gap: 4 },
   actionIconWrap: {
     position: "relative",
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: "rgba(0,0,0,0.38)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.15)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "visible",
   },
-  actionItem: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 4,
-    minWidth: 52,
-    gap: 4,
-  },
-  actionItemPressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.94 }],
-  },
+  actionItem: { alignItems: "center", justifyContent: "center", paddingVertical: 4, minWidth: 52, gap: 4 },
+  actionItemPressed: { opacity: 0.75, transform: [{ scale: 0.94 }] },
   actionCount: {
     fontSize: 11,
     fontWeight: "700",
@@ -757,35 +709,11 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  actionCountSpacer: {
-    height: 0,
-  },
-  mediaTypeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginBottom: 10,
-  },
-  mediaTypeLabel: {
-    color: "rgba(255,255,255,0.88)",
-    fontSize: 12,
-    fontWeight: "500",
-    letterSpacing: 0.2,
-  },
-  dotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "rgba(255,255,255,0.35)",
-    overflow: "hidden",
-  },
+  actionCountSpacer: { height: 0 },
+  mediaTypeRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 10 },
+  mediaTypeLabel: { color: "rgba(255,255,255,0.88)", fontSize: 12, fontWeight: "500", letterSpacing: 0.2 },
+  dotsRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.35)", overflow: "hidden" },
   dotActive: {
     width: 22,
     height: 7,
@@ -794,10 +722,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  dotActiveInner: {
-    width: 22,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#fff",
-  },
+  dotActiveInner: { width: 22, height: 7, borderRadius: 4, backgroundColor: "#fff" },
 });

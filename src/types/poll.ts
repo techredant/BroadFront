@@ -52,6 +52,7 @@ export type PollComment = {
   pollId: string;
   userId: string;
   text: string;
+  likes?: string[];
   user?: PollCreator;
   createdAt: string;
 };

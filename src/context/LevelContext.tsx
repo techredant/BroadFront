@@ -19,6 +19,8 @@ import {
   bindLevelRooms,
   createFeedSocket,
 } from "@/utils/feedSocket";
+import { bindPresenceSocket } from "@/utils/presenceSocket";
+import { useFeedPresenceSync } from "@/hooks/useFeedPresenceSync";
 import { getFeedRoomsForViewer } from "@/utils/feedRooms";
 
 const BASE_URL = API_PUBLIC_URL;
@@ -48,6 +50,17 @@ function normalizeFeedPosts<T extends { _id?: string; createdAt?: string; update
   posts: T[],
 ): T[] {
   return dedupePostsById(posts).sort((a, b) => postTimestamp(b) - postTimestamp(a));
+}
+
+function mergeRefreshedFeedPage<T extends { _id?: string; createdAt?: string; updatedAt?: string }>(
+  existing: T[],
+  refreshedPage: T[],
+): T[] {
+  const refreshedIds = new Set(refreshedPage.map((post) => String(post?._id ?? "")));
+  return normalizeFeedPosts([
+    ...refreshedPage,
+    ...existing.filter((post) => !refreshedIds.has(String(post?._id ?? ""))),
+  ]);
 }
 
 interface Level {
@@ -213,9 +226,17 @@ const fetchPosts = useCallback(
       const data = normalizeFeedPosts(res.data ?? []);
 
       if (refresh || page === 1) {
-        feedCache.current[key] = data;
-        setPosts(data);
-        feedPage.current[key] = 2;
+        const previous = feedCache.current[key] || [];
+        const shouldPreserveLoadedFeed = silent && refresh && previous.length > data.length;
+        const nextPosts = shouldPreserveLoadedFeed
+          ? mergeRefreshedFeedPage(previous, data)
+          : data;
+
+        feedCache.current[key] = nextPosts;
+        setPosts(nextPosts);
+        feedPage.current[key] = shouldPreserveLoadedFeed
+          ? Math.max(feedPage.current[key] || 2, 2)
+          : 2;
       } else {
         const merged = normalizeFeedPosts([
           ...(feedCache.current[key] || []),
@@ -310,6 +331,9 @@ const fetchPosts = useCallback(
 
     setSocket(newSocket);
 
+    const clerkId = userDetails?.clerkId ?? user?.id;
+    const unbindPresence = bindPresenceSocket(newSocket, clerkId);
+
     const rooms = getFeedRoomsForViewer(currentLevel.type, currentLevel.value);
     const leaveRooms = bindLevelRooms(newSocket, rooms);
 
@@ -377,10 +401,11 @@ const fetchPosts = useCallback(
     return () => {
       newSocket.off("updatePost", handlePostUpdated);
       newSocket.off("postUpdated", handlePostUpdated);
+      unbindPresence();
       leaveRooms();
       newSocket.disconnect();
     };
-  }, [currentLevel]);
+  }, [currentLevel, userDetails?.clerkId, user?.id]);
 
   useEffect(() => {
     if (!SOCKET_IO_DISABLED_ON_HOST || !currentLevel) return;
@@ -535,6 +560,8 @@ useEffect(() => {
       ...patch,
     }));
   };
+
+  useFeedPresenceSync(posts);
 
   return (
     <LevelContext.Provider

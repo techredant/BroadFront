@@ -69,18 +69,18 @@ export default function StatusScreen() {
   }, [data, viewerId]);
 
   const sections = useMemo(() => {
-    const items: { type: "header" | "row"; key: string; group?: any; title?: string }[] = [];
+    const items: { type: "header" | "row"; key: string; group?: any; title?: string; userIndex?: number }[] = [];
 
     if (recent.length > 0) {
       items.push({ type: "header", key: "h-recent", title: "Recent updates" });
-      recent.forEach((g: any) =>
-        items.push({ type: "row", key: g.userId, group: g }),
+      recent.forEach((g: any, idx: number) =>
+        items.push({ type: "row", key: g.userId, group: g, userIndex: idx }),
       );
     }
     if (viewed.length > 0) {
       items.push({ type: "header", key: "h-viewed", title: "Viewed updates" });
-      viewed.forEach((g: any) =>
-        items.push({ type: "row", key: g.userId, group: g }),
+      viewed.forEach((g: any, idx: number) =>
+        items.push({ type: "row", key: g.userId, group: g, userIndex: recent.length + idx }),
       );
     }
 
@@ -131,10 +131,14 @@ export default function StatusScreen() {
               </Text>
             );
           }
+          const allUsers = [...recent, ...viewed];
+          const allUserIds = allUsers.map((g) => g.userId);
           return (
             <StatusListRow
               userStatus={item.group}
               currentUserId={viewerId}
+              allUserIds={allUserIds}
+              userIndex={item.userIndex}
             />
           );
         }}

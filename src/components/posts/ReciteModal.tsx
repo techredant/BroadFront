@@ -12,18 +12,12 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { MediaViewerModal } from "./MediaViewModal";
 import { PostMediaGrid } from "./PostMediaGrid";
-import {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
-import { Gesture } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { formatNickHandle } from "@/utils/nickName";
 import { PoliticalPalette } from "@/constants/politicalTheme";
+import { useMediaViewer } from "@/context/MediaViewerContext";
 
 const MAX_CHARS = 280;
 
@@ -91,30 +85,20 @@ export function ReciteModal({
   mediaCount,
   width,
 }: ReciteModalProps) {
+  const { openMediaViewer } = useMediaViewer();
   const [quoteText, setQuoteText] = useState("");
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const [expandedStates, setExpandedStates] = useState<Record<string, boolean>>({});
 
   const isDisabled = quoteText.trim().length === 0;
   const charCount = quoteText.length;
   const gridWidth = width - 48;
 
-  const pinchScale = useSharedValue(1);
-  const pinchGesture = Gesture.Pinch()
-    .onUpdate((e) => {
-      pinchScale.value = e.scale;
-    })
-    .onEnd(() => {
-      pinchScale.value = withSpring(1);
-    });
-  const pinchStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pinchScale.value }],
-  }));
-
   const openMedia = (index: number) => {
-    setSelectedIndex(index);
-    setModalVisible(true);
+    openMediaViewer({
+      posts: [{ ...postCard, media: mediaList }],
+      postId: String(postCard?._id ?? postCard?.id ?? "recite-post"),
+      mediaIndex: index,
+    });
   };
 
   const originalText = postCard?.quote || postCard?.caption || "";
@@ -337,15 +321,6 @@ export function ReciteModal({
         </SafeAreaView>
       </Modal>
 
-      <MediaViewerModal
-        modalVisible={modalVisible}
-        setModalVisible={setModalVisible}
-        mediaList={mediaList}
-        selectedIndex={selectedIndex}
-        post={postCard}
-        pinchGesture={pinchGesture}
-        pinchStyle={pinchStyle}
-      />
     </>
   );
 }

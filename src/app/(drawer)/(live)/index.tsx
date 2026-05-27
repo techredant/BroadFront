@@ -110,12 +110,7 @@ export default function App() {
   }, [userDetails?.clerkId]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }} edges={["top"]}>
-      <StatusBar
-        translucent
-        backgroundColor="transparent"
-        barStyle={isDark ? "light-content" : "dark-content"}
-      />
+    <View style={{ flex: 1, backgroundColor: "#000" }}>
 
       {booting || !client ? (
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
@@ -140,6 +135,6 @@ export default function App() {
           )}
         </StreamVideo>
       )}
-    </SafeAreaView>
+    </View>
   );
 }

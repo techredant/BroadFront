@@ -7,7 +7,7 @@ import {
   StyleSheet,
   FlatList,
 } from "react-native";
-import { Image } from "expo-image";
+import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useAnimatedStyle,
@@ -87,18 +87,19 @@ export function LiveSpeakRequestsSheet({
               }
               renderItem={({ item }) => (
                 <View style={styles.row}>
-                  <View style={styles.avatar}>
-                    {item.image ? (
-                      <Image
-                        source={{ uri: item.image }}
-                        style={styles.avatarImg}
-                      />
-                    ) : (
-                      <Text style={styles.avatarLetter}>
-                        {item.userName.charAt(0).toUpperCase()}
-                      </Text>
-                    )}
-                  </View>
+                  <PresenceAvatar
+                    userId={item.userId}
+                    size={44}
+                    imageUri={item.image}
+                  >
+                    {!item.image ? (
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarLetter}>
+                          {item.userName.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </PresenceAvatar>
                   <View style={styles.meta}>
                     <Text style={styles.name} numberOfLines={1}>
                       {item.userName}

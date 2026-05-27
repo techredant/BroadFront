@@ -1,6 +1,6 @@
 import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
-import { SplashScreen, Stack, useRouter, useSegments } from "expo-router";
+import { SplashScreen, Stack, useRouter, useSegments, useRootNavigationState } from "expo-router";
 import "../../global.css";
 
 import { AppProvider } from "@/contexts/AppProvider";
@@ -16,6 +16,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { PushPromptProvider } from "@/context/PushPromptContext";
 import { NotificationBridge } from "@/components/notifications/NotificationBridge";
 import { IncomingCallProvider } from "@/components/notifications/IncomingCallOverlay";
+import { MediaViewerProvider } from "@/context/MediaViewerContext";
+import { ActiveLiveHostsProvider } from "@/context/ActiveLiveHostsContext";
+import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 
 /* ===========================
    NOTIFICATION CLICK HANDLER
@@ -33,8 +36,11 @@ void SplashScreen.preventAutoHideAsync();
 
 function useNotificationObserver() {
   const router = useRouter();
+  const navigationState = useRootNavigationState();
 
   useEffect(() => {
+    if (!navigationState?.key) return;
+
     const last = Notifications.getLastNotificationResponse();
 
     if (last?.notification) {
@@ -59,7 +65,7 @@ function useNotificationObserver() {
       subscription.remove();
       receivedSub.remove();
     };
-  }, [router]);
+  }, [router, navigationState?.key]);
 }
 
 function SplashController() {
@@ -128,8 +134,6 @@ function SplashController() {
    ROOT LAYOUT
    =========================== */
 export default function RootLayout() {
-  useNotificationObserver();
-
   return (
     <SafeAreaProvider>
       <ClerkProvider
@@ -154,9 +158,13 @@ function RootInnerLayout() {
 
   const router = useRouter();
   const segments = useSegments();
+  const navigationState = useRootNavigationState();
+
+  useNotificationObserver();
+  usePresenceHeartbeat(user?.id);
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!navigationState?.key || !isLoaded) return;
 
     const inAuthGroup = segments[0] === "(auth)";
     const inOnboardingGroup = segments[0] === "(onboarding)";
@@ -168,22 +176,33 @@ function RootInnerLayout() {
 
     const isPersonal = accountType === "Personal Account";
 
-    if (!isSignedIn && !inAuthGroup) {
-      router.replace("/(auth)");
-    } else if (isSignedIn && !hasCompletedName && !inOnboardingGroup) {
-      router.replace("/(onboarding)/nameScreen");
-    } else if (
-      isSignedIn &&
-      hasCompletedName &&
-      isPersonal &&
-      !onboardingComplete &&
-      !inOnboardingGroup
-    ) {
-      router.replace("/(onboarding)/location");
-    } else if (isSignedIn && onboardingComplete && !inDrawerGroup) {
-      router.replace("/(drawer)/(tabs)");
-    }
-  }, [isLoaded, isSignedIn, user?.unsafeMetadata, segments, router]);
+    const id = requestAnimationFrame(() => {
+      if (!isSignedIn && !inAuthGroup) {
+        router.replace("/(auth)");
+      } else if (isSignedIn && !hasCompletedName && !inOnboardingGroup) {
+        router.replace("/(onboarding)/nameScreen");
+      } else if (
+        isSignedIn &&
+        hasCompletedName &&
+        isPersonal &&
+        !onboardingComplete &&
+        !inOnboardingGroup
+      ) {
+        router.replace("/(onboarding)/location");
+      } else if (isSignedIn && onboardingComplete && !inDrawerGroup) {
+        router.replace("/(drawer)/(tabs)");
+      }
+    });
+
+    return () => cancelAnimationFrame(id);
+  }, [
+    navigationState?.key,
+    isLoaded,
+    isSignedIn,
+    user?.unsafeMetadata,
+    segments,
+    router,
+  ]);
 
   /* ===========================
      APP TREE
@@ -197,16 +216,20 @@ function RootInnerLayout() {
             <MenuProvider>
               <NotificationProvider>
                 <AppProvider>
-                  <IncomingCallProvider>
-                    <SplashController />
-                    <NotificationBridge />
-                    <Stack
-                      screenOptions={{
-                        headerShown: false,
-                        contentStyle: { backgroundColor: theme.background },
-                      }}
-                    />
-                  </IncomingCallProvider>
+                  <ActiveLiveHostsProvider>
+                    <MediaViewerProvider>
+                      <IncomingCallProvider>
+                        <SplashController />
+                        <NotificationBridge />
+                        <Stack
+                          screenOptions={{
+                            headerShown: false,
+                            contentStyle: { backgroundColor: theme.background },
+                          }}
+                        />
+                      </IncomingCallProvider>
+                    </MediaViewerProvider>
+                  </ActiveLiveHostsProvider>
                 </AppProvider>
               </NotificationProvider>
             </MenuProvider>

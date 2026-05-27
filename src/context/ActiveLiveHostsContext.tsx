@@ -1,9 +1,11 @@
-import React, { createContext, useContext } from "react";
+import React, { createContext, useContext, useEffect } from "react";
 import { useActiveMarketLives } from "@/hooks/useActiveMarketLives";
+import { presenceStore } from "@/lib/presenceStore";
 
 type ActiveLiveHostsContextValue = {
   isUserLive: (userId?: string | null) => boolean;
   getUserLiveCallId: (userId?: string | null) => string | undefined;
+  activeLiveCallIds: Set<string>;
   refresh: () => void;
 };
 
@@ -16,11 +18,16 @@ export function ActiveLiveHostsProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { isUserLive, getUserLiveCallId, refresh } = useActiveMarketLives();
+  const { isUserLive, getUserLiveCallId, activeLiveCallIds, liveHostIds, refresh } =
+    useActiveMarketLives();
+
+  useEffect(() => {
+    presenceStore.setLiveUsers(liveHostIds);
+  }, [liveHostIds]);
 
   return (
     <ActiveLiveHostsContext.Provider
-      value={{ isUserLive, getUserLiveCallId, refresh }}
+      value={{ isUserLive, getUserLiveCallId, activeLiveCallIds, refresh }}
     >
       {children}
     </ActiveLiveHostsContext.Provider>
@@ -33,6 +40,7 @@ export function useActiveLiveHosts() {
     return {
       isUserLive: () => false,
       getUserLiveCallId: () => undefined,
+      activeLiveCallIds: new Set<string>(),
       refresh: () => {},
     };
   }

@@ -1,11 +1,11 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
 import { useTheme } from "@/context/ThemeContext";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { formatNickHandle } from "@/utils/nickName";
+import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 
 const IG_BLUE = "#0095F6";
 
@@ -55,11 +55,10 @@ export function MemberListRow({
         style={styles.rowMain}
         onPress={() => router.push(`/(profileId)/${item.clerkId}`)}
       >
-        <Image
-          source={{ uri: memberAvatarUri(item) }}
-          style={styles.avatar}
-          cachePolicy="memory-disk"
-          contentFit="cover"
+        <PresenceAvatar
+          userId={item.clerkId}
+          size={44}
+          imageUri={memberAvatarUri(item)}
         />
 
         <View style={styles.rowText}>

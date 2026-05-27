@@ -18,19 +18,14 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
-import { Gesture } from "react-native-gesture-handler";
 import { Image } from "expo-image";
-import { MediaViewerModal } from "./MediaViewModal";
 import { PostMediaGrid } from "./PostMediaGrid";
 import { formatNickHandle } from "@/utils/nickName";
 import { PoliticalPalette } from "@/constants/politicalTheme";
 import { API_PUBLIC_URL } from "@/constants/api";
 import { useLevel } from "@/context/LevelContext";
+import { useMediaViewer } from "@/context/MediaViewerContext";
+import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 
 const LIKE_COLOR = "#E0245E";
 
@@ -101,11 +96,10 @@ const CommentPostHeader = React.memo(function CommentPostHeader({
       ]}
     >
       <View style={styles.postHeader}>
-        <Image
-          source={{ uri: postCard?.user?.image }}
-          style={styles.postAvatar}
-          cachePolicy="memory-disk"
-          contentFit="cover"
+        <PresenceAvatar
+          userId={postCard?.userId ?? postCard?.user?.clerkId}
+          size={42}
+          imageUri={postCard?.user?.image}
           recyclingKey={postCard?.user?.image}
         />
         <View style={styles.postMeta}>
@@ -184,13 +178,12 @@ export default function CommentModal({
   theme,
 }: any) {
   const { socket } = useLevel();
+  const { openMediaViewer } = useMediaViewer();
   const insets = useSafeAreaInsets();
   const [text, setText] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [replyLoading, setReplyLoading] = useState(false);
-  const [mediaModalVisible, setMediaModalVisible] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const scrollTopOpacity = useRef(new Animated.Value(0)).current;
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [expandedStates, setExpandedStates] = useState<Record<string, boolean>>(
@@ -208,23 +201,13 @@ export default function CommentModal({
   const commentCount = comments?.length ?? 0;
   const isExpanded = expandedStates[postCard?._id];
 
-  const pinchScale = useSharedValue(1);
-  const pinchGesture = Gesture.Pinch()
-    .onUpdate((e) => {
-      pinchScale.value = e.scale;
-    })
-    .onEnd(() => {
-      pinchScale.value = withSpring(1);
-    });
-
-  const pinchStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pinchScale.value }],
-  }));
-
   const openMedia = useCallback((index: number) => {
-    setSelectedIndex(index);
-    setMediaModalVisible(true);
-  }, []);
+    openMediaViewer({
+      posts: [{ ...postCard, media: mediaList }],
+      postId: String(postCard?._id ?? postCard?.id ?? "comment-post"),
+      mediaIndex: index,
+    });
+  }, [mediaList, openMediaViewer, postCard]);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedStates((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -552,11 +535,10 @@ export default function CommentModal({
 
     return (
       <View key={reply._id} style={styles.replyRow}>
-        <Image
-          source={{ uri: reply?.user?.image }}
-          style={styles.replyAvatar}
-          cachePolicy="memory-disk"
-          contentFit="cover"
+        <PresenceAvatar
+          userId={reply.userId ?? reply?.user?.clerkId}
+          size={28}
+          imageUri={reply?.user?.image}
         />
         <View
           style={[
@@ -616,11 +598,10 @@ export default function CommentModal({
     return (
       <View style={styles.commentBlock}>
         <View style={styles.commentRow}>
-          <Image
-            source={{ uri: item?.user?.image || item.image }}
-            style={styles.commentAvatar}
-            cachePolicy="memory-disk"
-            contentFit="cover"
+          <PresenceAvatar
+            userId={item.userId ?? item?.user?.clerkId}
+            size={36}
+            imageUri={item?.user?.image || item.image}
             recyclingKey={item?._id}
           />
           <View
@@ -712,11 +693,10 @@ export default function CommentModal({
                   </Pressable>
                 </View>
                 <View style={styles.igReplyRow}>
-                  <Image
-                    source={{ uri: userImage }}
-                    style={styles.igReplyAvatar}
-                    cachePolicy="memory-disk"
-                    contentFit="cover"
+                  <PresenceAvatar
+                    userId={userId}
+                    size={32}
+                    imageUri={userImage}
                   />
                   <TextInput
                     placeholder={`Reply to ${authorName}…`}
@@ -815,12 +795,7 @@ export default function CommentModal({
         </View>
 
         <View style={styles.composerRow}>
-          <Image
-            source={{ uri: userImage }}
-            style={styles.composerAvatar}
-            cachePolicy="memory-disk"
-            contentFit="cover"
-          />
+          <PresenceAvatar userId={userId} size={40} imageUri={userImage} />
           <View
             style={[
               styles.inputShell,
@@ -945,16 +920,6 @@ export default function CommentModal({
             <Feather name="arrow-up" size={18} color="#fff" />
           </Pressable>
         </Animated.View>
-
-        <MediaViewerModal
-          modalVisible={mediaModalVisible}
-          setModalVisible={setMediaModalVisible}
-          mediaList={mediaList}
-          selectedIndex={selectedIndex}
-          post={postCard}
-          pinchGesture={pinchGesture}
-          pinchStyle={pinchStyle}
-        />
       </SafeAreaView>
     </Modal>
   );

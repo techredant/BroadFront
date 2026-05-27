@@ -14,18 +14,12 @@ import {
 } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import Video from "react-native-video";
-import { MediaViewerModal } from "./MediaViewModal";
-import {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
-import { Gesture } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { useUser } from "@clerk/clerk-expo";
 import { Image } from "expo-image";
+import { useMediaViewer } from "@/context/MediaViewerContext";
 
 const MAX_CHARS = 280;
 
@@ -119,6 +113,7 @@ export function EditModal({
   itemSize,
 }: EditModalProps) {
   const styles = createStyles(theme);
+  const { openMediaViewer } = useMediaViewer();
 
   const [editText, setEditText] = useState("");
   const [inputHeight, setInputHeight] = useState(80);
@@ -128,8 +123,6 @@ export function EditModal({
   const charsLeft = MAX_CHARS - editText.length;
   const [image, setImage] = useState("");
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const [editedMedia, setEditedMedia] = useState<string[]>([]);
   const [editLinkPreview, setEditLinkPreview] = useState<any>(null);
 
@@ -154,24 +147,12 @@ export function EditModal({
     }
   };
 
-  // /* ---------------- PINCH ZOOM ---------------- */
-  const pinchScale = useSharedValue(1);
-
-  const pinchGesture = Gesture.Pinch()
-    .onUpdate((e) => {
-      pinchScale.value = e.scale;
-    })
-    .onEnd(() => {
-      pinchScale.value = withSpring(1);
-    });
-
-  const pinchStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pinchScale.value }],
-  }));
-
   const openMedia = (index: number) => {
-    setSelectedIndex(index);
-    setModalVisible(true);
+    openMediaViewer({
+      posts: [{ ...postCard, media: editedMedia }],
+      postId: String(postCard?._id ?? postCard?.id ?? "edit-post"),
+      mediaIndex: index,
+    });
   };
   const { user } = useUser();
 
@@ -461,16 +442,6 @@ export function EditModal({
         </SafeAreaView>
       </Modal>
 
-      {/* MEDIA MODAL */}
-      <MediaViewerModal
-        modalVisible={modalVisible}
-        setModalVisible={setModalVisible}
-        mediaList={editedMedia}
-        selectedIndex={selectedIndex}
-        post={postCard}
-        pinchGesture={pinchGesture}
-        pinchStyle={pinchStyle}
-      />
     </>
   );
 }

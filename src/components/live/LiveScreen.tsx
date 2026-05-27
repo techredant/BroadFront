@@ -77,6 +77,7 @@ import {
 import { LiveProductOverlay } from "@/components/live/LiveProductOverlay";
 import { LivePinProductSheet } from "@/components/live/LivePinProductSheet";
 import { MarketLiveProductRail } from "@/components/market/MarketLiveProductRail";
+import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -1140,11 +1141,13 @@ function LiveCanvasJoined({
               ) : (
                 guestViewers.map((p) => (
                   <View key={p.sessionId} style={styles.guestRow}>
-                    <View style={styles.guestAvatar}>
-                      <Text style={styles.guestInitial}>
-                        {(p.name || "?").charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
+                    <PresenceAvatar userId={p.userId} size={32}>
+                      <View style={styles.guestAvatar}>
+                        <Text style={styles.guestInitial}>
+                          {(p.name || "?").charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    </PresenceAvatar>
                     <Text style={styles.guestName} numberOfLines={1}>
                       {p.name || "Viewer"}
                     </Text>

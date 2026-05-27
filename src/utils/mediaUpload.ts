@@ -128,8 +128,15 @@ async function fetchSignedUploadPayload(
   const res = await fetch(url, { method: "GET" });
 
   if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.text();
+      detail = body ? ` — ${body.slice(0, 240)}` : "";
+    } catch {
+      // ignore body parse failures
+    }
     throw new MediaUploadError(
-      `Failed to sign Cloudinary upload (HTTP ${res.status})`,
+      `Failed to sign Cloudinary upload (HTTP ${res.status})${detail}`,
     );
   }
 
@@ -171,7 +178,7 @@ export async function uploadMedia(
     signed = await fetchSignedUploadPayload(folder);
   } catch (err) {
     console.error("[mediaUpload] sign failed:", err);
-    return null;
+    return uploadViaServerProxy(uploadUri, type, folder);
   }
 
   const mimeType = getUploadMimeType(uploadUri, type);

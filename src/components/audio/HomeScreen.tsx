@@ -24,10 +24,12 @@ import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
 import { MediaColors, MediaGradients } from "@/constants/mediaTheme";
 import { isStreamCallLive } from "@/utils/isStreamCallLive";
+import { getPoliticalColors } from "@/constants/politicalTheme";
 
 export const HomeScreen = () => {
   const client = useStreamVideoClient();
   const { theme, isDark } = useTheme();
+  const civic = useMemo(() => getPoliticalColors(isDark), [isDark]);
   const { currentLevel, userDetails } = useLevel();
   const insets = useSafeAreaInsets();
 
@@ -154,10 +156,10 @@ export const HomeScreen = () => {
 
   return (
     <View style={[styles.root, { backgroundColor: bg }]}>
-      <StatusBar barStyle="light-content" />
+
 
       <Animated.View entering={FadeInUp}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <Pressable onPress={() => router.back()} style={styles.iconBtn}>
             <Ionicons name="chevron-back" size={26} color={textMain} />
           </Pressable>
@@ -165,6 +167,16 @@ export const HomeScreen = () => {
             <Text style={[styles.headerTitle, { color: textMain }]}>Audio</Text>
             <Text style={[styles.headerSub, { color: textSub }]}>
               {currentLevel?.value?.toUpperCase() || "ROOMS"}
+            </Text>
+          </View>
+          <View
+            style={[styles.timePill, { backgroundColor: civic.actionBar }]}
+          >
+            <Text style={[styles.timeText, { color: textSub }]}>
+              {new Date().toLocaleTimeString("en-US", { 
+                hour: "2-digit", 
+                minute: "2-digit" 
+              }).toUpperCase()}
             </Text>
           </View>
           <Pressable style={styles.iconBtn} onPress={fetchCalls}>
@@ -297,12 +309,12 @@ export const HomeScreen = () => {
               )}
               <View style={styles.roomBody}>
                 {live ? (
-                  <View style={styles.roomLiveTag}>
-                    <Text style={styles.roomLiveText}>LIVE</Text>
+                  <View style={[styles.roomLiveTag, { backgroundColor: civic.chipBg, borderColor: civic.chipText }]}>
+                    <Text style={[styles.roomLiveText, { color: civic.chipText }]}>LIVE</Text>
                   </View>
                 ) : (
-                  <View style={styles.roomEndedTag}>
-                    <Text style={styles.roomEndedText}>ENDED</Text>
+                  <View style={[styles.roomEndedTag, { backgroundColor: civic.chipBg, borderColor: civic.chipText }]}>
+                    <Text style={[styles.roomEndedText, { color: civic.chipText }]}>ENDED</Text>
                   </View>
                 )}
                 <Text
@@ -410,12 +422,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingTop: 8,
     paddingBottom: 8,
+    gap: 4,
   },
   headerCenter: { flex: 1, alignItems: "center" },
   headerTitle: { fontSize: 21, fontWeight: "800" },
   headerSub: { fontSize: 11, marginTop: 2, fontWeight: "600" },
+  timePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  timeText: {
+    fontSize: 8,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
   iconBtn: { width: 40, height: 40, justifyContent: "center", alignItems: "center" },
   categoryRow: { paddingHorizontal: 16, paddingBottom: 12, gap: 20 },
   categoryText: { fontSize: 14, fontWeight: "600", paddingBottom: 6 },

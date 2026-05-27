@@ -7,7 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
-import { Image } from "expo-image";
+import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useAnimatedStyle,
@@ -71,14 +71,20 @@ export function LiveParticipantSheet({
           <Pressable onPress={(e) => e.stopPropagation()}>
             <View style={styles.handle} />
             <View style={styles.header}>
-              <View style={styles.avatar}>
-                {image ? (
-                  <Image source={{ uri: image }} style={styles.avatarImg} />
-                ) : (
-                  <Text style={styles.avatarLetter}>
-                    {name.charAt(0).toUpperCase()}
-                  </Text>
-                )}
+              <View style={styles.avatarWrap}>
+                <PresenceAvatar
+                  userId={participant.userId}
+                  size={56}
+                  imageUri={image}
+                >
+                  {!image ? (
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarLetter}>
+                        {name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  ) : null}
+                </PresenceAvatar>
                 {isMuted && (
                   <View style={styles.mutedDot}>
                     <Ionicons name="mic-off" size={12} color="#fff" />
@@ -170,6 +176,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 14,
     marginBottom: 16,
+  },
+  avatarWrap: {
+    position: "relative",
   },
   avatar: {
     width: 56,

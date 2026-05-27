@@ -25,17 +25,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { isStreamCallLive } from "@/utils/isStreamCallLive";
 import {
-  formatEndedAgo,
-  purgeExpiredEndedCalls,
-} from "@/utils/livestreamCalls";
-import {
   isMarketLiveCall,
   isCommunityLiveCall,
   marketLiveCallId,
   type MarketLiveProduct,
 } from "@/utils/marketLive";
-
-type LiveTab = "live" | "ended";
+import { getPoliticalColors } from "@/constants/politicalTheme";
 
 const { width } = Dimensions.get("window");
 /** Stream QueryCalls limit is ~60/min per user — avoid hammering on focus/remount */
@@ -87,6 +82,7 @@ export const HomeScreen = ({
   onGoLiveModalOpened,
 }: Props) => {
   const { theme, isDark } = useTheme();
+  const civic = useMemo(() => getPoliticalColors(isDark), [isDark]);
   const { currentLevel, userDetails } = useLevel();
   const insets = useSafeAreaInsets();
 
@@ -101,7 +97,6 @@ export const HomeScreen = ({
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [title, setTitle] = useState("");
-  const [activeTab, setActiveTab] = useState<LiveTab>("live");
 
   const hasLoadedRef = useRef(cacheValid);
   const lastFetchAtRef = useRef(cacheValid ? liveCallsCache.fetchedAt : 0);
@@ -141,10 +136,7 @@ export const HomeScreen = ({
           filter_conditions: { type: "livestream" },
           sort: [{ field: "created_at", direction: -1 }],
         });
-        const visible = await purgeExpiredEndedCalls(
-          res.calls,
-          userDetails?.clerkId,
-        );
+        const visible = (res.calls ?? []).filter(isCallLive);
         setCalls(visible);
         hasLoadedRef.current = true;
         lastFetchAtRef.current = Date.now();
@@ -239,27 +231,7 @@ export const HomeScreen = ({
     [calls, mode],
   );
 
-  const endedCalls = useMemo(() => {
-    return calls
-      .filter(
-        (c) =>
-          !isCallLive(c) &&
-          (mode === "market" ? isMarketLiveCall(c) : isCommunityLiveCall(c)),
-      )
-      .sort((a, b) => {
-        const aMs =
-          a.state.endedAt?.getTime() ??
-          a.state.updatedAt?.getTime() ??
-          0;
-        const bMs =
-          b.state.endedAt?.getTime() ??
-          b.state.updatedAt?.getTime() ??
-          0;
-        return bMs - aMs;
-      });
-  }, [calls]);
-
-  const listData = activeTab === "live" ? liveCalls : endedCalls;
+  const listData = liveCalls;
 
   const openLive = (item: Call) => {
     const createdById = item.state?.createdBy?.id;
@@ -269,34 +241,6 @@ export const HomeScreen = ({
     } else {
       joinCall(item.id);
     }
-  };
-
-  const renderEndedRow = ({ item }: { item: Call }) => {
-    const displayTitle =
-      item.state?.custom?.title || (item.state as { title?: string })?.title || "Untitled live";
-    const host = item.state?.createdBy?.name || "Broadcaster";
-
-    return (
-      <View style={[styles.liveRow, styles.endedRow, { backgroundColor: cardBg }]}>
-        <View style={[styles.liveRowThumb, styles.endedThumb]}>
-          <Ionicons name="time-outline" size={28} color="rgba(255,255,255,0.7)" />
-        </View>
-        <View style={styles.liveRowBody}>
-          <View style={styles.endedTag}>
-            <Text style={styles.endedTagText}>ENDED</Text>
-          </View>
-          <Text style={[styles.liveRowTitle, { color: textMain }]} numberOfLines={1}>
-            {displayTitle}
-          </Text>
-          <Text style={[styles.liveRowHost, { color: textSub }]} numberOfLines={1}>
-            {host}
-          </Text>
-          <Text style={[styles.endedAgo, { color: textSub }]}>
-            {formatEndedAgo(item)}
-          </Text>
-        </View>
-      </View>
-    );
   };
 
   const renderLiveRow = ({ item }: { item: Call }) => {
@@ -344,64 +288,29 @@ export const HomeScreen = ({
   };
 
   const listHeader = (
-    <>
-      <Pressable style={styles.goLiveBanner} onPress={() => setModalVisible(true)}>
-        <LinearGradient
-          colors={[...MediaGradients.featured]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.goLiveGradient}
-        >
-          <View style={styles.goLiveIcon}>
-            <Ionicons name="videocam" size={22} color="#fff" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.goLiveTitle}>Start a live</Text>
-            <Text style={styles.goLiveSub}>Go live and connect in real time</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={22} color="#fff" />
-        </LinearGradient>
-      </Pressable>
-
-      <View style={[styles.tabBar, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)" }]}>
-        <Pressable
-          style={[styles.tab, activeTab === "live" && styles.tabActive]}
-          onPress={() => setActiveTab("live")}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              { color: activeTab === "live" ? "#fff" : textSub },
-            ]}
-          >
-            Live{liveCalls.length > 0 ? ` (${liveCalls.length})` : ""}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tab, activeTab === "ended" && styles.tabActive]}
-          onPress={() => setActiveTab("ended")}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              { color: activeTab === "ended" ? "#fff" : textSub },
-            ]}
-          >
-            Ended{endedCalls.length > 0 ? ` (${endedCalls.length})` : ""}
-          </Text>
-        </Pressable>
-      </View>
-    </>
+    <Pressable style={styles.goLiveBanner} onPress={() => setModalVisible(true)}>
+      <LinearGradient
+        colors={[...MediaGradients.featured]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.goLiveGradient}
+      >
+        <View style={styles.goLiveIcon}>
+          <Ionicons name="videocam" size={22} color="#fff" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.goLiveTitle}>Start a live</Text>
+          <Text style={styles.goLiveSub}>Go live and connect in real time</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={22} color="#fff" />
+      </LinearGradient>
+    </Pressable>
   );
 
   return (
       <View style={[styles.root, { backgroundColor: bg }]}>
-        <StatusBar
-          translucent
-          backgroundColor="transparent"
-          style={isDark ? "light" : "dark"}
-        />
-        <View style={styles.header}>
+
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <Pressable onPress={() => router.back()} style={styles.iconBtn}>
             <Ionicons name="chevron-back" size={26} color={textMain} />
           </Pressable>
@@ -409,6 +318,16 @@ export const HomeScreen = ({
             <Text style={[styles.headerTitle, { color: textMain }]}>LIVE</Text>
             <Text style={[styles.headerSub, { color: textSub }]}>
               {currentLevel?.value?.toUpperCase() || "DISCOVER"}
+            </Text>
+          </View>
+          <View
+            style={[styles.timePill, { backgroundColor: civic.actionBar }]}
+          >
+            <Text style={[styles.timeText, { color: textSub }]}>
+              {new Date().toLocaleTimeString("en-US", { 
+                hour: "2-digit", 
+                minute: "2-digit" 
+              }).toUpperCase()}
             </Text>
           </View>
           <Pressable
@@ -427,7 +346,7 @@ export const HomeScreen = ({
       <FlatList
         data={listData}
         keyExtractor={(item) => item.id}
-        renderItem={activeTab === "live" ? renderLiveRow : renderEndedRow}
+        renderItem={renderLiveRow}
         ListHeaderComponent={listHeader}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
@@ -439,9 +358,7 @@ export const HomeScreen = ({
             />
           ) : (
             <Text style={[styles.empty, { color: textSub }]}>
-              {activeTab === "live"
-                ? "No live streams right now. Tap + to start one."
-                : "No ended streams in the last 24 hours."}
+              No live streams right now. Tap + to start one.
             </Text>
           )
         }
@@ -518,12 +435,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingTop: 8,
     paddingBottom: 12,
+    gap: 4,
   },
   headerCenter: { flex: 1, alignItems: "center" },
   headerTitle: { fontSize: 21, fontWeight: "800", letterSpacing: 1 },
   headerSub: { fontSize: 11, marginTop: 2, fontWeight: "600" },
+  timePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  timeText: {
+    fontSize: 8,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
   iconBtn: { width: 40, height: 40, justifyContent: "center", alignItems: "center" },
   tabBar: {
     flexDirection: "row",

@@ -1,5 +1,4 @@
-import { useCallback, useRef, useState } from "react";
-import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   StreamVideoClient,
   type Call,
@@ -85,6 +84,7 @@ async function buildLiveMaps(calls: Call[]) {
   const liveSellerIds = new Set<string>();
   const callIdByProductId = new Map<string, string>();
   const callIdBySellerId = new Map<string, string>();
+  const activeLiveCallIds = new Set<string>();
 
   const candidates = calls.filter((c) => isStreamCallLive(c));
 
@@ -95,6 +95,8 @@ async function buildLiveMaps(calls: Call[]) {
       } catch {
         /* use cached state */
       }
+      if (!isStreamCallLive(call)) return;
+      activeLiveCallIds.add(call.id);
       registerCall(
         call,
         liveHostIds,
@@ -114,6 +116,7 @@ async function buildLiveMaps(calls: Call[]) {
     liveSellerIds,
     callIdByProductId,
     callIdBySellerId,
+    activeLiveCallIds,
   };
 }
 
@@ -134,6 +137,9 @@ export function useActiveMarketLives() {
   >(() => new Map());
   const [callIdBySellerId, setCallIdBySellerId] = useState<Map<string, string>>(
     () => new Map(),
+  );
+  const [activeLiveCallIds, setActiveLiveCallIds] = useState<Set<string>>(
+    () => new Set(),
   );
   const [liveRevision, setLiveRevision] = useState(0);
 
@@ -181,6 +187,7 @@ export function useActiveMarketLives() {
         setLiveSellerIds(maps.liveSellerIds);
         setCallIdByProductId(maps.callIdByProductId);
         setCallIdBySellerId(maps.callIdBySellerId);
+        setActiveLiveCallIds(maps.activeLiveCallIds);
         setLiveRevision((n) => n + 1);
         lastFetchRef.current = Date.now();
       } catch {
@@ -192,13 +199,11 @@ export function useActiveMarketLives() {
     [userDetails],
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      void fetchLives(true);
-      const timer = setInterval(() => void fetchLives(), POLL_MS);
-      return () => clearInterval(timer);
-    }, [fetchLives]),
-  );
+  useEffect(() => {
+    void fetchLives(true);
+    const timer = setInterval(() => void fetchLives(), POLL_MS);
+    return () => clearInterval(timer);
+  }, [fetchLives]);
 
   const isProductLive = useCallback(
     (product: Pick<MarketplaceProduct, "_id" | "userId"> & {
@@ -251,6 +256,8 @@ export function useActiveMarketLives() {
     getLiveCallId,
     isUserLive,
     getUserLiveCallId,
+    liveHostIds,
+    activeLiveCallIds,
     refresh,
     liveRevision,
   };

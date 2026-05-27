@@ -44,6 +44,7 @@ import {
   upsertStreamUser,
   type StreamChatTarget,
 } from "@/utils/streamUser";
+import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 const POSTER_REPLY_BAR_HEIGHT = 58;
@@ -138,7 +139,7 @@ export function displayNameFromView(v: Partial<StatusViewRow>): string {
 }
 
 export default function Viewer() {
-  const { user } = useLocalSearchParams();
+  const { user, userList, userIndex } = useLocalSearchParams();
   const navigation = useNavigation();
   const isFocused = useIsFocused();
   const { user: clerkUser } = useUser();
@@ -146,6 +147,12 @@ export default function Viewer() {
   const { client } = useChatContext();
   const { setChannel } = useAppContext();
   const { theme } = useTheme();
+
+  const userIdStr = Array.isArray(user) ? user[0] : user;
+  const userListStr = Array.isArray(userList) ? userList[0] : userList;
+  const userIndexNum = Array.isArray(userIndex) ? parseInt(userIndex[0] || "0") : (typeof userIndex === "string" ? parseInt(userIndex) : 0);
+  
+  const allUserIds: string[] = userListStr ? JSON.parse(decodeURIComponent(userListStr)) : [];
 
   useLayoutEffect(() => {
     const drawer = navigation.getParent()?.getParent();
@@ -178,7 +185,7 @@ export default function Viewer() {
   const resumeFromPauseRef = useRef(false);
   const insets = useSafeAreaInsets();
   const listMaxH = height * 0.34;
-  const userId = Array.isArray(user) ? user[0] : user;
+  const userId = userIdStr;
   const viewerId = clerkUser?.id;
   const storiesReady =
     !!userId && loadedUserId === userId && statuses.length > 0;
@@ -389,10 +396,26 @@ export default function Viewer() {
   const handleNext = useCallback(() => {
     setCurrentIndex((prev) => {
       if (prev < statuses.length - 1) return prev + 1;
+      
+      if (allUserIds.length > 0 && userIndexNum < allUserIds.length - 1) {
+        const nextUserIndex = userIndexNum + 1;
+        const nextUserId = allUserIds[nextUserIndex];
+        const encodedList = encodeURIComponent(JSON.stringify(allUserIds));
+        router.replace({
+          pathname: "/(status)/Viewer",
+          params: {
+            user: nextUserId,
+            userList: encodedList,
+            userIndex: nextUserIndex.toString(),
+          },
+        });
+        return prev;
+      }
+      
       router.replace("/(drawer)/(tabs)");
       return prev;
     });
-  }, [statuses.length]);
+  }, [statuses.length, allUserIds, userIndexNum]);
 
   const stopProgress = useCallback(() => {
     animationRef.current?.stop();
@@ -678,7 +701,11 @@ export default function Viewer() {
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </Pressable>
-        <Image source={{ uri: posterImage }} style={styles.headerAvatar} />
+        <PresenceAvatar
+          userId={current.userId}
+          size={36}
+          imageUri={posterImage}
+        />
         <View style={styles.headerTextCol}>
           <Text style={styles.headerName} numberOfLines={1}>
             {posterName}
@@ -901,26 +928,29 @@ export default function Viewer() {
                   ]}
                 >
                   {item.image ? (
-                    <Image
-                      source={{ uri: item.image }}
-                      style={styles.viewerAvatar}
+                    <PresenceAvatar
+                      userId={item.userId}
+                      size={40}
+                      imageUri={item.image}
                     />
                   ) : (
-                    <View
-                      style={[
-                        styles.viewerAvatar,
-                        styles.viewerAvatarPlaceholder,
-                        {
-                          backgroundColor: theme.background,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name="person"
-                        size={20}
-                        color={theme.subtext}
-                      />
-                    </View>
+                    <PresenceAvatar userId={item.userId} size={40}>
+                      <View
+                        style={[
+                          styles.viewerAvatar,
+                          styles.viewerAvatarPlaceholder,
+                          {
+                            backgroundColor: theme.background,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="person"
+                          size={20}
+                          color={theme.subtext}
+                        />
+                      </View>
+                    </PresenceAvatar>
                   )}
 
                   <View style={{ flex: 1 }}>

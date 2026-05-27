@@ -21,6 +21,9 @@ import {
 } from "@/services/notificationApi";
 import { presentActivityNotificationInShade } from "@/utils/activityShade";
 import { SOCKET_IO_DISABLED_ON_HOST, SOCKET_IO_URL } from "@/constants/api";
+import { bindPresenceSocket } from "@/utils/presenceSocket";
+import { useActiveLiveHosts } from "@/context/ActiveLiveHostsContext";
+import { filterActiveLivestreamNotifications } from "@/utils/livestreamNotifications";
 
 const HOSTED_NOTIFICATION_REFRESH_MS = 8000;
 
@@ -78,6 +81,7 @@ export const NotificationProvider = ({
 }) => {
   const { user } = useUser();
   const userId = user?.id;
+  const { activeLiveCallIds } = useActiveLiveHosts();
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -94,8 +98,12 @@ export const NotificationProvider = ({
   const shadeSeenIdsRef = useRef<Set<string>>(new Set());
 
   const filteredNotifications = useMemo(
-    () => notifications.filter((n) => matchesSection(n, activeSection)),
-    [notifications, activeSection],
+    () =>
+      filterActiveLivestreamNotifications(
+        notifications.filter((n) => matchesSection(n, activeSection)),
+        activeLiveCallIds,
+      ),
+    [notifications, activeSection, activeLiveCallIds],
   );
 
   const setActiveSection = useCallback((section: NotificationSection) => {
@@ -316,9 +324,7 @@ export const NotificationProvider = ({
       transports: ["polling", "websocket"],
     });
 
-    socket.on("connect", () => {
-      socket.emit("join", clerkId);
-    });
+    const unbindPresence = bindPresenceSocket(socket, clerkId);
 
     socket.on("newNotification", (data: AppNotification) => {
       void presentActivityNotificationInShade(data).catch((err) => {
@@ -351,6 +357,7 @@ export const NotificationProvider = ({
 
     return () => {
       socket.off("newNotification");
+      unbindPresence();
       socket.disconnect();
     };
   }, [userId]);

@@ -23,6 +23,7 @@ import {
 import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
+import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 import {
   Menu,
   MenuOption,
@@ -104,13 +105,21 @@ function BroadCastPreviewAvatar({ channel }: ChannelAvatarProps) {
 
   const image = profile?.image || remote?.user?.image;
 
+  if (image) {
+    return (
+      <PresenceAvatar userId={remoteId} size={48} imageUri={image} />
+    );
+  }
+
   return (
-    <Avatar
-      image={image}
-      ImageComponent={ImageComponent}
-      name={name}
-      size={48}
-    />
+    <PresenceAvatar userId={remoteId} size={48}>
+      <Avatar
+        image={image}
+        ImageComponent={ImageComponent}
+        name={name}
+        size={48}
+      />
+    </PresenceAvatar>
   );
 }
 

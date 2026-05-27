@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useTheme } from "@/context/ThemeContext";
 import { StatusRing } from "./StatusRing";
 import { StatusStoryThumb } from "./StatusStoryThumb";
+import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 import {
   STATUS_ITEM_WIDTH,
   STATUS_RING_SIZE,
@@ -27,14 +28,14 @@ export function StatusItem({
 
   return (
     <Pressable onPress={handlePress} style={styles.container}>
-      <View style={styles.ringWrap}>
+      <PresenceAvatar userId={userStatus.userId} size={STATUS_RING_SIZE}>
         <StatusRing
           size={STATUS_RING_SIZE}
           statuses={userStatus.statuses ?? []}
           currentUserId={currentUserId}
         />
         <StatusStoryThumb status={latest} ringSize={STATUS_RING_SIZE} />
-      </View>
+      </PresenceAvatar>
       <Text
         style={[styles.label, { color: theme.text }]}
         numberOfLines={1}

@@ -16,8 +16,10 @@ import { PollCard } from "@/components/polls/PollCard";
 import {
   fetchPoll,
   fetchPollComments,
+  likePollComment,
   postPollComment,
 } from "@/services/pollsApi";
+import { Ionicons } from "@expo/vector-icons";
 import type { Poll, PollComment } from "@/types/poll";
 import { AppSpinner } from "@/components/ui/AppSpinner";
 import moment from "moment";
@@ -38,6 +40,7 @@ export default function PollDetailScreen() {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [likeBusy, setLikeBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -71,6 +74,36 @@ export default function PollDetailScreen() {
       );
     } finally {
       setSending(false);
+    }
+  };
+
+  const toggleCommentLike = async (comment: PollComment) => {
+    if (!user?.id || !id) return;
+    setLikeBusy(comment._id);
+
+    const wasLiked = comment.likes?.includes(user.id) ?? false;
+    const optimisticLikes = wasLiked
+      ? (comment.likes ?? []).filter((uid) => uid !== user.id)
+      : [...(comment.likes ?? []), user.id];
+
+    setComments((prev) =>
+      prev.map((item) =>
+        item._id === comment._id ? { ...item, likes: optimisticLikes } : item,
+      ),
+    );
+
+    try {
+      const updated = await likePollComment(String(id), comment._id, user.id);
+      setComments((prev) =>
+        prev.map((item) => (item._id === updated._id ? updated : item)),
+      );
+    } catch (err) {
+      console.error("poll comment like:", err);
+      setComments((prev) =>
+        prev.map((item) => (item._id === comment._id ? comment : item)),
+      );
+    } finally {
+      setLikeBusy(null);
     }
   };
 
@@ -118,15 +151,47 @@ export default function PollDetailScreen() {
         }
         renderItem={({ item }) => (
           <View style={[styles.comment, { borderBottomColor: theme.border }]}>
-            <Text style={{ color: theme.text, fontWeight: "600" }}>
-              {[item.user?.firstName, item.user?.lastName]
-                .filter(Boolean)
-                .join(" ") || "User"}
-            </Text>
-            <Text style={{ color: theme.text, marginTop: 4 }}>{item.text}</Text>
-            <Text style={{ color: theme.subtext, fontSize: 11, marginTop: 4 }}>
-              {moment(item.createdAt).fromNow()}
-            </Text>
+            <View style={styles.commentBody}>
+              <Text style={{ color: theme.text, fontWeight: "600" }}>
+                {[item.user?.firstName, item.user?.lastName]
+                  .filter(Boolean)
+                  .join(" ") ||
+                  item.user?.companyName ||
+                  item.user?.nickName ||
+                  "User"}
+              </Text>
+              <Text style={{ color: theme.text, marginTop: 4 }}>{item.text}</Text>
+              <Text style={{ color: theme.subtext, fontSize: 11, marginTop: 4 }}>
+                {moment(item.createdAt).fromNow()}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => void toggleCommentLike(item)}
+              disabled={likeBusy === item._id || !user?.id}
+              hitSlop={8}
+              style={styles.commentLike}
+            >
+              <Ionicons
+                name={item.likes?.includes(user?.id ?? "") ? "heart" : "heart-outline"}
+                size={19}
+                color={
+                  item.likes?.includes(user?.id ?? "")
+                    ? "#E0245E"
+                    : theme.subtext
+                }
+              />
+              <Text
+                style={{
+                  color: item.likes?.includes(user?.id ?? "")
+                    ? "#E0245E"
+                    : theme.subtext,
+                  fontSize: 11,
+                  fontWeight: "700",
+                }}
+              >
+                {item.likes?.length ?? 0}
+              </Text>
+            </Pressable>
           </View>
         )}
         contentContainerStyle={{
@@ -186,9 +251,22 @@ const styles = StyleSheet.create({
   },
   analyticsTitle: { fontWeight: "700", marginBottom: 8 },
   comment: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  commentBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  commentLike: {
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 36,
+    paddingTop: 2,
   },
   composer: {
     flexDirection: "row",

@@ -4,6 +4,7 @@ import { useFeedItemVisibility } from "@/hooks/useFeedItemVisibility";
 
 type FeedPostRowProps = {
   post: any;
+  allPosts?: any[];
   onDeletePost: (postId: string) => void;
   onUpdatePost: (post: any) => void;
   onPrependPost: (post: any) => void;
@@ -12,6 +13,7 @@ type FeedPostRowProps = {
 
 function FeedPostRow({
   post,
+  allPosts,
   onDeletePost,
   onUpdatePost,
   onPrependPost,
@@ -22,6 +24,7 @@ function FeedPostRow({
   return (
     <PostCard
       post={post}
+      allPosts={allPosts}
       isVisible={isVisible}
       onDeletePost={onDeletePost}
       onUpdatePost={onUpdatePost}
@@ -33,6 +36,7 @@ function FeedPostRow({
 
 function postRowPropsEqual(prev: FeedPostRowProps, next: FeedPostRowProps) {
   if (prev.post?._id !== next.post?._id) return false;
+  if (prev.allPosts !== next.allPosts) return false;
 
   const p = prev.post;
   const n = next.post;

@@ -55,6 +55,7 @@ function PulsingDot() {
   );
 }
 
+/** Manual live flag — prefer `PresenceAvatar` for store-driven presence. */
 export function LiveAvatarRing({
   live = false,
   size = 40,

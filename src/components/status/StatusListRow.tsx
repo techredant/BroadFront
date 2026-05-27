@@ -4,15 +4,18 @@ import moment from "moment";
 import { useTheme } from "@/context/ThemeContext";
 import { StatusRing } from "@/components/status/StatusRing";
 import { StatusStoryThumb } from "@/components/status/StatusStoryThumb";
+import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 import { STATUS_RING_SIZE } from "@/constants/statusTheme";
 import { getLatestStatus, statusDisplayName } from "@/utils/statusUser";
 
 type Props = {
   userStatus: any;
   currentUserId?: string | null;
+  allUserIds?: string[];
+  userIndex?: number;
 };
 
-export default function StatusListRow({ userStatus, currentUserId }: Props) {
+export default function StatusListRow({ userStatus, currentUserId, allUserIds, userIndex }: Props) {
   const router = useRouter();
   const { theme } = useTheme();
 
@@ -26,19 +29,35 @@ export default function StatusListRow({ userStatus, currentUserId }: Props) {
     ),
   );
 
+  const handlePress = () => {
+    if (allUserIds && userIndex !== undefined) {
+      const encodedList = encodeURIComponent(JSON.stringify(allUserIds));
+      router.push({
+        pathname: "/(status)/Viewer",
+        params: {
+          user: userStatus.userId,
+          userList: encodedList,
+          userIndex: userIndex.toString(),
+        },
+      });
+    } else {
+      router.push(`/(status)/Viewer?user=${userStatus.userId}`);
+    }
+  };
+
   return (
     <Pressable
       style={[styles.row, { backgroundColor: theme.background }]}
-      onPress={() => router.push(`/(status)/Viewer?user=${userStatus.userId}`)}
+      onPress={handlePress}
     >
-      <View style={{ width: STATUS_RING_SIZE, height: STATUS_RING_SIZE }}>
+      <PresenceAvatar userId={userStatus.userId} size={STATUS_RING_SIZE}>
         <StatusRing
           size={STATUS_RING_SIZE}
           statuses={userStatus.statuses ?? []}
           currentUserId={currentUserId}
         />
         <StatusStoryThumb status={latest} ringSize={STATUS_RING_SIZE} />
-      </View>
+      </PresenceAvatar>
 
       <View style={styles.middle}>
         <Text style={[styles.name, { color: theme.text }]}>{displayName}</Text>

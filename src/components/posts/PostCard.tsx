@@ -3,11 +3,13 @@ import React, {
   useEffect,
   useRef,
   useCallback,
-  use,
   useMemo,
 } from "react";
-import { Alert, Animated, Image, Modal } from "react-native";
 import {
+  Alert,
+  Animated,
+  Image,
+  Modal,
   View,
   Text,
   Pressable,
@@ -22,28 +24,24 @@ import {
   Ionicons,
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
-import { Gesture } from "react-native-gesture-handler";
 import moment from "moment";
 import { Link, router } from "expo-router";
-import { MediaViewerModal } from "./MediaViewModal";
 import { LikeBubbles } from "@/components/posts/LikeBubbles";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
-import { LightMediaTile } from "@/components/posts/LightMediaTile";
 import { PostMediaGrid } from "@/components/posts/PostMediaGrid";
 import { uploadLocalMedia } from "@/utils/mediaUpload";
 import { isVideoMedia, resolveMediaUrls } from "@/utils/mediaUtils";
 import { buildOptimisticSharePost } from "@/utils/buildSharePost";
 import axios from "axios";
-import {
-  FadeIn,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
 import { ReciteModal } from "./ReciteModal";
 import CommentModal from "./CommentModal";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
+import { useMediaViewer } from "@/context/MediaViewerContext";
+import {
+  PresenceAvatar,
+  PresenceLiveLabel,
+} from "@/components/presence/PresenceAvatar";
 import { EditModal } from "./EditModal";
 import { Linking } from "react-native";
 import {
@@ -53,17 +51,6 @@ import {
 } from "@/constants/politicalTheme";
 import { formatNickHandle, stripNickPrefix } from "@/utils/nickName";
 import { API_PUBLIC_URL } from "@/constants/api";
-
-interface Member {
-  id: string;
-  clerkId: string;
-  firstName: string;
-  lastName: string;
-  nickName: string;
-  image: string;
-  followers: string[];
-  isFollowing?: boolean;
-}
 
 const urlRegex = /(https?:\/\/[^\s]+)/g;
 
@@ -145,18 +132,17 @@ export function PostCard({
   const { theme, isDark } = useTheme();
   const civic = useMemo(() => getPoliticalColors(isDark), [isDark]);
   const { userDetails } = useLevel();
+  const { openMediaViewer, closeMediaViewer } = useMediaViewer();
 
-  if (!post) return null;
-
+  const safeInitialPost = post ?? {};
   const [reposted, setReposted] = useState(false);
 
   const [recited, setRecited] = useState(false);
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [postCard, setPostCard] = useState(post);
+  const [postCard, setPostCard] = useState<any>(safeInitialPost);
 
   useEffect(() => {
+    if (!post) return;
     setPostCard(post);
   }, [
     post,
@@ -176,8 +162,9 @@ export function PostCard({
     [key: string]: boolean;
   }>({});
 
-  const onOpenComments = (postId: string) => {
-    setCommentModalVisible(true);
+  const onOpenComments = (_postId: string) => {
+    closeMediaViewer();
+    setTimeout(() => setCommentModalVisible(true), 0);
     setPage(1); // reset pagination
   };
   const { updatePost, prependPost, replacePost, removePost } = useLevel();
@@ -192,15 +179,12 @@ export function PostCard({
   const LIKE_COLOR = "#E0245E";
 
   const mediaList = useMemo(
-    () => resolveMediaUrls(Array.isArray(post.media) ? post.media : []),
-    [post.media],
+    () => resolveMediaUrls(Array.isArray(post?.media) ? post.media : []),
+    [post?.media],
   );
-  const reciteMediaList = Array.isArray(post.reciteMedia)
+  const reciteMediaList = Array.isArray(post?.reciteMedia)
     ? post.reciteMedia
     : [];
-  const reciteMediaCount = reciteMediaList.length;
-  const reciteGridWidth = width - 60; // slightly smaller than main
-  const reciteItemSize = reciteGridWidth / 3 - 4;
 
   const mediaCount = mediaList.length;
 
@@ -214,12 +198,8 @@ export function PostCard({
   const itemSize = gridWidth / 2 - MEDIA_GAP;
 
   const isLiked = userDetails?.clerkId
-    ? postCard.likes?.includes(userDetails.clerkId)
+    ? postCard?.likes?.includes(userDetails.clerkId)
     : false;
-  const isRecasted = userDetails?.clerkId
-    ? postCard.recasts?.some((r: any) => r.userId === userDetails.clerkId)
-    : false;
-
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [loadingDelete, setLoadingDelete] = useState(false);
@@ -231,12 +211,38 @@ export function PostCard({
     action();
   };
 
-  const [reciteVisible, setReciteVisible] = useState(false);
-  // const [loadingRecite, setLoadingRecite] = useState(false);
-
   const openMedia = (index: number) => {
-    setSelectedIndex(index);
-    setModalVisible(true);
+    if (!postCard?._id && !postCard?.id) return;
+    const postsWithMedia =
+      Array.isArray(allPosts) && allPosts.length > 0
+        ? allPosts.filter((item) => Array.isArray(item?.media) && item.media.length > 0)
+        : [];
+    const currentPostId = String(postCard._id ?? postCard.id ?? "");
+    const hasCurrentPost = postsWithMedia.some(
+      (item) => String(item?._id ?? item?.id ?? "") === currentPostId,
+    );
+
+    openMediaViewer({
+      posts: hasCurrentPost ? postsWithMedia : [postCard, ...postsWithMedia],
+      postId: currentPostId,
+      mediaIndex: index,
+      engagement: {
+        commentsCount: visibleCommentsCount,
+        quoteCount: postCard.quoteCount,
+        recastCount: postCard.recastCount,
+        likesCount: postCard.likes?.length ?? 0,
+        views: postCard.views ?? 0,
+        isLiked,
+        recited,
+        reposted,
+        onComment: () => onOpenComments(postCard._id),
+        onRecite: openReciteModal,
+        onRecast: () => {
+          if (!reposted) handleRecast("");
+        },
+        onLike: handleLike,
+      },
+    });
   };
 
   const [isMuted, setIsMuted] = useState(true); // default muted
@@ -248,7 +254,7 @@ export function PostCard({
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const visibleCommentsCount = Math.max(
-    Number(postCard.commentsCount) || 0,
+    Number(postCard?.commentsCount) || 0,
     comments.length,
   );
 
@@ -257,7 +263,7 @@ export function PostCard({
   const deleteScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (!(post as any).__isDeleting) {
+    if (!(post as any)?.__isDeleting) {
       deleteOpacity.setValue(1);
       deleteScale.setValue(1);
       return;
@@ -348,21 +354,6 @@ export function PostCard({
     fetchComments();
   }, [fetchComments]);
 
-  // /* ---------------- PINCH ZOOM ---------------- */
-  const pinchScale = useSharedValue(1);
-
-  const pinchGesture = Gesture.Pinch()
-    .onUpdate((e) => {
-      pinchScale.value = e.scale;
-    })
-    .onEnd(() => {
-      pinchScale.value = withSpring(1);
-    });
-
-  const pinchStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pinchScale.value }],
-  }));
-
   /* ---------------- BUTTON ANIMATIONS ---------------- */
   // Fix: Use Animated.Value from 'react-native' not 'react-native-reanimated'
   const animatedLike = useRef(new Animated.Value(1)).current;
@@ -423,12 +414,16 @@ export function PostCard({
     if (isTempPostId(postCard._id)) return;
 
     // Optimistic UI update
-    const alreadyLiked = postCard.likes?.includes(userDetails.clerkId);
+    const currentLikes = Array.isArray(postCard.likes) ? postCard.likes : [];
+    const alreadyLiked = currentLikes.includes(userDetails.clerkId);
     const updatedLikes = alreadyLiked
-      ? postCard.likes.filter((id: string) => id !== userDetails.clerkId)
-      : [...postCard.likes, userDetails.clerkId];
+      ? currentLikes.filter((id: string) => id !== userDetails.clerkId)
+      : [...currentLikes, userDetails.clerkId];
+    const updatedPost = { ...postCard, likes: updatedLikes };
 
-    setPostCard({ ...postCard, likes: updatedLikes });
+    setPostCard(updatedPost);
+    updatePost(updatedPost);
+    onUpdatePost?.(updatedPost);
     if (!alreadyLiked) {
       setLikeBurstKey((key) => key + 1);
     }
@@ -450,6 +445,8 @@ export function PostCard({
       console.error(err);
       // Rollback if backend fails
       setPostCard(postCard);
+      updatePost(postCard);
+      onUpdatePost?.(postCard);
     }
   };
 
@@ -516,7 +513,6 @@ export function PostCard({
     onPrependPost?.(optimistic);
     setRecited(true);
     setQuoteVisible(false);
-    setReciteVisible(false);
     setLoadingRecite(true);
 
     const payload = {
@@ -755,6 +751,10 @@ export function PostCard({
     postCard.userId === userDetails?.clerkId
       ? userDetails?.isVerified
       : postCard.user?.isVerified;
+  const authorLiveId =
+    postCard.user?.clerkId ?? postCard.userId ?? postCard.user?._id;
+
+  if (!post) return null;
 
   return (
     <>
@@ -774,14 +774,12 @@ export function PostCard({
             onPress={() => router.push(`/(profileId)/${postCard.userId}`)}
             style={styles.headerLeft}
           >
-            <View
-              style={[
-                styles.avatarRing,
-                isVerifiedUser && styles.avatarRingVerified,
-              ]}
-            >
-              <Image source={{ uri: avatarUri }} style={styles.avatar} />
-            </View>
+            <PresenceAvatar
+              userId={authorLiveId}
+              size={40}
+              imageUri={avatarUri}
+              verified={isVerifiedUser}
+            />
             <View style={styles.headerMeta}>
               <View style={styles.nameRow}>
                 <Text
@@ -790,6 +788,7 @@ export function PostCard({
                 >
                   {displayName}
                 </Text>
+                <PresenceLiveLabel userId={authorLiveId} />
                 <VerifiedBadge isVerified={isVerifiedUser} size={13} />
               </View>
               <Text
@@ -1346,32 +1345,6 @@ export function PostCard({
         handleEdit={handleEdit}
       />
 
-      {/* MEDIA MODAL */}
-      <MediaViewerModal
-        modalVisible={modalVisible}
-        setModalVisible={setModalVisible}
-        mediaList={mediaList}
-        selectedIndex={selectedIndex}
-        post={postCard}
-        engagement={{
-          commentsCount: visibleCommentsCount,
-          quoteCount: postCard.quoteCount,
-          recastCount: postCard.recastCount,
-          likesCount: postCard.likes?.length ?? 0,
-          views: postCard.views ?? 0,
-          isLiked,
-          recited,
-          reposted,
-          onComment: () => onOpenComments(postCard._id),
-          onRecite: openReciteModal,
-          onRecast: () => {
-            if (!reposted) handleRecast("");
-          },
-          onLike: handleLike,
-        }}
-        pinchGesture={pinchGesture}
-        pinchStyle={pinchStyle}
-      />
     </>
   );
 }
@@ -1459,14 +1432,43 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1.5,
     borderColor: "transparent",
+    position: "relative",
   },
   avatarRingVerified: {
     borderColor: PoliticalPalette.gold,
+  },
+  avatarRingLive: {
+    borderColor: "#FF0033",
+    borderWidth: 2,
+    shadowColor: "#FF0033",
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
   },
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
+  },
+  liveBadge: {
+    position: "absolute",
+    left: -1,
+    right: -1,
+    bottom: -7,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 1,
+    borderRadius: 5,
+    backgroundColor: "#FF0033",
+    borderWidth: 1,
+    borderColor: "#fff",
+  },
+  liveBadgeText: {
+    color: "#fff",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.4,
   },
   headerMeta: { flex: 1, gap: 2 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 4 },

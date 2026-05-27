@@ -138,8 +138,21 @@ export default function HomeScreen() {
   const formattedLevel =
     displayValue.charAt(0).toUpperCase() + displayValue.slice(1);
 
-  const showInitialSkeleton = loadingPosts && posts.length === 0;
-  const listData: any[] = showInitialSkeleton ? SKELETON_DATA : posts;
+  const [initialFeedSettled, setInitialFeedSettled] = useState(false);
+  useEffect(() => {
+    if (loadingPosts) {
+      setInitialFeedSettled(false);
+      return;
+    }
+
+    if (!currentLevel) return;
+    const timer = setTimeout(() => setInitialFeedSettled(true), 120);
+    return () => clearTimeout(timer);
+  }, [currentLevel, loadingPosts]);
+
+  const showFeedPlaceholder =
+    posts.length === 0 && (!initialFeedSettled || loadingPosts);
+  const listData: any[] = showFeedPlaceholder ? SKELETON_DATA : posts;
 
   const keyExtractor = useCallback(
     (item: { _id?: string }, index: number) => {
@@ -151,12 +164,13 @@ export default function HomeScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: any }) => {
-      if (showInitialSkeleton) {
+      if (showFeedPlaceholder) {
         return <PostCardSkeleton />;
       }
       return (
         <MemoizedFeedPostRow
           post={item}
+          allPosts={posts}
           onDeletePost={removePost}
           onUpdatePost={updatePost}
           onPrependPost={prependPost}
@@ -165,7 +179,8 @@ export default function HomeScreen() {
       );
     },
     [
-      showInitialSkeleton,
+      showFeedPlaceholder,
+      posts,
       removePost,
       updatePost,
       prependPost,
@@ -208,7 +223,7 @@ export default function HomeScreen() {
   }, [hasMorePosts, loadingMore, posts.length, theme.primary, theme.subtext]);
 
   const listEmpty = useMemo(() => {
-    if (showInitialSkeleton) return null;
+    if (showFeedPlaceholder) return null;
 
     return (
       <View
@@ -231,7 +246,7 @@ export default function HomeScreen() {
         </Text>
       </View>
     );
-  }, [showInitialSkeleton, theme.subtext]);
+  }, [showFeedPlaceholder, theme.subtext]);
 
   const scrollToTop = useCallback(() => {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
