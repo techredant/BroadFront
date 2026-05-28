@@ -19,6 +19,7 @@ import {
   useTabBarScrollHandler,
 } from "@/context/TabBarVisibilityContext";
 import { getPoliticalColors, PoliticalPalette } from "@/constants/politicalTheme";
+import { SmartSearchBar } from "@/components/ai/SmartSearchBar";
 
 type Trend = {
   id: string;
@@ -91,7 +92,7 @@ function rankStyle(index: number) {
 }
 
 export default function TrendsScreen() {
-  const { currentLevel } = useLevel();
+  const { currentLevel, userDetails } = useLevel();
   const { theme, isDark } = useTheme();
   const civic = useMemo(() => getPoliticalColors(isDark), [isDark]);
   const onTabBarScroll = useTabBarScrollHandler();
@@ -282,6 +283,11 @@ export default function TrendsScreen() {
           </Text>
         </View>
       </View>
+
+      <SmartSearchBar
+        userId={userDetails?.clerkId}
+        county={userDetails?.county || currentLevel?.value}
+      />
 
       {trends.length > 0 && (
         <Text style={[styles.sectionLabel, { color: theme.subtext }]}>

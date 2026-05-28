@@ -4,12 +4,12 @@ import {
   VideoRenderer,
   useCall,
   useCallStateHooks,
-  callManager,
   useStreamVideoClient,
   CallingState,
   OwnCapability,
 } from "@stream-io/video-react-native-sdk";
-import type { StreamVideoParticipant } from "@stream-io/video-client";
+import { hasVideo, type StreamVideoParticipant } from "@stream-io/video-client";
+import { syncCallMedia } from "@/utils/callMedia";
 import {
   View,
   Text,
@@ -29,10 +29,13 @@ import * as Linking from "expo-linking";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
+  runOnJS,
   useSharedValue,
   useAnimatedStyle,
+  withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MediaColors } from "@/constants/mediaTheme";
 import { useLevel } from "@/context/LevelContext";
@@ -68,25 +71,31 @@ import {
 } from "@/utils/livePayments";
 import { API_PUBLIC_URL } from "@/constants/api";
 import { notifyLiveStarted } from "@/utils/notifyLiveStarted";
+import { joinLivestreamAsHost, stopCallMedia } from "@/utils/callMedia";
 import { io } from "socket.io-client";
 import {
   buildMarketLiveCustom,
   productFromLiveCustom,
   type MarketLiveProduct,
 } from "@/utils/marketLive";
-import { LiveProductOverlay } from "@/components/live/LiveProductOverlay";
-import { LivePinProductSheet } from "@/components/live/LivePinProductSheet";
-import { MarketLiveProductRail } from "@/components/market/MarketLiveProductRail";
+import { LiveProductsDropdown } from "@/components/live/LiveProductsDropdown";
 import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
+import NetInfo from "@react-native-community/netinfo";
 
 const { width: SCREEN_W } = Dimensions.get("window");
+const LIVE_EVENT_BATCH_MS = 140;
+const LIVE_SWIPE_THRESHOLD = 90;
+type NetworkTier = "good" | "constrained" | "poor";
 
 type Props = {
   goToHomeScreen: () => void;
+  onSwitchLive?: (callId: string, index: number) => void;
   callId: string;
   isHost?: boolean;
   roomTitle?: string;
   level?: string;
+  playlist?: string[];
+  initialIndex?: number;
   variant?: "community" | "market";
   productId?: string;
   productTitle?: string;
@@ -96,10 +105,13 @@ type Props = {
 
 export default function LiveScreen({
   goToHomeScreen,
+  onSwitchLive,
   callId,
   isHost = false,
   roomTitle,
   level,
+  playlist,
+  initialIndex = 0,
   variant = "community",
   productId,
   productTitle,
@@ -122,6 +134,19 @@ export default function LiveScreen({
     if (!client) return null;
     return client.call("livestream", callId);
   }, [client, callId]);
+
+  useEffect(() => {
+    if (!client || isHost || !playlist?.length) return;
+    const index = playlist.indexOf(callId);
+    const adjacent = [playlist[index - 1], playlist[index + 1]].filter(Boolean);
+    adjacent.forEach((id) => {
+      const warmCall = client.call("livestream", id);
+      const maybeGet = (warmCall as unknown as { get?: () => Promise<unknown> }).get;
+      if (typeof maybeGet === "function") {
+        void maybeGet.call(warmCall).catch(() => {});
+      }
+    });
+  }, [callId, client, isHost, playlist]);
   const initialMarketProduct = useMemo<MarketLiveProduct | null>(() => {
     if (variant !== "market" || !productId) return null;
     return {
@@ -164,14 +189,7 @@ export default function LiveScreen({
               },
             },
           });
-          await streamCall.join({ create: true });
-          await streamCall.camera.enable();
-          await streamCall.microphone.enable();
-          await streamCall.goLive();
-          callManager.start({
-            audioRole: "communicator",
-            deviceEndpointType: "speaker",
-          });
+          await joinLivestreamAsHost(streamCall);
 
           if (userDetails?.clerkId && !liveNotifySentRef.current) {
             liveNotifySentRef.current = true;
@@ -188,7 +206,7 @@ export default function LiveScreen({
 
         if (!active || joinGenRef.current !== gen) {
           await streamCall.leave().catch(() => {});
-          callManager.stop();
+          stopCallMedia();
           return;
         }
 
@@ -213,7 +231,7 @@ export default function LiveScreen({
       active = false;
       streamCall.off("call.ended", handleEnded);
       streamCall.leave().catch(() => {});
-      callManager.stop();
+      stopCallMedia();
       setCall(null);
     };
   }, [
@@ -259,6 +277,10 @@ export default function LiveScreen({
       <LeaveStateHandler goToHomeScreen={goToHomeScreen} />
       <LiveCanvas
         isHost={isHost}
+        callId={callId}
+        playlist={playlist}
+        initialIndex={initialIndex}
+        onSwitchLive={onSwitchLive}
         variant={variant}
         initialMarketProduct={initialMarketProduct}
         goToHomeScreen={goToHomeScreen}
@@ -285,12 +307,20 @@ function LeaveStateHandler({ goToHomeScreen }: { goToHomeScreen: () => void }) {
 
 function LiveCanvas({
   isHost,
+  callId,
+  playlist,
+  initialIndex,
+  onSwitchLive,
   variant,
   initialMarketProduct,
   goToHomeScreen,
   insetsBottom,
 }: {
   isHost: boolean;
+  callId: string;
+  playlist?: string[];
+  initialIndex: number;
+  onSwitchLive?: (callId: string, index: number) => void;
   variant: "community" | "market";
   initialMarketProduct: MarketLiveProduct | null;
   goToHomeScreen: () => void;
@@ -311,6 +341,10 @@ function LiveCanvas({
   return (
     <LiveCanvasJoined
       isHost={isHost}
+      callId={callId}
+      playlist={playlist}
+      initialIndex={initialIndex}
+      onSwitchLive={onSwitchLive}
       variant={variant}
       initialMarketProduct={initialMarketProduct}
       goToHomeScreen={goToHomeScreen}
@@ -321,12 +355,20 @@ function LiveCanvas({
 
 function LiveCanvasJoined({
   isHost,
+  callId,
+  playlist,
+  initialIndex,
+  onSwitchLive,
   variant,
   initialMarketProduct,
   goToHomeScreen,
   insetsBottom,
 }: {
   isHost: boolean;
+  callId: string;
+  playlist?: string[];
+  initialIndex: number;
+  onSwitchLive?: (callId: string, index: number) => void;
   variant: "community" | "market";
   initialMarketProduct: MarketLiveProduct | null;
   goToHomeScreen: () => void;
@@ -337,6 +379,7 @@ function LiveCanvasJoined({
   const { userDetails } = useLevel();
 
   const {
+    useCallCallingState,
     useLocalParticipant,
     useParticipants,
     useParticipantCount,
@@ -345,6 +388,7 @@ function LiveCanvasJoined({
     useCallCustomData,
     useHasPermissions,
   } = useCallStateHooks();
+  const callingState = useCallCallingState();
   const custom = useCallCustomData();
   const marketProductFromCall = useMemo(
     () => productFromLiveCustom(custom as Record<string, unknown> | undefined),
@@ -370,6 +414,21 @@ function LiveCanvasJoined({
   const viewerCount = useParticipantCount();
   const mic = useMicrophoneState();
   const cam = useCameraState();
+  const hostMediaSyncedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isHost || !call) {
+      hostMediaSyncedRef.current = false;
+      return;
+    }
+    if (callingState !== CallingState.JOINED) {
+      hostMediaSyncedRef.current = false;
+      return;
+    }
+    if (hostMediaSyncedRef.current) return;
+    hostMediaSyncedRef.current = true;
+    void syncCallMedia(call, true);
+  }, [isHost, call, callingState]);
 
   const [messages, setMessages] = useState<LiveMessage[]>([
     {
@@ -379,16 +438,6 @@ function LiveCanvasJoined({
       text: "Say hi in the chat!",
     },
   ]);
-  const [pinnedProduct, setPinnedProduct] = useState<MarketLiveProduct | null>(
-    initialMarketProduct ?? marketProductFromCall,
-  );
-  const [pinSheetVisible, setPinSheetVisible] = useState(false);
-
-  useEffect(() => {
-    if (!pinnedProduct && marketProductFromCall) {
-      setPinnedProduct(marketProductFromCall);
-    }
-  }, [marketProductFromCall, pinnedProduct]);
   const [speakRequests, setSpeakRequests] = useState<SpeakRequest[]>([]);
   const [showGuests, setShowGuests] = useState(false);
   const [input, setInput] = useState("");
@@ -408,19 +457,67 @@ function LiveCanvasJoined({
   const [donationPopup, setDonationPopup] = useState<DonationToast | null>(null);
   const [likeCount, setLikeCount] = useState(0);
   const [followBusy, setFollowBusy] = useState(false);
+  const [networkTier, setNetworkTier] = useState<NetworkTier>("good");
   const { inset: keyboardInset, open: keyboardOpen } = useLiveKeyboardInset();
   const { handleFollow, following } = useFollowContext();
   const lastTap = useRef(0);
   const reactionTapTimes = useRef<number[]>([]);
   const announcedJoins = useRef(new Set<string>());
+  const seenLiveEvents = useRef(new Set<string>());
+  const messageQueueRef = useRef<Omit<LiveMessage, "id">[]>([]);
+  const messageFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const donationQueueRef = useRef<DonationToast[]>([]);
   const donationShowingRef = useRef(false);
   const broadcastedPaymentsRef = useRef(new Set<string>());
 
-  const isPublishingVideo = (p: (typeof participants)[0]) =>
-    p.publishedTracks?.some(
-      (t) => t === 2 || String(t).toLowerCase().includes("video"),
-    );
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const cellularGen = state.details && "cellularGeneration" in state.details
+        ? state.details.cellularGeneration
+        : null;
+      if (!state.isConnected || state.isInternetReachable === false) {
+        setNetworkTier("poor");
+      } else if (cellularGen === "2g" || cellularGen === "3g") {
+        setNetworkTier("constrained");
+      } else {
+        setNetworkTier("good");
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  const isPublishingVideo = useCallback(
+    (p: (typeof participants)[0]) => hasVideo(p),
+    [],
+  );
+
+  const enqueueMessage = useCallback((msg: Omit<LiveMessage, "id">) => {
+    messageQueueRef.current.push(msg);
+    if (messageFlushTimerRef.current) return;
+    messageFlushTimerRef.current = setTimeout(() => {
+      messageFlushTimerRef.current = null;
+      const queued = messageQueueRef.current.splice(0);
+      if (!queued.length) return;
+      setMessages((prev) => {
+        const stamped = queued
+          .reverse()
+          .map((item) => ({ ...item, id: `${Date.now()}-${Math.random()}` }));
+        return [...stamped, ...prev].slice(0, LIVE_CHAT_VISIBLE_MAX);
+      });
+    }, LIVE_EVENT_BATCH_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (messageFlushTimerRef.current) {
+        clearTimeout(messageFlushTimerRef.current);
+        messageFlushTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   const guestViewers = useMemo(
     () =>
@@ -430,12 +527,12 @@ function LiveCanvasJoined({
           !isPublishingVideo(p) &&
           p.userId !== call?.state.createdBy?.id,
       ),
-    [participants, call?.state.createdBy?.id],
+    [participants, call?.state.createdBy?.id, isPublishingVideo],
   );
 
   const onStage = useMemo(
     () => participants.filter((p) => isPublishingVideo(p)),
-    [participants],
+    [participants, isPublishingVideo],
   );
 
   const primaryParticipant = useMemo(() => {
@@ -451,7 +548,7 @@ function LiveCanvasJoined({
       participants.find((p) => !p.isLocalParticipant) ??
       localParticipant
     );
-  }, [isHost, localParticipant, participants, hostUserId, onStage]);
+  }, [isHost, localParticipant, participants, hostUserId, onStage, isPublishingVideo]);
 
   const miniParticipants = useMemo(() => {
     if (!primaryParticipant) return [];
@@ -536,8 +633,9 @@ function LiveCanvasJoined({
       );
       reactionTapTimes.current.push(now);
       const burst = shouldBurstReaction(reactionTapTimes.current);
+      const burstCount = networkTier === "good" ? 10 : 4;
       const positions = burst
-        ? spawnBurstPositions(10, TT.reactionSpawnX)
+        ? spawnBurstPositions(burstCount, TT.reactionSpawnX)
         : [TT.reactionSpawnX + (Math.random() * 40 - 20)];
       positions.forEach((left) => pushReaction(emoji, left));
       void (async () => {
@@ -554,7 +652,7 @@ function LiveCanvasJoined({
         }
       })();
     },
-    [call, pushReaction],
+    [call, networkTier, pushReaction],
   );
 
   const pushGiftToast = useCallback(
@@ -616,23 +714,34 @@ function LiveCanvasJoined({
     const onCustom = (event: {
       custom?: Record<string, unknown>;
       user?: { id?: string; name?: string };
+      cid?: string;
+      created_at?: string;
+      createdAt?: string;
     }) => {
       const payload = resolvePayload(event);
       const senderId = event.user?.id;
       const senderName = event.user?.name || "Viewer";
 
       if (!payload?.type) return;
+      const eventKey =
+        event.cid ||
+        `${senderId || "anon"}:${String(payload.type)}:${String(
+          payload.text || payload.emoji || payload.giftId || payload.targetUserId || "",
+        )}:${event.created_at || event.createdAt || ""}`;
+      if (seenLiveEvents.current.has(eventKey)) return;
+      seenLiveEvents.current.add(eventKey);
+      if (seenLiveEvents.current.size > 500) {
+        seenLiveEvents.current = new Set([...seenLiveEvents.current].slice(-250));
+      }
 
       if (payload.type === LIVE_EVENT.CHAT && typeof payload.text === "string") {
         if (senderId === myUserId) return;
-        setMessages((prev) =>
-          appendMessage(prev, {
-            kind: "chat",
-            userId: senderId,
-            userName: senderName,
-            text: payload.text as string,
-          }),
-        );
+        enqueueMessage({
+          kind: "chat",
+          userId: senderId,
+          userName: senderName,
+          text: payload.text as string,
+        });
         return;
       }
 
@@ -646,7 +755,7 @@ function LiveCanvasJoined({
             ? payload.left
             : TT.reactionSpawnX + (Math.random() * 40 - 20);
         const positions = payload.burst
-          ? spawnBurstPositions(10, baseLeft)
+          ? spawnBurstPositions(networkTier === "good" ? 10 : 4, baseLeft)
           : [baseLeft];
         if (payload.emoji === "❤️") bumpLikes(1);
         positions.forEach((left) => pushReaction(payload.emoji as string, left));
@@ -662,14 +771,12 @@ function LiveCanvasJoined({
         if (!gift) return;
         const sender = (payload.senderName as string) || senderName;
         pushGiftToast(gift.emoji, gift.label, sender);
-        setMessages((prev) =>
-          appendMessage(prev, {
-            kind: "system",
-            userName: sender,
-            text: `sent ${gift.emoji} ${gift.label}`,
-            userId: senderId,
-          }),
-        );
+        enqueueMessage({
+          kind: "system",
+          userName: sender,
+          text: `sent ${gift.emoji} ${gift.label}`,
+          userId: senderId,
+        });
         return;
       }
 
@@ -692,14 +799,12 @@ function LiveCanvasJoined({
           if (prev.some((r) => r.userId === senderId)) return prev;
           return [...prev, { userId: senderId, userName: senderName }];
         });
-        setMessages((prev) =>
-          appendMessage(prev, {
-            kind: "system",
-            userName: senderName,
-            text: "requested to speak",
-            userId: senderId,
-          }),
-        );
+        enqueueMessage({
+          kind: "system",
+          userName: senderName,
+          text: "requested to speak",
+          userId: senderId,
+        });
         return;
       }
 
@@ -766,6 +871,8 @@ function LiveCanvasJoined({
     pushDonation,
     pushJoinToast,
     bumpLikes,
+    enqueueMessage,
+    networkTier,
   ]);
 
   const inviteToSpeak = useCallback(
@@ -1033,12 +1140,28 @@ function LiveCanvasJoined({
     }
   };
 
+  const isReconnecting = String(callingState).toLowerCase().includes("reconnect");
+
   return (
+    <LiveSwipeDeck
+      enabled={!isHost && !keyboardOpen && !!playlist?.length}
+      callId={callId}
+      playlist={playlist}
+      initialIndex={initialIndex}
+      onSwitchLive={onSwitchLive}
+    >
     <View style={styles.root}>
-      <StageVideoLayout
+      <MemoStageVideoLayout
         primary={primaryParticipant}
+        localParticipant={localParticipant}
         onTapVideo={onTapVideo}
+        isHost={isHost}
       />
+
+      {isReconnecting && <ReconnectingOverlay />}
+      {!isReconnecting && networkTier !== "good" && (
+        <SmoothModeOverlay tier={networkTier} />
+      )}
 
       <LiveGuestStrip
         guests={miniParticipants}
@@ -1176,21 +1299,10 @@ function LiveCanvasJoined({
       />
 
       {variant === "market" && !keyboardOpen && hostClerkId ? (
-        <>
-          {pinnedProduct ? (
-            <LiveProductOverlay
-              product={pinnedProduct}
-              bottomOffset={dockBottom + 136}
-              isHost={isHost}
-              onPinPress={() => setPinSheetVisible(true)}
-            />
-          ) : null}
-          <MarketLiveProductRail
-            hostUserId={hostClerkId}
-            featuredProductId={pinnedProduct?.productId}
-            bottomOffset={dockBottom + (pinnedProduct ? 286 : 136)}
-          />
-        </>
+        <LiveProductsDropdown
+          hostUserId={hostClerkId}
+          topOffset={insets.top + 56}
+        />
       ) : null}
 
       {/* BOTTOM DOCK — sits above keyboard (chat → input → controls) */}
@@ -1256,7 +1368,6 @@ function LiveCanvasJoined({
                 onPress={() => call?.camera.toggle()}
               />
               <TikTokIconBtn icon="sync" onPress={() => call?.camera.flip()} />
-              <TikTokIconBtn icon="pricetag" onPress={() => setPinSheetVisible(true)} />
               <TikTokIconBtn icon="call" danger onPress={endLiveHost} />
             </View>
           )}
@@ -1285,60 +1396,168 @@ function LiveCanvasJoined({
         onClose={() => setShowGiftPicker(false)}
         pay={handleMpesaPay}
       />
-      {variant === "market" && hostClerkId ? (
-        <LivePinProductSheet
-          visible={pinSheetVisible}
-          hostUserId={hostClerkId}
-          pinnedProductId={pinnedProduct?.productId}
-          onClose={() => setPinSheetVisible(false)}
-          onPin={(product) => {
-            setPinnedProduct(product);
-            setPinSheetVisible(false);
-          }}
-          onUnpin={() => {
-            setPinnedProduct(null);
-            setPinSheetVisible(false);
-          }}
-        />
-      ) : null}
     </View>
+    </LiveSwipeDeck>
   );
 }
 
 /* ---------------- UI COMPONENTS ---------------- */
 
+function LiveSwipeDeck({
+  children,
+  enabled,
+  callId,
+  playlist,
+  initialIndex,
+  onSwitchLive,
+}: {
+  children: React.ReactNode;
+  enabled: boolean;
+  callId: string;
+  playlist?: string[];
+  initialIndex: number;
+  onSwitchLive?: (callId: string, index: number) => void;
+}) {
+  const translateY = useSharedValue(0);
+  const currentIndex = useMemo(() => {
+    const index = playlist?.indexOf(callId) ?? -1;
+    return index >= 0 ? index : initialIndex;
+  }, [callId, initialIndex, playlist]);
+
+  const switchTo = useCallback(
+    (direction: 1 | -1) => {
+      if (!playlist?.length || !onSwitchLive) return;
+      const nextIndex = currentIndex + direction;
+      const nextCallId = playlist[nextIndex];
+      if (!nextCallId) return;
+      onSwitchLive(nextCallId, nextIndex);
+    },
+    [currentIndex, onSwitchLive, playlist],
+  );
+
+  const gesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(enabled)
+        .activeOffsetY([-12, 12])
+        .failOffsetX([-24, 24])
+        .onUpdate((event) => {
+          translateY.value = event.translationY * 0.18;
+        })
+        .onEnd((event) => {
+          const canGoPrev = currentIndex > 0;
+          const canGoNext = !!playlist?.[currentIndex + 1];
+          if (event.translationY > LIVE_SWIPE_THRESHOLD && canGoPrev) {
+            runOnJS(switchTo)(-1);
+          } else if (event.translationY < -LIVE_SWIPE_THRESHOLD && canGoNext) {
+            runOnJS(switchTo)(1);
+          }
+          translateY.value = withSpring(0, { damping: 18, stiffness: 220 });
+        })
+        .onFinalize(() => {
+          translateY.value = withSpring(0, { damping: 18, stiffness: 220 });
+        }),
+    [currentIndex, enabled, playlist, switchTo, translateY],
+  );
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  if (!enabled) return <>{children}</>;
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View style={[styles.swipeDeck, style]}>
+        {children}
+        <View pointerEvents="none" style={styles.preloadHintTop}>
+          {currentIndex > 0 ? <View style={styles.preloadDot} /> : null}
+        </View>
+        <View pointerEvents="none" style={styles.preloadHintBottom}>
+          {playlist?.[currentIndex + 1] ? <View style={styles.preloadDot} /> : null}
+        </View>
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+function ReconnectingOverlay() {
+  return (
+    <View style={styles.reconnectingOverlay} pointerEvents="none">
+      <ActivityIndicator size="small" color="#fff" />
+      <Text style={styles.reconnectingText}>Reconnecting…</Text>
+    </View>
+  );
+}
+
+function SmoothModeOverlay({ tier }: { tier: NetworkTier }) {
+  return (
+    <View style={styles.smoothModeOverlay} pointerEvents="none">
+      <Ionicons
+        name={tier === "poor" ? "cloud-offline-outline" : "cellular-outline"}
+        size={13}
+        color="#fff"
+      />
+      <Text style={styles.smoothModeText}>
+        {tier === "poor" ? "Reconnecting…" : "Smooth mode"}
+      </Text>
+    </View>
+  );
+}
+
 function StageVideoLayout({
   primary,
+  localParticipant,
   onTapVideo,
+  isHost,
 }: {
   primary?: StreamVideoParticipant;
+  localParticipant?: StreamVideoParticipant;
   onTapVideo: () => void;
+  isHost: boolean;
 }) {
-  const trackKey = primary
-    ? `${primary.sessionId}-${primary.publishedTracks?.join(",") ?? ""}`
+  const stageParticipant = isHost
+    ? localParticipant ?? primary
+    : primary;
+
+  const trackKey = stageParticipant
+    ? `${stageParticipant.sessionId}-${stageParticipant.publishedTracks?.join(",") ?? ""}`
     : "none";
 
   return (
     <Pressable style={styles.videoTouch} onPress={onTapVideo}>
-      {primary ? (
-        <View style={styles.video} key={trackKey}>
+      {!stageParticipant && <StreamSkeleton />}
+      {stageParticipant ? (
+        <View style={styles.videoStage} key={trackKey}>
           <VideoRenderer
-            participant={primary}
+            participant={stageParticipant}
             trackType="videoTrack"
+            objectFit="cover"
+            mirror={isHost || stageParticipant.isLocalParticipant}
             isVisible
           />
         </View>
       ) : (
-        <View
-          style={[
-            styles.video,
-            { justifyContent: "center", alignItems: "center" },
-          ]}
-        >
-          <Text style={{ color: "#fff" }}>Waiting for livestream...</Text>
+        <View style={styles.waitingVideo}>
+          <Text style={{ color: "#fff" }}>
+            {isHost ? "Starting camera…" : "Waiting for livestream..."}
+          </Text>
         </View>
       )}
     </Pressable>
+  );
+}
+
+const MemoStageVideoLayout = React.memo(StageVideoLayout);
+
+function StreamSkeleton() {
+  return (
+    <LinearGradient
+      colors={["#080808", "#171717", "#080808"]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={StyleSheet.absoluteFill}
+    />
   );
 }
 
@@ -1372,7 +1591,7 @@ function FloatingGiftToast({
   useEffect(() => {
     y.value = withTiming(-200, { duration: 2800 });
     opacity.value = withTiming(0, { duration: 2800 });
-  }, []);
+  }, [opacity, y]);
 
   const style = useAnimatedStyle(() => ({
     transform: [{ translateY: y.value }],
@@ -1420,8 +1639,72 @@ const styles = StyleSheet.create({
   },
   joinErrorBtnText: { color: "#fff", fontWeight: "600" },
   root: { flex: 1, backgroundColor: "#000" },
+  swipeDeck: { flex: 1, backgroundColor: "#000" },
+  preloadHintTop: {
+    position: "absolute",
+    top: 18,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 40,
+  },
+  preloadHintBottom: {
+    position: "absolute",
+    bottom: 18,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 40,
+  },
+  preloadDot: {
+    width: 34,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.34)",
+  },
+  reconnectingOverlay: {
+    position: "absolute",
+    top: 96,
+    alignSelf: "center",
+    zIndex: 30,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  reconnectingText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  smoothModeOverlay: {
+    position: "absolute",
+    top: 96,
+    alignSelf: "center",
+    zIndex: 29,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.38)",
+  },
+  smoothModeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+  },
   videoTouch: { flex: 1 },
-  video: { flex: 1 },
+  videoStage: { ...StyleSheet.absoluteFillObject },
+  waitingVideo: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   miniPanelsColumn: {
     position: "absolute",
     top: 88,

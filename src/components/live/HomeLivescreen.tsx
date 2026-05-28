@@ -4,7 +4,6 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  FlatList,
   Dimensions,
   Modal,
   TextInput,
@@ -14,6 +13,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
 import { Call, StreamVideoClient } from "@stream-io/video-react-native-sdk";
 import { LinearGradient } from "expo-linear-gradient";
@@ -22,7 +22,6 @@ import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
 import { MediaColors, MediaGradients } from "@/constants/mediaTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StatusBar } from "expo-status-bar";
 import { isStreamCallLive } from "@/utils/isStreamCallLive";
 import {
   isMarketLiveCall,
@@ -54,7 +53,10 @@ const liveCallsCache = {
 
 type Props = {
   client: StreamVideoClient;
-  joinCall: (callId: string) => void;
+  joinCall: (
+    callId: string,
+    meta?: { playlist?: string[]; initialIndex?: number },
+  ) => void;
   liveScreen: (
     callId: string,
     meta?: {
@@ -162,7 +164,7 @@ export const HomeScreen = ({
         }
       }
     },
-    [client, userDetails?.clerkId],
+    [client, clientId],
   );
 
   const refreshCalls = useCallback(() => {
@@ -236,10 +238,12 @@ export const HomeScreen = ({
   const openLive = (item: Call) => {
     const createdById = item.state?.createdBy?.id;
     const me = userDetails?.clerkId;
+    const playlist = liveCalls.map((call) => call.id);
+    const initialIndex = Math.max(0, playlist.indexOf(item.id));
     if (createdById && me && createdById === me) {
       liveScreen(item.id);
     } else {
-      joinCall(item.id);
+      joinCall(item.id, { playlist, initialIndex });
     }
   };
 
@@ -343,10 +347,12 @@ export const HomeScreen = ({
           </Pressable>
         </View>
 
-      <FlatList
+      <FlashList
         data={listData}
         keyExtractor={(item) => item.id}
         renderItem={renderLiveRow}
+        estimatedItemSize={112}
+        drawDistance={360}
         ListHeaderComponent={listHeader}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}

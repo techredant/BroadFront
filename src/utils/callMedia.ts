@@ -171,3 +171,23 @@ export function isCallJoinInProgress(callId: string): boolean {
     : callId;
   return mediaLockCallId === normalized && mediaLock !== null;
 }
+
+/** Stop in-call audio routing (safe during screen unmount). */
+export function stopCallMedia(): void {
+  try {
+    callManager.stop();
+  } catch {
+    /* ignore — native module may already be torn down */
+  }
+}
+
+/** Host livestream — same media path as 1:1 video calls, then go live. */
+export async function joinLivestreamAsHost(call: Call): Promise<void> {
+  if (isCallLeft(call)) return;
+
+  await call.join({ create: true, video: true });
+  await joinCallWithMedia(call, true);
+  await call.goLive();
+  // goLive can reset tracks; re-sync like the call screen does after join.
+  await syncCallMedia(call, true);
+}

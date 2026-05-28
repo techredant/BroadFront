@@ -23,6 +23,7 @@ import { useRouter } from "expo-router";
 import { useTheme } from "@/context/ThemeContext";
 import { useUserOnboarding } from "@/context/UserOnBoardingContext";
 import { useLevel } from "@/context/LevelContext";
+import { API_PUBLIC_URL } from "@/constants/api";
 import { uploadProfileImage } from "@/utils/mediaUpload";
 import { isLocalMediaUri } from "@/utils/mediaUtils";
 import { PoliticalPalette } from "@/constants/politicalTheme";
@@ -212,7 +213,7 @@ const NamesScreen = () => {
       };
 
       const res = await axios.post(
-        "https://cast-api-zeta.vercel.app/api/users/create-user",
+        `${API_PUBLIC_URL}/api/users/create-user`,
         payload,
         { timeout: 10000 },
       );

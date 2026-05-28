@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, FlatList, StyleSheet } from "react-native";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, StyleSheet } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   pruneVisibleMessages,
   type LiveMessage,
 } from "@/utils/livestreamSession";
 
-function ChatRow({ item }: { item: LiveMessage }) {
+const ChatRow = memo(function ChatRow({ item }: { item: LiveMessage }) {
   if (item.kind === "chat") {
     return (
       <View style={styles.chatLine}>
@@ -43,10 +44,10 @@ function ChatRow({ item }: { item: LiveMessage }) {
       <Text style={styles.sysText}>{item.text}</Text>
     </View>
   );
-}
+});
 
 /** TikTok-style live comments — soft top fade, no MaskedView (Android-safe) */
-export function LiveChatPanel({
+export const LiveChatPanel = memo(function LiveChatPanel({
   messages,
   maxHeight,
 }: {
@@ -54,6 +55,7 @@ export function LiveChatPanel({
   maxHeight: number;
 }) {
   const [tick, setTick] = useState(0);
+  const listRef = useRef<FlashList<LiveMessage> | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 1000);
@@ -61,23 +63,34 @@ export function LiveChatPanel({
   }, []);
 
   const visible = useMemo(
-    () => pruneVisibleMessages(messages),
+    () => {
+      void tick;
+      return [...pruneVisibleMessages(messages)].reverse();
+    },
     [messages, tick],
   );
 
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd?.({ animated: true });
+    });
+  }, [visible.length]);
+
   return (
     <View style={[styles.wrap, { maxHeight }]}>
-      <FlatList
+      <FlashList
+        ref={listRef}
         data={visible}
         keyExtractor={(item) => item.id}
-        inverted
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        initialNumToRender={12}
-        maxToRenderPerBatch={8}
-        windowSize={5}
-        style={styles.list}
+        estimatedItemSize={28}
+        drawDistance={120}
+        removeClippedSubviews
+        style={[
+          styles.list,
+          { height: Math.min(maxHeight, Math.max(44, visible.length * 30 + 24)) },
+        ]}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => <ChatRow item={item} />}
       />
@@ -89,7 +102,7 @@ export function LiveChatPanel({
       />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {

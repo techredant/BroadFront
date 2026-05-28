@@ -15,6 +15,7 @@ import { router } from "expo-router";
 import { Dropdown } from "react-native-element-dropdown";
 import iebc from "../../../assets/data/iebc.json";
 import { useTheme } from "@/context/ThemeContext";
+import { API_PUBLIC_URL } from "@/constants/api";
 
 export default function LocationSelection() {
   const { theme, isDark } = useTheme();
@@ -53,7 +54,7 @@ export default function LocationSelection() {
 
     try {
       await axios.post(
-        "https://cast-api-zeta.vercel.app/api/users/update-location",
+        `${API_PUBLIC_URL}/api/users/update-location`,
         {
           clerkId: user.id,
           county: selectedCounty,

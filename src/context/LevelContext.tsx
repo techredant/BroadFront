@@ -22,6 +22,7 @@ import {
 import { bindPresenceSocket } from "@/utils/presenceSocket";
 import { useFeedPresenceSync } from "@/hooks/useFeedPresenceSync";
 import { getFeedRoomsForViewer } from "@/utils/feedRooms";
+import { AI_FEED_ENABLED } from "@/hooks/useAIRankedFeed";
 
 const BASE_URL = API_PUBLIC_URL;
 const HOSTED_FEED_REFRESH_MS = 6000;
@@ -182,8 +183,11 @@ export const LevelProvider = ({ children }: { children: React.ReactNode }) => {
 
         hasInitializedLevel.current = true;
       }
-    } catch (err) {
-      console.log(err);
+    } catch (err: unknown) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      if (status !== 404) {
+        console.log(err);
+      }
     } finally {
       if (showLoading) {
         setIsLoadingUser(false);
@@ -219,11 +223,26 @@ const fetchPosts = useCallback(
     try {
       const page = refresh ? 1 : feedPage.current[key] || 1;
 
-      const res = await axios.get<Post[]>(
-        `${BASE_URL}/api/posts?levelType=${level.type}&levelValue=${level.value}&page=${page}&limit=10`,
-      );
+      const aiUserId = userDetailsRef.current?.clerkId;
+      const useAI =
+        AI_FEED_ENABLED && !!aiUserId && !loadMorePage && level.type !== "ward";
+      const res = useAI
+        ? await axios.get<{ posts: Post[] }>(`${BASE_URL}/api/ai/feed`, {
+            params: {
+              userId: aiUserId,
+              levelType: level.type,
+              levelValue: level.value,
+              limit: 20,
+            },
+          })
+        : await axios.get<Post[]>(
+            `${BASE_URL}/api/posts?levelType=${level.type}&levelValue=${level.value}&page=${page}&limit=10`,
+          );
 
-      const data = normalizeFeedPosts(res.data ?? []);
+      const data = normalizeFeedPosts(
+        (useAI ? (res.data as { posts: Post[] }).posts : (res.data as Post[])) ??
+          [],
+      );
 
       if (refresh || page === 1) {
         const previous = feedCache.current[key] || [];
@@ -379,6 +398,10 @@ const fetchPosts = useCallback(
       });
     });
 
+    newSocket.on("feed:rankUpdated", () => {
+      void fetchPosts(currentLevel, { refresh: true, silent: true });
+    });
+
     const handlePostUpdated = (updatedPost: Post) => {
       const updatedId = String(updatedPost?._id ?? "");
       if (!updatedId) return;
@@ -401,6 +424,7 @@ const fetchPosts = useCallback(
     return () => {
       newSocket.off("updatePost", handlePostUpdated);
       newSocket.off("postUpdated", handlePostUpdated);
+      newSocket.off("feed:rankUpdated");
       unbindPresence();
       leaveRooms();
       newSocket.disconnect();

@@ -53,7 +53,7 @@
           "sounds": [
             "./assets/notifications/notification_sound.wav",
             "./assets/notifications/notification_sound_other.wav",
-            "./assets/notifications/inComing.wav"
+            "./assets/notifications/incoming.wav"
           ],
           "enableBackgroundRemoteNotifications": true
         }

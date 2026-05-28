@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ActivityIndicator, StatusBar, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 import {
   StreamVideo,
   StreamVideoClient,
@@ -19,11 +18,13 @@ type Session = {
   isHost: boolean;
   roomTitle?: string;
   level?: string;
+  playlist?: string[];
+  initialIndex?: number;
 };
 
 export default function App() {
   const { userDetails } = useLevel();
-  const { isDark, theme } = useTheme();
+  const { theme } = useTheme();
   const { callId: deepCallId } = useLocalSearchParams<{ callId?: string }>();
 
   const [client, setClient] = useState<StreamVideoClient | null>(null);
@@ -41,8 +42,23 @@ export default function App() {
     [],
   );
 
-  const joinAsViewer = useCallback((id: string) => {
-    setSession({ callId: id, isHost: false });
+  const joinAsViewer = useCallback(
+    (id: string, meta?: { playlist?: string[]; initialIndex?: number }) => {
+      setSession({ callId: id, isHost: false, ...meta });
+    },
+    [],
+  );
+
+  const switchViewerLive = useCallback((id: string, index: number) => {
+    setSession((prev) =>
+      prev
+        ? {
+            ...prev,
+            callId: id,
+            initialIndex: index,
+          }
+        : { callId: id, isHost: false, initialIndex: index },
+    );
   }, []);
 
   useEffect(() => {
@@ -106,7 +122,13 @@ export default function App() {
       clientRef.current = null;
       setClient(null);
     };
-  }, [userDetails?.clerkId]);
+  }, [
+    userDetails?.clerkId,
+    userDetails?.firstName,
+    userDetails?.lastName,
+    userDetails?.nickName,
+    userDetails?.image,
+  ]);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#000" }}>
@@ -120,10 +142,13 @@ export default function App() {
           {session ? (
             <LiveScreen
               goToHomeScreen={goToHomeScreen}
+              onSwitchLive={switchViewerLive}
               callId={session.callId}
               isHost={session.isHost}
               roomTitle={session.roomTitle}
               level={session.level}
+              playlist={session.playlist}
+              initialIndex={session.initialIndex}
             />
           ) : (
             <HomeScreen

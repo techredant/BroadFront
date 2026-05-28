@@ -22,11 +22,10 @@ import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { fetchStreamToken } from "@/utils/streamToken";
 import LiveScreen from "@/components/live/LiveScreen";
-import {
-  LiveHostPaywall,
-  type LiveHostPaywallMeta,
-} from "@/components/live/LiveHostPaywall";
-import { verifyHostAccessPaid } from "@/utils/liveHostPayments";
+// Market live host paywall — disabled until we ship billing (re-enable later).
+// import { LiveHostPaywall } from "@/components/live/LiveHostPaywall";
+import type { LiveHostPaywallMeta } from "@/components/live/LiveHostPaywall";
+// import { verifyHostAccessPaid } from "@/utils/liveHostPayments";
 
 const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
 
@@ -93,18 +92,20 @@ export default function MarketLiveRoute() {
 
   const requestHostLive = useCallback(
     async (id: string, meta?: LiveHostPaywallMeta) => {
-      const clerkId = userDetails?.clerkId;
-      if (!clerkId) return;
+      // Paywall bypassed — go straight to host session (same as community live).
+      enterHostSession(id, meta);
 
-      const paid = await verifyHostAccessPaid(clerkId, id);
-      if (paid) {
-        enterHostSession(id, meta);
-        return;
-      }
-
-      setHostPending({ callId: id, meta: meta ?? {} });
+      // --- Paywall (re-enable when ready) ---
+      // const clerkId = userDetails?.clerkId;
+      // if (!clerkId) return;
+      // const paid = await verifyHostAccessPaid(clerkId, id);
+      // if (paid) {
+      //   enterHostSession(id, meta);
+      //   return;
+      // }
+      // setHostPending({ callId: id, meta: meta ?? {} });
     },
-    [userDetails?.clerkId, enterHostSession],
+    [enterHostSession],
   );
 
   const joinAsViewer = useCallback((id: string) => {
@@ -256,19 +257,8 @@ export default function MarketLiveRoute() {
               productPrice={session.productPrice}
               productImage={session.productImage}
             />
-          ) : hostPending && userDetails?.clerkId ? (
-            <LiveHostPaywall
-              callId={hostPending.callId}
-              streamKind="market"
-              clerkId={userDetails.clerkId}
-              meta={hostPending.meta}
-              onPaid={() => enterHostSession(hostPending.callId, hostPending.meta)}
-              onCancel={() => {
-                setHostPending(null);
-                goToHomeScreen();
-              }}
-            />
           ) : (
+            /* Paywall UI disabled — restore LiveHostPaywall block here when billing ships. */
             <HomeScreen
               mode="market"
               client={client}

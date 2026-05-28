@@ -28,6 +28,7 @@ export function LiveGuestStrip({ guests, topOffset }: Props) {
                 <VideoRenderer
                   participant={p}
                   trackType="videoTrack"
+                  objectFit="cover"
                   isVisible
                 />
               </View>

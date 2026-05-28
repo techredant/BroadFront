@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useAudioPlayer, type AudioPlayer } from "expo-audio";
 import * as Haptics from "expo-haptics";
 
-const incomingSource = require("@/assets/notifications/inComing.wav");
+const incomingSource = require("@/assets/notifications/incoming.wav");
 const outgoingSource = require("@/assets/notifications/outgoing.wav");
 
 function safeStop(player: AudioPlayer) {
