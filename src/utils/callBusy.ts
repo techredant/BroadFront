@@ -1,43 +1,47 @@
-import type { Call, StreamVideoClient } from "@stream-io/video-react-native-sdk";
-import { CallingState, callManager } from "@stream-io/video-react-native-sdk";
+import type { AgoraRtcClient, RtcCall } from "@/rtc/RtcCall";
+import { CallingState, callManager } from "@/rtc";
+import { isUserBusyInRtcCall } from "@/rtc/RtcCall";
+import { declineCall } from "@/rtc/agoraApi";
 import { callDebug } from "@/utils/callDebug";
+import { RtcConnectionState } from "@/rtc/types";
 
 export function getActiveCall(
-  client: StreamVideoClient | null | undefined,
+  client: AgoraRtcClient | null | undefined,
   excludeCallId?: string,
-): Call | undefined {
+): RtcCall | undefined {
   if (!client) return undefined;
 
   return client.state.calls.find((c) => {
     if (excludeCallId && c.id === excludeCallId) return false;
     const state = c.state.callingState;
-    if (state === CallingState.LEFT) return false;
+    if (state === RtcConnectionState.LEFT) return false;
     return (
-      state === CallingState.JOINED ||
-      state === CallingState.RINGING ||
-      state === CallingState.JOINING ||
+      state === RtcConnectionState.JOINED ||
+      state === RtcConnectionState.RINGING ||
+      state === RtcConnectionState.JOINING ||
       Boolean(c.ringing)
     );
   });
 }
 
 export function isUserBusyInAnotherCall(
-  client: StreamVideoClient | null | undefined,
+  client: AgoraRtcClient | null | undefined,
   videoCallId: string,
 ): boolean {
-  const active = getActiveCall(client, videoCallId);
-  return Boolean(active);
+  if (isUserBusyInRtcCall(videoCallId)) return true;
+  return Boolean(getActiveCall(client, videoCallId));
 }
 
 export async function rejectRingingCall(
-  client: StreamVideoClient,
+  client: AgoraRtcClient,
   videoCallId: string,
   reason: "decline" | "busy" = "decline",
 ): Promise<void> {
   try {
-    const call = client.call("default", videoCallId, { reuseInstance: true });
+    const call = client.call("default", videoCallId);
     await call.get().catch(() => {});
-    if (call.state.callingState !== CallingState.LEFT) {
+    if (call.state.callingState !== RtcConnectionState.LEFT) {
+      await declineCall(videoCallId, call.currentUserId, reason).catch(() => {});
       await call.leave({ reject: true, reason });
       callDebug.log("reject", { videoCallId, reason });
     }
@@ -46,9 +50,7 @@ export async function rejectRingingCall(
   }
 }
 
-export async function cleanupCallSession(
-  call: Call | null | undefined,
-): Promise<void> {
+export async function cleanupCallSession(call: RtcCall | null | undefined): Promise<void> {
   if (!call) return;
 
   try {
@@ -59,7 +61,7 @@ export async function cleanupCallSession(
 
   try {
     const state = call.state.callingState;
-    if (state === CallingState.LEFT) return;
+    if (state === RtcConnectionState.LEFT) return;
 
     if (call.isCreatedByMe) {
       await call.endCall();
@@ -76,3 +78,5 @@ export async function cleanupCallSession(
     }
   }
 }
+
+export { CallingState };

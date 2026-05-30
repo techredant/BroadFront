@@ -2,30 +2,39 @@ import { Dimensions, Platform } from "react-native";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-/** TikTok Live layout tokens */
+/** TikTok Live layout + glassmorphism tokens */
 export const TT = {
   screenW: SCREEN_W,
   screenH: SCREEN_H,
-  /** Comment list height (idle) */
-  chatHeight: Math.round(SCREEN_H * 0.3),
-  /** Extra height when keyboard open */
-  chatHeightKeyboard: Math.round(SCREEN_H * 0.24),
-  /** Right action rail */
-  railRight: 8,
-  railBottom: 168,
-  railBtn: 44,
-  railGap: 18,
-  /** Chat + input leave space for rail */
-  dockRightInset: 56,
+  chatHeight: Math.round(SCREEN_H * 0.28),
+  chatHeightKeyboard: Math.round(SCREEN_H * 0.22),
+  railRight: 10,
+  railBottom: 172,
+  railBtn: 48,
+  railGap: 14,
+  dockRightInset: 72,
   dockLeft: 12,
-  /** Guest circles under top bar */
-  guestTop: 56,
-  guestSize: 56,
-  /** Floating hearts spawn from right */
-  reactionSpawnX: SCREEN_W - 72,
+  guestTop: 72,
+  guestCardW: 72,
+  guestCardH: 96,
+  guestMax: 4,
   liveRed: "#FE2C55",
-  pillBg: "rgba(0,0,0,0.35)",
-  inputBg: "rgba(255,255,255,0.18)",
+  livePink: "#FF0050",
+  accentCyan: "#25F4EE",
+  accentGold: "#FFD700",
+  /** Glass surfaces */
+  glass: "rgba(255,255,255,0.12)",
+  glassStrong: "rgba(255,255,255,0.18)",
+  glassBorder: "rgba(255,255,255,0.22)",
+  pillBg: "rgba(0,0,0,0.42)",
+  pillBgStrong: "rgba(0,0,0,0.58)",
+  shadow: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
+  },
 } as const;
 
 export const ttKeyboardBottom = (height: number, open: boolean) =>

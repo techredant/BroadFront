@@ -1,8 +1,8 @@
-import type { StreamVideoClient } from "@stream-io/video-react-native-sdk";
+import type { AgoraRtcClient } from "@/rtc/RtcCall";
 
-let videoClientRef: StreamVideoClient | null = null;
+let videoClientRef: AgoraRtcClient | null = null;
 
-export function registerCallVideoClient(client: StreamVideoClient | null) {
+export function registerCallVideoClient(client: AgoraRtcClient | null) {
   videoClientRef = client;
 }
 

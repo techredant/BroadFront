@@ -14,11 +14,11 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import type { StreamVideoParticipant } from "@stream-io/video-client";
+import type { EnrichedRtcParticipant } from "@/rtc/types";
 
 type Props = {
   visible: boolean;
-  participant: StreamVideoParticipant | null;
+  participant: EnrichedRtcParticipant | null;
   isHostParticipant: boolean;
   isMuted: boolean;
   loading?: boolean;
@@ -189,7 +189,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-  avatarImg: { width: 56, height: 56 },
   avatarLetter: { color: "#fff", fontSize: 22, fontWeight: "800" },
   mutedDot: {
     position: "absolute",

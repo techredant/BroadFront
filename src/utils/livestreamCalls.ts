@@ -1,40 +1,41 @@
-import type { Call } from "@stream-io/video-react-native-sdk";
-import { isStreamCallLive } from "@/utils/isStreamCallLive";
+import type { RtcCall } from "@/rtc/RtcCall";
+import { isStreamCallEnded } from "@/utils/isStreamCallLive";
 
 /** Ended livestreams are removed from the server after this window */
 export const ENDED_RETENTION_MS = 24 * 60 * 60 * 1000;
 
-export function getCallEndedAtMs(call: Call): number | null {
+export function getCallEndedAtMs(call: RtcCall): number | null {
   const endedAt = call.state.endedAt;
-  if (endedAt) return endedAt.getTime();
+  if (endedAt != null) return endedAt;
 
-  const sessionEnded = call.state.session?.ended_at;
+  const sessionEnded = (call.state as { session?: { ended_at?: string } }).session
+    ?.ended_at;
   if (sessionEnded) return new Date(sessionEnded).getTime();
 
   return null;
 }
 
 export function isEndedCallExpired(
-  call: Call,
+  call: RtcCall,
   maxAgeMs = ENDED_RETENTION_MS,
 ): boolean {
-  if (isStreamCallLive(call)) return false;
+  if (!isStreamCallEnded(call)) return false;
 
   const endedMs =
     getCallEndedAtMs(call) ??
-    call.state.updatedAt?.getTime() ??
-    call.state.createdAt?.getTime();
+    call.state.updatedAt ??
+    call.state.createdAt;
 
   if (endedMs == null) return false;
   return Date.now() - endedMs >= maxAgeMs;
 }
 
 /** Human-readable relative time since the stream ended */
-export function formatEndedAgo(call: Call): string {
+export function formatEndedAgo(call: RtcCall): string {
   const endedMs =
     getCallEndedAtMs(call) ??
-    call.state.updatedAt?.getTime() ??
-    call.state.createdAt?.getTime();
+    call.state.updatedAt ??
+    call.state.createdAt;
 
   if (endedMs == null) return "Ended";
 
@@ -46,13 +47,11 @@ export function formatEndedAgo(call: Call): string {
   return `Ended ${Math.floor(diffHr / 24)}d ago`;
 }
 
-/**
- * Hard-delete ended calls older than 24h (creator only) and drop expired rows from the list.
- */
+/** Hard-delete ended calls older than 24h (creator only) and drop expired rows. */
 export async function purgeExpiredEndedCalls(
-  calls: Call[],
+  calls: RtcCall[],
   userId?: string,
-): Promise<Call[]> {
+): Promise<RtcCall[]> {
   const visible = calls.filter((c) => !isEndedCallExpired(c));
 
   const toDelete = calls.filter(
@@ -63,9 +62,7 @@ export async function purgeExpiredEndedCalls(
   );
 
   if (toDelete.length > 0) {
-    await Promise.allSettled(
-      toDelete.map((c) => c.delete({ hard: true })),
-    );
+    await Promise.allSettled(toDelete.map((c) => c.delete({ hard: true })));
   }
 
   return visible;

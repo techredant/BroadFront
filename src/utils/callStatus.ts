@@ -1,31 +1,41 @@
-import { CallingState } from "@stream-io/video-react-native-sdk";
+import { CallingState } from "@/rtc";
+import { RtcConnectionState } from "@/rtc/types";
 
-export type CallSessionStatus =
+export { CallingState };
+
+export type CallUiStatus =
   | "idle"
   | "ringing"
   | "connecting"
   | "connected"
-  | "declined"
-  | "missed"
-  | "ended"
-  | "busy"
-  | "reconnecting";
+  | "reconnecting"
+  | "ended";
 
 export function mapCallingStateToStatus(
-  callingState: CallingState,
-  opts: { ringing?: boolean; isCaller?: boolean },
-): CallSessionStatus {
-  if (callingState === CallingState.LEFT) return "ended";
-  if (callingState === CallingState.JOINED) return "connected";
-  if (callingState === CallingState.JOINING) return "connecting";
-  if (opts.ringing || callingState === CallingState.RINGING) return "ringing";
-  if (callingState === CallingState.IDLE) {
-    return opts.isCaller ? "connecting" : "ringing";
+  state: string | RtcConnectionState | undefined,
+): CallUiStatus {
+  switch (state) {
+    case CallingState.RINGING:
+    case RtcConnectionState.RINGING:
+      return "ringing";
+    case CallingState.JOINING:
+    case RtcConnectionState.JOINING:
+      return "connecting";
+    case CallingState.JOINED:
+    case RtcConnectionState.JOINED:
+      return "connected";
+    case CallingState.RECONNECTING:
+    case RtcConnectionState.RECONNECTING:
+      return "reconnecting";
+    case CallingState.LEFT:
+    case RtcConnectionState.LEFT:
+      return "ended";
+    default:
+      return "idle";
   }
-  return "connecting";
 }
 
-export function statusLabel(status: CallSessionStatus): string {
+export function statusLabel(status: CallUiStatus): string {
   switch (status) {
     case "ringing":
       return "Ringing…";
@@ -33,16 +43,10 @@ export function statusLabel(status: CallSessionStatus): string {
       return "Connecting…";
     case "connected":
       return "Connected";
-    case "declined":
-      return "Declined";
-    case "missed":
-      return "Missed call";
-    case "ended":
-      return "Call ended";
-    case "busy":
-      return "User busy";
     case "reconnecting":
       return "Reconnecting…";
+    case "ended":
+      return "Call ended";
     default:
       return "";
   }

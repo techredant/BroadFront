@@ -1,34 +1,35 @@
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  FloatingParticipantView,
-  type FloatingParticipantViewProps,
-} from "@stream-io/video-react-native-sdk";
+import { RtcLocalVideoView } from "@/components/call/RtcVideoViews";
 
-/** WhatsApp-style draggable self-view pinned to the top-right once the call is joined. */
-export function BroadcastFloatingLocalVideo(props: FloatingParticipantViewProps) {
+/** WhatsApp-style self-view pinned to the top-right once the call is joined. */
+export function BroadcastFloatingLocalVideo() {
   const insets = useSafeAreaInsets();
 
   return (
-    <FloatingParticipantView
-      {...props}
-      alignment="top-right"
-      mirror
-      objectFit="cover"
-      draggableContainerStyle={[
+    <View
+      style={[
         styles.container,
-        { paddingTop: insets.top + 8 },
+        { top: insets.top + 8, right: 12 },
       ]}
-      participantViewStyle={styles.selfView}
-    />
+      pointerEvents="box-none"
+    >
+      <RtcLocalVideoView style={styles.selfView} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    position: "absolute",
+    width: 112,
+    height: 160,
+    zIndex: 20,
   },
   selfView: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: "hidden",
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.85)",
   },

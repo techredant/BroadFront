@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { PushPromptProvider } from "@/context/PushPromptContext";
 import { NotificationBridge } from "@/components/notifications/NotificationBridge";
 import { IncomingCallProvider } from "@/components/notifications/IncomingCallOverlay";
+import { GlobalStreamVideoProvider } from "@/components/call/GlobalStreamVideoProvider";
 import { MediaViewerProvider } from "@/context/MediaViewerContext";
 import { ActiveLiveHostsProvider } from "@/context/ActiveLiveHostsContext";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
@@ -219,14 +220,16 @@ function RootInnerLayout() {
                   <ActiveLiveHostsProvider>
                     <MediaViewerProvider>
                       <IncomingCallProvider>
-                        <SplashController />
-                        <NotificationBridge />
-                        <Stack
-                          screenOptions={{
-                            headerShown: false,
-                            contentStyle: { backgroundColor: theme.background },
-                          }}
-                        />
+                        <GlobalStreamVideoProvider>
+                          <SplashController />
+                          <NotificationBridge />
+                          <Stack
+                            screenOptions={{
+                              headerShown: false,
+                              contentStyle: { backgroundColor: theme.background },
+                            }}
+                          />
+                        </GlobalStreamVideoProvider>
                       </IncomingCallProvider>
                     </MediaViewerProvider>
                   </ActiveLiveHostsProvider>

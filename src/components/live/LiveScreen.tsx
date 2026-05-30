@@ -1,15 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  StreamCall,
-  VideoRenderer,
+  RtcSessionProvider,
   useCall,
   useCallStateHooks,
   useStreamVideoClient,
-  CallingState,
   OwnCapability,
-} from "@stream-io/video-react-native-sdk";
-import { hasVideo, type StreamVideoParticipant } from "@stream-io/video-client";
-import { syncCallMedia } from "@/utils/callMedia";
+} from "@/rtc";
+import { RtcConnectionState } from "@/rtc/types";
+import type { EnrichedRtcParticipant } from "@/rtc/types";
+import {
+  RtcLocalVideoView,
+  RtcRemoteVideoView,
+} from "@/components/call/RtcVideoViews";
+import { configureLivestreamViewerMedia } from "@/utils/callMedia";
+import { clearActiveCommunityLiveSession } from "@/utils/communityLiveSession";
+import { clearActiveMarketLiveSession } from "@/utils/marketLiveSession";
 import {
   View,
   Text,
@@ -63,32 +68,40 @@ import {
   shouldBurstReaction,
   spawnBurstPositions,
 } from "./LiveReactionsOverlay";
-import { LiveMpesaSheet } from "./LiveMpesaSheet";
+import { LiveMpesaSheet, type DonationLeaderEntry } from "./LiveMpesaSheet";
 import { LiveDonationPopup } from "./LiveDonationPopup";
+import { LiveFullScreenGift, type FullScreenGiftPayload } from "./LiveFullScreenGift";
+import { LiveHostControlsBar } from "./LiveHostControlsBar";
+import { useLiveStreamDuration } from "@/hooks/live/useLiveStreamDuration";
+import { syncChatMemberProfiles } from "@/utils/streamUser";
 import {
   completeLiveMpesaPayment,
   type LivePayResult,
 } from "@/utils/livePayments";
 import { API_PUBLIC_URL } from "@/constants/api";
-import { notifyLiveStarted } from "@/utils/notifyLiveStarted";
-import { joinLivestreamAsHost, stopCallMedia } from "@/utils/callMedia";
 import { io } from "socket.io-client";
 import {
-  buildMarketLiveCustom,
   productFromLiveCustom,
   type MarketLiveProduct,
 } from "@/utils/marketLive";
 import { LiveProductsDropdown } from "@/components/live/LiveProductsDropdown";
 import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 import NetInfo from "@react-native-community/netinfo";
+import {
+  resolveLiveHostRole,
+  useLivestreamSession,
+} from "@/hooks/live/useLivestreamSession";
+import { LivestreamAutoJoin } from "@/components/live/LivestreamAutoJoin";
+import { StreamConnectionOverlay } from "@/components/call/StreamConnectionOverlay";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const LIVE_EVENT_BATCH_MS = 140;
+const LIVE_JOIN_BATCH_MS = 140;
 const LIVE_SWIPE_THRESHOLD = 90;
 type NetworkTier = "good" | "constrained" | "poor";
 
 type Props = {
   goToHomeScreen: () => void;
+  onHostEnded?: () => void;
   onSwitchLive?: (callId: string, index: number) => void;
   callId: string;
   isHost?: boolean;
@@ -105,6 +118,7 @@ type Props = {
 
 export default function LiveScreen({
   goToHomeScreen,
+  onHostEnded,
   onSwitchLive,
   callId,
   isHost = false,
@@ -121,32 +135,9 @@ export default function LiveScreen({
   const client = useStreamVideoClient();
   const { userDetails } = useLevel();
   const insets = useSafeAreaInsets();
-  const liveNotifySentRef = useRef(false);
-  const [call, setCall] = useState<ReturnType<
-    NonNullable<typeof client>["call"]
-  > | null>(null);
-  const [joinError, setJoinError] = useState<string | null>(null);
-  const joinGenRef = useRef(0);
   const goHomeRef = useRef(goToHomeScreen);
   goHomeRef.current = goToHomeScreen;
 
-  const streamCall = useMemo(() => {
-    if (!client) return null;
-    return client.call("livestream", callId);
-  }, [client, callId]);
-
-  useEffect(() => {
-    if (!client || isHost || !playlist?.length) return;
-    const index = playlist.indexOf(callId);
-    const adjacent = [playlist[index - 1], playlist[index + 1]].filter(Boolean);
-    adjacent.forEach((id) => {
-      const warmCall = client.call("livestream", id);
-      const maybeGet = (warmCall as unknown as { get?: () => Promise<unknown> }).get;
-      if (typeof maybeGet === "function") {
-        void maybeGet.call(warmCall).catch(() => {});
-      }
-    });
-  }, [callId, client, isHost, playlist]);
   const initialMarketProduct = useMemo<MarketLiveProduct | null>(() => {
     if (variant !== "market" || !productId) return null;
     return {
@@ -157,93 +148,18 @@ export default function LiveScreen({
     };
   }, [variant, productId, productTitle, productPrice, productImage]);
 
-  useEffect(() => {
-    liveNotifySentRef.current = false;
-  }, [callId]);
-
-  useEffect(() => {
-    if (!streamCall) return;
-
-    const gen = ++joinGenRef.current;
-    let active = true;
-
-    const join = async () => {
-      try {
-        setJoinError(null);
-
-        if (isHost) {
-          await streamCall.getOrCreate({
-            data: {
-              custom: {
-                ...(variant === "market"
-                  ? buildMarketLiveCustom({
-                      hostClerkId: userDetails?.clerkId || "",
-                      roomTitle,
-                      level,
-                      product: initialMarketProduct,
-                    })
-                  : {
-                      title: roomTitle ?? "Live",
-                      level: level ?? "home",
-                    }),
-              },
-            },
-          });
-          await joinLivestreamAsHost(streamCall);
-
-          if (userDetails?.clerkId && !liveNotifySentRef.current) {
-            liveNotifySentRef.current = true;
-            void notifyLiveStarted({
-              hostClerkId: userDetails.clerkId,
-              callId,
-              title: roomTitle,
-              level,
-            });
-          }
-        } else {
-          await streamCall.join({ create: false });
-        }
-
-        if (!active || joinGenRef.current !== gen) {
-          await streamCall.leave().catch(() => {});
-          stopCallMedia();
-          return;
-        }
-
-        setCall(streamCall);
-      } catch (err) {
-        console.log("join live error:", err);
-        if (active && joinGenRef.current === gen) {
-          setJoinError("Could not join the live stream.");
-        }
-      }
-    };
-
-    join();
-
-    const handleEnded = () => {
-      if (active) goHomeRef.current();
-    };
-
-    streamCall.on("call.ended", handleEnded);
-
-    return () => {
-      active = false;
-      streamCall.off("call.ended", handleEnded);
-      streamCall.leave().catch(() => {});
-      stopCallMedia();
-      setCall(null);
-    };
-  }, [
-    streamCall,
+  const { call, joinError } = useLivestreamSession({
+    client,
     callId,
     isHost,
+    variant,
     roomTitle,
     level,
-    userDetails?.clerkId,
-    variant,
+    hostClerkId: userDetails?.clerkId,
     initialMarketProduct,
-  ]);
+    onEnded: () => goHomeRef.current(),
+    onHostEnded,
+  });
 
   if (joinError) {
     return (
@@ -268,25 +184,99 @@ export default function LiveScreen({
   }
 
   return (
-    <StreamCall call={call}>
+    <RtcSessionProvider call={call}>
       <StatusBar
         translucent
         backgroundColor="transparent"
         barStyle="light-content"
       />
+      <LivestreamAutoJoin isHost={isHost} />
       <LeaveStateHandler goToHomeScreen={goToHomeScreen} />
-      <LiveCanvas
+      <LivestreamStateGate
         isHost={isHost}
+        goToHomeScreen={goToHomeScreen}
         callId={callId}
         playlist={playlist}
         initialIndex={initialIndex}
         onSwitchLive={onSwitchLive}
         variant={variant}
         initialMarketProduct={initialMarketProduct}
-        goToHomeScreen={goToHomeScreen}
         insetsBottom={insets.bottom}
       />
-    </StreamCall>
+    </RtcSessionProvider>
+  );
+}
+
+function LivestreamStateGate({
+  isHost,
+  goToHomeScreen,
+  callId,
+  playlist,
+  initialIndex,
+  onSwitchLive,
+  variant,
+  initialMarketProduct,
+  insetsBottom,
+}: {
+  isHost: boolean;
+  goToHomeScreen: () => void;
+  callId: string;
+  playlist?: string[];
+  initialIndex: number;
+  onSwitchLive?: (callId: string, index: number) => void;
+  variant: "community" | "market";
+  initialMarketProduct: MarketLiveProduct | null;
+  insetsBottom: number;
+}) {
+  const { useIsCallLive, useCallEndedAt, useCallCallingState } =
+    useCallStateHooks();
+  const isLive = useIsCallLive();
+  const endedAt = useCallEndedAt();
+  const callingState = useCallCallingState();
+
+  if (endedAt != null) {
+    return (
+      <View style={styles.joinErrorRoot}>
+        <Text style={styles.joinErrorText}>The livestream has ended.</Text>
+        <Pressable style={styles.joinErrorBtn} onPress={goToHomeScreen}>
+          <Text style={styles.joinErrorBtnText}>Back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (!isHost && !isLive && callingState !== RtcConnectionState.JOINED) {
+    return (
+      <View style={styles.joiningRoot}>
+        <ActivityIndicator size="large" color="#FE2C55" />
+        <Text style={styles.joiningText}>Waiting for host to go live…</Text>
+      </View>
+    );
+  }
+
+  if (callingState !== RtcConnectionState.JOINED) {
+    return (
+      <View style={styles.joiningRoot}>
+        <ActivityIndicator size="large" color="#FE2C55" />
+        <Text style={styles.joiningText}>
+          {isHost ? "Starting your live…" : "Joining live…"}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <LiveCanvas
+      isHost={isHost}
+      callId={callId}
+      playlist={playlist}
+      initialIndex={initialIndex}
+      onSwitchLive={onSwitchLive}
+      variant={variant}
+      initialMarketProduct={initialMarketProduct}
+      goToHomeScreen={goToHomeScreen}
+      insetsBottom={insetsBottom}
+    />
   );
 }
 
@@ -297,7 +287,7 @@ function LeaveStateHandler({ goToHomeScreen }: { goToHomeScreen: () => void }) {
   const callingState = useCallCallingState();
 
   useEffect(() => {
-    if (callingState === CallingState.LEFT) goToHomeScreen();
+    if (callingState === RtcConnectionState.LEFT) goToHomeScreen();
   }, [callingState, goToHomeScreen]);
 
   return null;
@@ -326,18 +316,6 @@ function LiveCanvas({
   goToHomeScreen: () => void;
   insetsBottom: number;
 }) {
-  const { useCallCallingState } = useCallStateHooks();
-  const callingState = useCallCallingState();
-
-  if (callingState !== CallingState.JOINED) {
-    return (
-      <View style={styles.joiningRoot}>
-        <ActivityIndicator size="large" color="#FE2C55" />
-        <Text style={styles.joiningText}>Connecting…</Text>
-      </View>
-    );
-  }
-
   return (
     <LiveCanvasJoined
       isHost={isHost}
@@ -381,7 +359,7 @@ function LiveCanvasJoined({
   const {
     useCallCallingState,
     useLocalParticipant,
-    useParticipants,
+    useRawParticipants,
     useParticipantCount,
     useMicrophoneState,
     useCameraState,
@@ -396,15 +374,17 @@ function LiveCanvasJoined({
   );
 
   const localParticipant = useLocalParticipant();
-  const participants = useParticipants();
+  const participants = useRawParticipants();
   const hostUserId = call?.state.createdBy?.id;
   const canUpdatePermissions = useHasPermissions(
     OwnCapability.UPDATE_CALL_PERMISSIONS,
   );
   const canMuteUsers = useHasPermissions(OwnCapability.MUTE_USERS);
-  const canModerate = isHost || canUpdatePermissions || canMuteUsers;
 
-  const myUserId = localParticipant?.userId;
+  const myUserId = localParticipant?.userId ?? userDetails?.clerkId;
+  const effectiveIsHost = resolveLiveHostRole(isHost, call, myUserId);
+  const canModerate =
+    effectiveIsHost || canUpdatePermissions || canMuteUsers;
   const myName =
     localParticipant?.name ||
     userDetails?.nickName ||
@@ -414,21 +394,6 @@ function LiveCanvasJoined({
   const viewerCount = useParticipantCount();
   const mic = useMicrophoneState();
   const cam = useCameraState();
-  const hostMediaSyncedRef = useRef(false);
-
-  useEffect(() => {
-    if (!isHost || !call) {
-      hostMediaSyncedRef.current = false;
-      return;
-    }
-    if (callingState !== CallingState.JOINED) {
-      hostMediaSyncedRef.current = false;
-      return;
-    }
-    if (hostMediaSyncedRef.current) return;
-    hostMediaSyncedRef.current = true;
-    void syncCallMedia(call, true);
-  }, [isHost, call, callingState]);
 
   const [messages, setMessages] = useState<LiveMessage[]>([
     {
@@ -456,8 +421,19 @@ function LiveCanvasJoined({
   const [joinToasts, setJoinToasts] = useState<JoinToast[]>([]);
   const [donationPopup, setDonationPopup] = useState<DonationToast | null>(null);
   const [likeCount, setLikeCount] = useState(0);
+  const [heartBurstKey, setHeartBurstKey] = useState(0);
   const [followBusy, setFollowBusy] = useState(false);
   const [networkTier, setNetworkTier] = useState<NetworkTier>("good");
+  const [mpesaTab, setMpesaTab] = useState<"gift" | "donate">("gift");
+  const [fullScreenGift, setFullScreenGift] =
+    useState<FullScreenGiftPayload | null>(null);
+  const [topDonors, setTopDonors] = useState<DonationLeaderEntry[]>([]);
+  const [hostProfile, setHostProfile] = useState<{
+    name?: string;
+    image?: string | null;
+    verified?: boolean;
+  }>({});
+  const streamDuration = useLiveStreamDuration(true);
   const { inset: keyboardInset, open: keyboardOpen } = useLiveKeyboardInset();
   const { handleFollow, following } = useFollowContext();
   const lastTap = useRef(0);
@@ -471,6 +447,11 @@ function LiveCanvasJoined({
   const donationQueueRef = useRef<DonationToast[]>([]);
   const donationShowingRef = useRef(false);
   const broadcastedPaymentsRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!call || effectiveIsHost || callingState !== RtcConnectionState.JOINED) return;
+    configureLivestreamViewerMedia(call);
+  }, [call, effectiveIsHost, callingState, networkTier]);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
@@ -489,11 +470,20 @@ function LiveCanvasJoined({
   }, []);
 
   const isPublishingVideo = useCallback(
-    (p: (typeof participants)[0]) => hasVideo(p),
+    (p: EnrichedRtcParticipant) => Boolean(p.hasVideo),
     [],
   );
 
+  const appendLiveMessage = useCallback((msg: Omit<LiveMessage, "id">) => {
+    setMessages((prev) => appendMessage(prev, msg));
+  }, []);
+
   const enqueueMessage = useCallback((msg: Omit<LiveMessage, "id">) => {
+    if (msg.kind === "chat") {
+      appendLiveMessage(msg);
+      return;
+    }
+
     messageQueueRef.current.push(msg);
     if (messageFlushTimerRef.current) return;
     messageFlushTimerRef.current = setTimeout(() => {
@@ -506,8 +496,8 @@ function LiveCanvasJoined({
           .map((item) => ({ ...item, id: `${Date.now()}-${Math.random()}` }));
         return [...stamped, ...prev].slice(0, LIVE_CHAT_VISIBLE_MAX);
       });
-    }, LIVE_EVENT_BATCH_MS);
-  }, []);
+    }, LIVE_JOIN_BATCH_MS);
+  }, [appendLiveMessage]);
 
   useEffect(
     () => () => {
@@ -536,7 +526,7 @@ function LiveCanvasJoined({
   );
 
   const primaryParticipant = useMemo(() => {
-    if (isHost && localParticipant) return localParticipant;
+    if (effectiveIsHost && localParticipant) return localParticipant;
     const hostPublishing = participants.find(
       (p) => p.userId === hostUserId && isPublishingVideo(p),
     );
@@ -548,7 +538,7 @@ function LiveCanvasJoined({
       participants.find((p) => !p.isLocalParticipant) ??
       localParticipant
     );
-  }, [isHost, localParticipant, participants, hostUserId, onStage, isPublishingVideo]);
+  }, [effectiveIsHost, localParticipant, participants, hostUserId, onStage, isPublishingVideo]);
 
   const miniParticipants = useMemo(() => {
     if (!primaryParticipant) return [];
@@ -577,6 +567,20 @@ function LiveCanvasJoined({
         userName,
         amount,
       };
+      setTopDonors((prev) => {
+        const idx = prev.findIndex((d) => d.userName === userName);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = {
+            ...next[idx],
+            total: next[idx].total + amount,
+          };
+          return next.sort((a, b) => b.total - a.total).slice(0, 10);
+        }
+        return [...prev, { userName, total: amount }]
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 10);
+      });
       setMessages((prev) =>
         appendMessage(prev, {
           kind: "donation",
@@ -628,6 +632,7 @@ function LiveCanvasJoined({
   const emitReaction = useCallback(
     (emoji: string) => {
       const now = Date.now();
+      if (emoji === "❤️") setHeartBurstKey((k) => k + 1);
       reactionTapTimes.current = reactionTapTimes.current.filter(
         (t) => now - t < 700,
       );
@@ -656,9 +661,15 @@ function LiveCanvasJoined({
   );
 
   const pushGiftToast = useCallback(
-    (emoji: string, label: string, senderName: string) => {
+    (
+      emoji: string,
+      label: string,
+      senderName: string,
+      amount?: number,
+    ) => {
       const id = `${Date.now()}-${Math.random()}`;
       setGiftToasts((prev) => [...prev, { id, emoji, label, senderName }]);
+      setFullScreenGift({ id, emoji, label, senderName, amount });
       setTimeout(() => {
         setGiftToasts((prev) => prev.filter((g) => g.id !== id));
       }, 3200);
@@ -666,13 +677,28 @@ function LiveCanvasJoined({
     [],
   );
 
+  useEffect(() => {
+    if (!hostUserId) return;
+    void syncChatMemberProfiles([hostUserId])
+      .then((profiles) => {
+        const profile = profiles.find((p) => p.clerkId === hostUserId);
+        if (profile) {
+          setHostProfile({
+            name: profile.name,
+            image: profile.image,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [hostUserId]);
+
   const chatMaxHeight = useMemo(() => {
     const base = keyboardOpen ? TT.chatHeightKeyboard : TT.chatHeight;
     return canModerate ? base - 20 : base;
   }, [canModerate, keyboardOpen]);
 
   const dockPaddingClosed = Math.max(insetsBottom + 6, 10);
-  const controlsBlockHeight = isHost ? 58 : 48;
+  const controlsBlockHeight = effectiveIsHost ? 58 : 48;
   const dockBottom = keyboardOpen ? keyboardInset : 0;
   const dockPadBottom = keyboardOpen ? 8 : dockPaddingClosed;
   const fadeHeight =
@@ -680,7 +706,7 @@ function LiveCanvasJoined({
 
   const hostClerkId = hostUserId;
   const showFollowBtn =
-    !isHost && !!hostClerkId && hostClerkId !== myUserId;
+    !effectiveIsHost && !!hostClerkId && hostClerkId !== myUserId;
   const isFollowingHost = hostClerkId
     ? following.includes(hostClerkId)
     : false;
@@ -711,13 +737,14 @@ function LiveCanvasJoined({
       return null;
     };
 
-    const onCustom = (event: {
-      custom?: Record<string, unknown>;
-      user?: { id?: string; name?: string };
-      cid?: string;
-      created_at?: string;
-      createdAt?: string;
-    }) => {
+    const onCustom = (rawEvent: unknown) => {
+      const event = rawEvent as {
+        custom?: Record<string, unknown>;
+        user?: { id?: string; name?: string };
+        cid?: string;
+        created_at?: string;
+        createdAt?: string;
+      };
       const payload = resolvePayload(event);
       const senderId = event.user?.id;
       const senderName = event.user?.name || "Viewer";
@@ -741,6 +768,7 @@ function LiveCanvasJoined({
           userId: senderId,
           userName: senderName,
           text: payload.text as string,
+          isHost: senderId === hostUserId,
         });
         return;
       }
@@ -770,11 +798,12 @@ function LiveCanvasJoined({
         const gift = LIVE_GIFTS.find((g) => g.id === payload.giftId);
         if (!gift) return;
         const sender = (payload.senderName as string) || senderName;
-        pushGiftToast(gift.emoji, gift.label, sender);
+        pushGiftToast(gift.emoji, gift.label, sender, gift.amount);
         enqueueMessage({
-          kind: "system",
+          kind: "gift",
           userName: sender,
-          text: `sent ${gift.emoji} ${gift.label}`,
+          text: `sent ${gift.label}`,
+          giftEmoji: gift.emoji,
           userId: senderId,
         });
         return;
@@ -821,8 +850,8 @@ function LiveCanvasJoined({
         );
         void (async () => {
           try {
-            await call.camera.enable();
-            await call.microphone.enable();
+            await cam.camera.enable();
+            await mic.microphone.enable();
           } catch (e) {
             console.log("speak invite accept error:", e);
           }
@@ -844,9 +873,10 @@ function LiveCanvasJoined({
       }
     };
 
-    const onJoined = (event: {
-      participant?: { user?: { id?: string; name?: string } };
-    }) => {
+    const onJoined = (rawEvent: unknown) => {
+      const event = rawEvent as {
+        participant?: { user?: { id?: string; name?: string } };
+      };
       const userId = event.participant?.user?.id;
       const name = event.participant?.user?.name || "Someone";
       if (!userId || userId === myUserId) return;
@@ -926,7 +956,7 @@ function LiveCanvasJoined({
   );
 
   const requestToSpeak = useCallback(async () => {
-    if (!call || isHost) return;
+    if (!call || effectiveIsHost) return;
     try {
       await call.sendCustomEvent({ type: LIVE_EVENT.SPEAK_REQUEST });
       setMessages((prev) =>
@@ -940,7 +970,7 @@ function LiveCanvasJoined({
     } catch (e) {
       console.log("speak request error:", e);
     }
-  }, [call, isHost, myName, myUserId]);
+  }, [call, effectiveIsHost, myName, myUserId]);
 
   const onTapVideo = () => {
     const now = Date.now();
@@ -952,12 +982,13 @@ function LiveCanvasJoined({
     async (giftId: string) => {
       const gift = LIVE_GIFTS.find((g) => g.id === giftId);
       if (!gift || !call) return;
-      pushGiftToast(gift.emoji, gift.label, myName);
+      pushGiftToast(gift.emoji, gift.label, myName, gift.amount);
       setMessages((prev) =>
         appendMessage(prev, {
-          kind: "system",
+          kind: "gift",
           userName: myName,
-          text: `sent ${gift.emoji} ${gift.label}`,
+          text: `sent ${gift.label}`,
+          giftEmoji: gift.emoji,
           userId: myUserId,
         }),
       );
@@ -1061,6 +1092,7 @@ function LiveCanvasJoined({
       userId: myUserId,
       userName: myName,
       text,
+      isHost: effectiveIsHost,
     };
     setMessages((prev) => [optimistic, ...prev].slice(0, LIVE_CHAT_VISIBLE_MAX));
     setInput("");
@@ -1136,15 +1168,33 @@ function LiveCanvasJoined({
     } catch (err) {
       console.log("end live error:", err);
     } finally {
+      if (variant === "community") {
+        clearActiveCommunityLiveSession();
+      } else if (variant === "market") {
+        clearActiveMarketLiveSession();
+      }
       goToHomeScreen();
     }
   };
 
   const isReconnecting = String(callingState).toLowerCase().includes("reconnect");
 
+  const hostDisplayName =
+    hostProfile.name ||
+    primaryParticipant?.name ||
+    "Broadcaster";
+  const hostDisplayImage = hostProfile.image ?? undefined;
+
+  const activeSpeaker = useMemo(
+    () =>
+      participants.find((p) => p.isSpeaking && !p.isLocalParticipant) ??
+      participants.find((p) => p.isSpeaking),
+    [participants],
+  );
+
   return (
     <LiveSwipeDeck
-      enabled={!isHost && !keyboardOpen && !!playlist?.length}
+      enabled={!effectiveIsHost && !keyboardOpen && !!playlist?.length}
       callId={callId}
       playlist={playlist}
       initialIndex={initialIndex}
@@ -1155,10 +1205,11 @@ function LiveCanvasJoined({
         primary={primaryParticipant}
         localParticipant={localParticipant}
         onTapVideo={onTapVideo}
-        isHost={isHost}
+        isHost={effectiveIsHost}
       />
 
-      {isReconnecting && <ReconnectingOverlay />}
+      <StreamConnectionOverlay />
+
       {!isReconnecting && networkTier !== "good" && (
         <SmoothModeOverlay tier={networkTier} />
       )}
@@ -1166,6 +1217,7 @@ function LiveCanvasJoined({
       <LiveGuestStrip
         guests={miniParticipants}
         topOffset={insets.top + TT.guestTop}
+        activeSpeakerId={activeSpeaker?.sessionId}
       />
 
       <LiveJoinToastLayer
@@ -1193,17 +1245,27 @@ function LiveCanvasJoined({
         />
       )}
 
+      {fullScreenGift ? (
+        <LiveFullScreenGift
+          gift={fullScreenGift}
+          onDone={() => setFullScreenGift(null)}
+        />
+      ) : null}
+
       <LiveTopBar
-        hostName={primaryParticipant?.name || "Broadcaster"}
+        hostName={hostDisplayName}
+        hostImage={hostDisplayImage}
+        hostVerified={hostProfile.verified}
         streamTitle={(custom as { title?: string })?.title}
         viewerCount={viewerCount}
-        isHost={isHost}
+        streamDuration={streamDuration}
+        isHost={effectiveIsHost}
         topInset={insets.top}
         showFollow={showFollowBtn}
         isFollowing={isFollowingHost}
         followLoading={followBusy}
         onFollow={onFollowHost}
-        onClose={isHost ? endLiveHost : goToHomeScreen}
+        onClose={effectiveIsHost ? endLiveHost : goToHomeScreen}
         onShare={shareLive}
       />
 
@@ -1293,9 +1355,22 @@ function LiveCanvasJoined({
       <LiveActionRail
         hidden={keyboardOpen}
         likeCount={likeCount}
-        onGift={() => setShowGiftPicker(true)}
+        hostImage={hostDisplayImage}
+        hostInitial={hostDisplayName}
+        showFollow={showFollowBtn}
+        isFollowing={isFollowingHost}
+        onFollow={onFollowHost}
+        heartBurstKey={heartBurstKey}
+        onGift={() => {
+          setMpesaTab("gift");
+          setShowGiftPicker(true);
+        }}
+        onDonate={() => {
+          setMpesaTab("donate");
+          setShowGiftPicker(true);
+        }}
+        onShare={shareLive}
         onHeart={() => emitReaction("❤️")}
-        onEmoji={emitReaction}
       />
 
       {variant === "market" && !keyboardOpen && hostClerkId ? (
@@ -1330,7 +1405,11 @@ function LiveCanvasJoined({
         keyboardVerticalOffset={0}
       >
         <View style={styles.bottomDockInner}>
-          <LiveChatPanel messages={messages} maxHeight={chatMaxHeight} />
+          <LiveChatPanel
+            messages={messages}
+            maxHeight={chatMaxHeight}
+            hostUserId={hostUserId}
+          />
 
           <View style={styles.inputRow}>
             <TextInput
@@ -1357,22 +1436,19 @@ function LiveCanvasJoined({
             )}
           </View>
 
-          {!keyboardOpen && isHost && (
-            <View style={styles.ttHostBarInline}>
-              <TikTokIconBtn
-                icon={mic?.isMute ? "mic-off" : "mic"}
-                onPress={() => call?.microphone.toggle()}
-              />
-              <TikTokIconBtn
-                icon={cam?.isEnabled ? "videocam" : "videocam-off"}
-                onPress={() => call?.camera.toggle()}
-              />
-              <TikTokIconBtn icon="sync" onPress={() => call?.camera.flip()} />
-              <TikTokIconBtn icon="call" danger onPress={endLiveHost} />
-            </View>
+          {!keyboardOpen && effectiveIsHost && (
+            <LiveHostControlsBar
+              micMuted={Boolean(mic?.optimisticIsMute)}
+              cameraEnabled={Boolean(cam?.isEnabled)}
+              onToggleMic={() => call?.microphone.toggle()}
+              onToggleCamera={() => call?.camera.toggle()}
+              onFlipCamera={() => call?.camera.flip()}
+              onInviteGuest={() => setShowGuests(true)}
+              onEndStream={endLiveHost}
+            />
           )}
 
-          {!keyboardOpen && !isHost && (
+          {!keyboardOpen && !effectiveIsHost && (
             <View style={styles.ttViewerBarInline}>
               {localParticipant && !isPublishingVideo(localParticipant) && (
                 <Pressable style={styles.ttViewerPill} onPress={requestToSpeak}>
@@ -1393,6 +1469,8 @@ function LiveCanvasJoined({
 
       <LiveMpesaSheet
         visible={showGiftPicker}
+        initialTab={mpesaTab}
+        topDonors={topDonors}
         onClose={() => setShowGiftPicker(false)}
         pay={handleMpesaPay}
       />
@@ -1511,8 +1589,8 @@ function StageVideoLayout({
   onTapVideo,
   isHost,
 }: {
-  primary?: StreamVideoParticipant;
-  localParticipant?: StreamVideoParticipant;
+  primary?: EnrichedRtcParticipant;
+  localParticipant?: EnrichedRtcParticipant;
   onTapVideo: () => void;
   isHost: boolean;
 }) {
@@ -1520,22 +1598,16 @@ function StageVideoLayout({
     ? localParticipant ?? primary
     : primary;
 
-  const trackKey = stageParticipant
-    ? `${stageParticipant.sessionId}-${stageParticipant.publishedTracks?.join(",") ?? ""}`
-    : "none";
-
   return (
     <Pressable style={styles.videoTouch} onPress={onTapVideo}>
       {!stageParticipant && <StreamSkeleton />}
       {stageParticipant ? (
-        <View style={styles.videoStage} key={trackKey}>
-          <VideoRenderer
-            participant={stageParticipant}
-            trackType="videoTrack"
-            objectFit="cover"
-            mirror={isHost || stageParticipant.isLocalParticipant}
-            isVisible
-          />
+        <View style={styles.videoStage}>
+          {stageParticipant.isLocalParticipant || isHost ? (
+            <RtcLocalVideoView style={styles.videoStage} />
+          ) : (
+              <RtcRemoteVideoView uid={stageParticipant.uid} style={styles.videoStage} />
+          )}
         </View>
       ) : (
         <View style={styles.waitingVideo}>

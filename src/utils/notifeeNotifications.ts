@@ -12,6 +12,7 @@ import type { FirebaseMessagingTypes } from "@react-native-firebase/messaging";
 import { NOTIFICATION_SOUNDS } from "@/constants/notificationSounds";
 import { NOTIFEE_CHANNELS, type NotifeeChannelId } from "@/constants/notificationChannels";
 import type { AppNotification } from "@/types/notifications";
+import { dispatchIncomingCall } from "@/utils/incomingCallDispatch";
 
 export type NotificationPayload = Record<string, string | undefined>;
 
@@ -67,6 +68,8 @@ export async function ensureNotifeeChannels() {
       sound: NOTIFICATION_SOUNDS.incomingCall,
       vibration: true,
       bypassDnd: true,
+      lights: true,
+      lightColor: "#22c55e",
     },
     {
       id: NOTIFEE_CHANNELS.followers,
@@ -369,6 +372,12 @@ export async function displayFcmRemoteMessage(
       callMode: data.callMode,
       callerImage: data.actorImage,
       data,
+    });
+    dispatchIncomingCall({
+      callId: String(data.callId),
+      callerName: title || "Incoming call",
+      callerImage: data.callerImage || data.actorImage,
+      callMode: data.callMode === "audio" ? "audio" : "video",
     });
     return;
   }

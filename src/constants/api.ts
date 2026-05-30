@@ -21,7 +21,7 @@ function getExpoDevMachineHost(): string | undefined {
 
 function resolveDevApiUrl(): string | undefined {
   if (typeof __DEV__ === "undefined" || !__DEV__) return undefined;
-  if (process.env.EXPO_PUBLIC_USE_LOCAL_API !== "true") return undefined;
+  if (process.env.EXPO_PUBLIC_USE_LOCAL_API === "false") return undefined;
 
   const explicit = process.env.EXPO_PUBLIC_API_URL_DEV?.trim();
   if (explicit) return explicit.replace(/\/$/, "");
@@ -36,8 +36,12 @@ function resolveDevApiUrl(): string | undefined {
     return `http://${expoHost}:${BACKEND_PORT}`;
   }
 
-  if (Platform.OS === "android") return `http://10.0.2.2:${BACKEND_PORT}`;
-  return `http://127.0.0.1:${BACKEND_PORT}`;
+  if (process.env.EXPO_PUBLIC_USE_LOCAL_API === "true") {
+    if (Platform.OS === "android") return `http://10.0.2.2:${BACKEND_PORT}`;
+    return `http://127.0.0.1:${BACKEND_PORT}`;
+  }
+
+  return undefined;
 }
 
 /** Hosted REST API (Vercel) — used in production and when local backend is off. */
@@ -59,3 +63,6 @@ export const SOCKET_IO_URL = (
 /** Socket.IO cannot run on Vercel serverless — true when using hosted API without local backend. */
 export const SOCKET_IO_DISABLED_ON_HOST =
   !IS_LOCAL_API && HOSTED_API_URL.includes("vercel");
+
+/** Poll interval when live sockets are unavailable (hosted API). */
+export const HOSTED_FEED_REFRESH_MS = 6000;

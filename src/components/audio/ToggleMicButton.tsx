@@ -3,16 +3,17 @@ import {
   useCall,
   useCallStateHooks,
   OwnCapability,
-} from "@stream-io/video-react-native-sdk";
+} from "@/rtc";
+import { RtcConnectionState } from "@/rtc/types";
 import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 
-/** Mic hooks need a live call — only mount after join (avoids useLazyDeviceList crash). */
+/** Mic hooks need a live call — only mount after join. */
 export const ToggleMicButton = () => {
   const call = useCall();
-  const isJoined = call?.state.callingState === "joined";
+  const isJoined = call?.state.callingState === RtcConnectionState.JOINED;
 
   if (!call || !isJoined) {
     return <MicButtonShell disabled muted />;
@@ -66,7 +67,7 @@ function ToggleMicButtonJoined() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!call || call.state.callingState !== "joined") return;
+    if (!call || call.state.callingState !== RtcConnectionState.JOINED) return;
 
     callManager.start({
       audioRole: "communicator",
@@ -74,13 +75,12 @@ function ToggleMicButtonJoined() {
     });
   }, [call, call?.state.callingState]);
 
-  /** Host revoked SEND_AUDIO — user cannot self-unmute */
   if (!hasSpeakPermission) {
     return <MicButtonShell locked muted disabled />;
   }
 
   const toggleMic = async () => {
-    if (!call || call.state.callingState !== "joined") return;
+    if (!call || call.state.callingState !== RtcConnectionState.JOINED) return;
 
     try {
       setLoading(true);

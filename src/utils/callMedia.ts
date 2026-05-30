@@ -1,193 +1,118 @@
-import type { Call, StreamVideoClient } from "@stream-io/video-react-native-sdk";
-import { CallingState, callManager } from "@stream-io/video-react-native-sdk";
-import { combineLatest, filter, firstValueFrom, take } from "rxjs";
-
-let mediaLock: Promise<void> | null = null;
-let mediaLockCallId: string | null = null;
+import type { RtcCall, AgoraRtcClient } from "@/rtc/RtcCall";
+import { RtcConnectionState } from "@/rtc/types";
+import { acceptCall, declineCall } from "@/rtc/agoraApi";
+import {
+  setActiveRtcCall,
+  isUserBusyInRtcCall,
+  rtcDeviceManager,
+} from "@/rtc/RtcCall";
+import { PermissionsAndroid, Platform } from "react-native";
+import { withCallJoinLock, isCallJoinInProgressForId, normalizeCallLockId } from "@/utils/streamCallLifecycle";
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function waitUntilJoined(call: Call): Promise<void> {
-  if (call.state.callingState === CallingState.JOINED) return;
-  if (call.state.callingState === CallingState.LEFT) {
-    throw new Error("Call ended before join completed");
-  }
-
-  const state = await firstValueFrom(
-    call.state.callingState$.pipe(
-      filter(
-        (next) =>
-          next === CallingState.JOINED || next === CallingState.LEFT,
-      ),
-      take(1),
-    ),
-  );
-
-  if (state === CallingState.LEFT) {
-    throw new Error("Call ended before join completed");
-  }
+async function ensureCallPermissions(isVideoCall: boolean): Promise<void> {
+  if (Platform.OS !== "android") return;
+  const permissions = [
+    PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+    ...(isVideoCall ? [PermissionsAndroid.PERMISSIONS.CAMERA] : []),
+  ];
+  await PermissionsAndroid.requestMultiple(permissions);
 }
 
-async function waitForLocalParticipant(call: Call): Promise<void> {
-  if (call.state.localParticipant || isCallLeft(call)) return;
-
-  const [, state] = await firstValueFrom(
-    combineLatest([
-      call.state.localParticipant$,
-      call.state.callingState$,
-    ]).pipe(
-      filter(
-        ([participant, next]) =>
-          Boolean(participant) || next === CallingState.LEFT,
-      ),
-      take(1),
-    ),
-  );
-
-  if (state === CallingState.LEFT) return;
-}
-
-/** Cache Stream call state while the incoming overlay is visible. */
 export function prewarmIncomingCall(
-  client: StreamVideoClient,
-  callId: string,
-  isVideoCall: boolean,
+  _client: AgoraRtcClient,
+  _callId: string,
 ): void {
-  try {
-    const call = client.call("default", callId, { reuseInstance: true });
-    void call.get({ ring: true, video: isVideoCall }).catch(() => {});
-  } catch {
-    /* ignore */
-  }
-}
-
-function isCallLeft(call: Call): boolean {
-  return call.state.callingState === CallingState.LEFT;
-}
-
-async function ensureJoined(call: Call, isVideoCall: boolean): Promise<void> {
-  if (call.state.callingState === CallingState.JOINING) {
-    await waitUntilJoined(call);
-    return;
-  }
-
-  if (call.state.callingState !== CallingState.JOINED) {
-    await call.join({ video: isVideoCall });
-    await waitUntilJoined(call);
-  }
-}
-
-async function publishTracks(call: Call, isVideoCall: boolean): Promise<void> {
-  if (isCallLeft(call)) return;
-
-  await waitForLocalParticipant(call);
-
-  if (!isVideoCall) {
-    await call.camera.disable();
-    if (call.microphone.state.status !== "enabled") {
-      await call.microphone.enable();
-    }
-    callManager.start({
-      audioRole: "communicator",
-      deviceEndpointType: "earpiece",
-    });
-    return;
-  }
-
-  // Publish video + audio together so remote video appears sooner.
-  await Promise.all([
-    call.camera.state.status !== "enabled"
-      ? call.camera.enable()
-      : Promise.resolve(),
-    call.microphone.state.status !== "enabled"
-      ? call.microphone.enable()
-      : Promise.resolve(),
-  ]);
-
-  callManager.start({
-    audioRole: "communicator",
-    deviceEndpointType: "speaker",
-  });
+  /* Agora: no prewarm needed */
 }
 
 export async function joinCallWithMedia(
-  call: Call,
+  call: RtcCall,
   isVideoCall: boolean,
 ): Promise<void> {
-  if (isCallLeft(call)) {
-    return;
-  }
+  if (call.state.callingState === RtcConnectionState.LEFT) return;
 
-  if (mediaLock && mediaLockCallId === call.id) {
-    await mediaLock.catch(() => {});
-    return;
-  }
+  await withCallJoinLock(call.id, async () => {
+    if (call.state.callingState === RtcConnectionState.LEFT) return;
 
-  const task = (async () => {
-    try {
-      await ensureJoined(call, isVideoCall);
-    } catch (err) {
-      if (isCallLeft(call)) {
-        return;
-      }
-      throw err;
+    await ensureCallPermissions(isVideoCall);
+
+    if (call.state.callingState !== RtcConnectionState.JOINED) {
+      await call.join({ video: isVideoCall, create: false });
     }
 
-    try {
-      await publishTracks(call, isVideoCall);
-    } catch (firstErr) {
-      console.warn("[Call] Publish failed, retrying…", firstErr);
-      await sleep(250);
-      await publishTracks(call, isVideoCall);
+    if (!isVideoCall) {
+      await call.camera.disable();
+      await call.microphone.enable();
+      rtcDeviceManager.start({ audioRole: "communicator", deviceEndpointType: "earpiece" });
+    } else {
+      await call.microphone.enable();
+      await call.camera.enable();
+      rtcDeviceManager.start({ audioRole: "communicator", deviceEndpointType: "speaker" });
     }
-  })();
 
-  mediaLock = task;
-  mediaLockCallId = call.id;
-
-  try {
-    await task;
-  } finally {
-    if (mediaLock === task) {
-      mediaLock = null;
-      mediaLockCallId = null;
-    }
-  }
+    setActiveRtcCall(call);
+    await acceptCall(call.id, call.currentUserId).catch(() => {});
+  });
 }
 
-export async function syncCallMedia(
-  call: Call,
-  isVideoCall: boolean,
-): Promise<void> {
-  if (call.state.callingState !== CallingState.JOINED) return;
-  await joinCallWithMedia(call, isVideoCall);
+export async function syncCallMedia(call: RtcCall, isVideoCall: boolean): Promise<void> {
+  if (call.state.callingState !== RtcConnectionState.JOINED) return;
+  if (isVideoCall) await call.camera.enable();
+  else await call.camera.disable();
 }
 
 export function isCallJoinInProgress(callId: string): boolean {
-  const normalized = callId.includes(":")
-    ? callId.split(":").pop()!
-    : callId;
-  return mediaLockCallId === normalized && mediaLock !== null;
+  return isCallJoinInProgressForId(normalizeCallLockId(callId));
 }
 
-/** Stop in-call audio routing (safe during screen unmount). */
 export function stopCallMedia(): void {
-  try {
-    callManager.stop();
-  } catch {
-    /* ignore — native module may already be torn down */
-  }
+  rtcDeviceManager.stop();
+  setActiveRtcCall(null);
 }
 
-/** Host livestream — same media path as 1:1 video calls, then go live. */
-export async function joinLivestreamAsHost(call: Call): Promise<void> {
-  if (isCallLeft(call)) return;
+export async function joinLivestreamAsHost(
+  call: RtcCall,
+  options?: { rejoin?: boolean },
+): Promise<void> {
+  if (call.state.callingState === RtcConnectionState.LEFT) return;
 
-  await call.join({ create: true, video: true });
-  await joinCallWithMedia(call, true);
-  await call.goLive();
-  // goLive can reset tracks; re-sync like the call screen does after join.
-  await syncCallMedia(call, true);
+  await withCallJoinLock(call.id, async () => {
+    if (call.state.callingState === RtcConnectionState.LEFT) return;
+
+    if (call.state.callingState !== RtcConnectionState.JOINED) {
+      await call.join({
+        video: true,
+        create: !options?.rejoin,
+        role: "host",
+      });
+    }
+
+    await call.microphone.enable();
+    await call.camera.enable();
+    rtcDeviceManager.start({ deviceEndpointType: "speaker" });
+
+    const onAir = call.state.backstage === false;
+    if (!onAir) await call.goLive();
+    setActiveRtcCall(call);
+  });
 }
+
+export function configureLivestreamViewerMedia(_call: RtcCall): void {
+  /* ultra-low latency configured in joinChannel */
+}
+
+export async function leaveCallWithReason(
+  call: RtcCall,
+  userId: string,
+  reason: "decline" | "cancel" | "busy" = "decline",
+) {
+  await declineCall(call.id, userId, reason).catch(() => {});
+  await call.leave({ reject: true, reason });
+  setActiveRtcCall(null);
+}
+
+export { isUserBusyInRtcCall };

@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
-import { useCall } from "@stream-io/video-react-native-sdk";
+import { useCall } from "@/rtc";
 import { Ionicons } from "@expo/vector-icons";
 import { toggleCallScreenShare } from "@/utils/screenShareHelper";
 

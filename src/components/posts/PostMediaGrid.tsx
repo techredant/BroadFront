@@ -12,10 +12,6 @@ import Video from "react-native-video";
 import { LightMediaTile } from "@/components/posts/LightMediaTile";
 import { useTheme } from "@/context/ThemeContext";
 import {
-<<<<<<< HEAD
-=======
-  buildCloudinaryUrl,
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   isVideoMedia,
   resolveMediaUrls,
 } from "@/utils/mediaUtils";
@@ -83,17 +79,7 @@ export function PostMediaGrid({
         const left = isLastRowSingle ? 0 : col * (cellW + MEDIA_GAP);
         const top = row * (cellH + MEDIA_GAP);
         const tilePixelWidth = Math.round(w * PixelRatio.get());
-<<<<<<< HEAD
         const inlineVideoUri = useInlineVideo && video ? uri : uri;
-=======
-        const inlineVideoUri =
-          useInlineVideo && video
-            ? buildCloudinaryUrl(uri, {
-                width: tilePixelWidth,
-                kind: "video",
-              }) ?? uri
-            : uri;
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 
         return (
           <Pressable

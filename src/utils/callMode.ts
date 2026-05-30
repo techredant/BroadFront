@@ -1,25 +1,20 @@
-import type { Call } from "@stream-io/video-react-native-sdk";
-import { CallingState, StreamVideoClient } from "@stream-io/video-react-native-sdk";
+import type { RtcCall } from "@/rtc/RtcCall";
+import type { AgoraRtcClient } from "@/rtc/RtcCall";
+import { RtcConnectionState } from "@/rtc/types";
+import { endCall } from "@/rtc/agoraApi";
 
 export type CallMode = "video" | "audio";
 
 type ResolveOptions = {
-  /** Mode from route params (set by call.ring handler). */
   urlMode: CallMode;
   isCaller: boolean;
 };
 
-/**
- * Resolve video vs voice for UI + publishing.
- * Incoming calls trust the ring route param (from event.video + settings).
- */
 export function resolveCallModeFromCall(
-  call: Call | null | undefined,
+  call: RtcCall | null | undefined,
   { urlMode, isCaller }: ResolveOptions,
 ): CallMode {
-  if (isCaller) {
-    return urlMode;
-  }
+  if (isCaller) return urlMode;
 
   const custom = call?.state?.custom as { callMode?: string } | undefined;
   if (custom?.callMode === "audio") return "audio";
@@ -32,25 +27,14 @@ export function resolveCallModeFromCall(
   return urlMode;
 }
 
-/** Map Stream call.ring event to our call mode. */
 export function callModeFromRingEvent(event: {
+  callMode?: string;
   video?: boolean;
-  call?: {
-    custom?: Record<string, unknown>;
-    settings?: { video?: { enabled?: boolean } };
-  };
 }): CallMode {
-  if (event.video === true) return "video";
+  if (event.callMode === "audio") return "audio";
+  if (event.callMode === "video") return "video";
   if (event.video === false) return "audio";
-
-  const videoEnabled = event.call?.settings?.video?.enabled;
-  if (videoEnabled === true) return "video";
-  if (videoEnabled === false) return "audio";
-
-  const custom = event.call?.custom as { callMode?: string } | undefined;
-  if (custom?.callMode === "video") return "video";
-  if (custom?.callMode === "audio") return "audio";
-
+  if (event.video === true) return "video";
   return "video";
 }
 
@@ -73,16 +57,21 @@ export function buildOutgoingCallRequest(
 }
 
 export async function endStaleCallBeforeOutgoing(
-  videoClient: StreamVideoClient,
+  videoClient: AgoraRtcClient,
   callId: string,
+  userId?: string,
 ): Promise<void> {
-  const cid = `default:${callId}`;
-  const probe = videoClient.state.calls.find((c) => c.cid === cid);
+  if (userId) {
+    await endCall(callId, userId, "cancel").catch(() => {});
+  }
+
+  const probe = videoClient.state.calls.find((c) => c.id === callId);
   if (!probe) return;
 
-  if (probe.state.callingState === CallingState.LEFT) return;
+  if (probe.state.callingState === RtcConnectionState.LEFT) return;
 
   try {
+    await endCall(callId, probe.currentUserId || userId, "cancel").catch(() => {});
     if (probe.isCreatedByMe) {
       await probe.endCall();
     } else {

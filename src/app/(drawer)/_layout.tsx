@@ -46,9 +46,9 @@ import {
 
 import { useTheme } from "@/context/ThemeContext";
 
-import { GlobalStreamVideoProvider } from "@/components/call/GlobalStreamVideoProvider";
-
 const DRAWER_WIDTH = Dimensions.get("window").width * 0.8;
+
+const hiddenDrawerItem = { drawerItemStyle: { display: "none" as const } };
 
 
 
@@ -870,15 +870,10 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
 
 
 
-const hiddenDrawerItem = { drawerItemStyle: { display: "none" as const } };
-
-
-
 export default function DrawerLayout() {
   const { theme } = useTheme();
 
   return (
-    <GlobalStreamVideoProvider>
       <Drawer
 
         drawerContent={(props) => <CustomDrawerContent {...props} />}
@@ -948,7 +943,6 @@ export default function DrawerLayout() {
         <Drawer.Screen name="advertiser" options={hiddenDrawerItem} />
 
       </Drawer>
-    </GlobalStreamVideoProvider>
   );
 
 }

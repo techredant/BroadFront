@@ -26,11 +26,7 @@ import {
   trackAdImpression,
 } from "@/services/adsApi";
 import { useLevel } from "@/context/LevelContext";
-<<<<<<< HEAD
 import { resolveMediaUrl } from "@/utils/mediaUtils";
-=======
-import { buildCloudinaryUrl, resolveMediaUrl } from "@/utils/mediaUtils";
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 import { LikeBubbles } from "@/components/posts/LikeBubbles";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -138,25 +134,11 @@ export function SponsoredAdCard({ ad, isVisible, onHidden }: Props) {
   const mainMediaUri = useMemo(() => {
     const resolved = resolveMediaUrl(rawMainMedia) ?? rawMainMedia ?? null;
     if (!resolved) return resolved;
-<<<<<<< HEAD
     return resolved;
   }, [rawMainMedia]);
   const optimizedLogoUri = useMemo(() => {
     if (!ad.businessLogo) return null;
     return resolveMediaUrl(ad.businessLogo) ?? ad.businessLogo;
-=======
-    return (
-      buildCloudinaryUrl(resolved, { width: AD_MEDIA_PIXEL_WIDTH }) ??
-      resolved
-    );
-  }, [rawMainMedia]);
-  const optimizedLogoUri = useMemo(() => {
-    if (!ad.businessLogo) return null;
-    return (
-      buildCloudinaryUrl(ad.businessLogo, { width: AD_LOGO_PIXEL_WIDTH }) ??
-      ad.businessLogo
-    );
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   }, [ad.businessLogo]);
 
   return (

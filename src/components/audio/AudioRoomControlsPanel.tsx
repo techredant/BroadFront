@@ -7,11 +7,7 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  useCall,
-  useCallStateHooks,
-  OwnCapability,
-} from "@stream-io/video-react-native-sdk";
+import { useCall, useCallStateHooks, OwnCapability } from "@/rtc";
 import { ToggleLiveButton } from "./ToggleLiveButton";
 import { ToggleMicButton } from "./ToggleMicButton";
 import { toggleCallScreenShare } from "@/utils/screenShareHelper";

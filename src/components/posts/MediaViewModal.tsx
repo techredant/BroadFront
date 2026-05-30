@@ -13,7 +13,9 @@ import {
   Text,
   View,
   useWindowDimensions,
+  Platform,
 } from "react-native";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import {
   AntDesign,
   Entypo,
@@ -40,6 +42,7 @@ import { isVideoMedia, resolveMediaUrls } from "@/utils/mediaUtils";
 import { formatNickHandle } from "@/utils/nickName";
 import { useActivePostTracking } from "@/hooks/useActivePostTracking";
 import { formatConstituency } from "@/constants/politicalTheme";
+import { useTheme } from "@/context/ThemeContext";
 
 const LIKE_COLOR = "#E0245E";
 const ACTIVE_ACCENT = "#8AB4F8";
@@ -148,6 +151,7 @@ export function MediaViewerModal({
   mediaIndexByPostIdRef,
 }: Props) {
   const { width, height } = useWindowDimensions();
+  const { isDark } = useTheme();
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [isZooming, setIsZooming] = useState(false);
   const [videoBuffering, setVideoBuffering] = useState(false);
@@ -317,6 +321,24 @@ export function MediaViewerModal({
     setModalVisible(false);
   }, [setModalVisible]);
 
+  useEffect(() => {
+    if (!modalVisible) return;
+
+    StatusBar.setBarStyle("light-content", true);
+    if (Platform.OS === "android") {
+      StatusBar.setBackgroundColor("#000000");
+      StatusBar.setTranslucent(false);
+    }
+
+    return () => {
+      StatusBar.setBarStyle(isDark ? "light-content" : "dark-content", true);
+      if (Platform.OS === "android") {
+        StatusBar.setBackgroundColor("transparent");
+        StatusBar.setTranslucent(true);
+      }
+    };
+  }, [modalVisible, isDark]);
+
   const runAction = (fn?: () => void) => {
     if (!fn) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -349,10 +371,11 @@ export function MediaViewerModal({
       visible={modalVisible}
       animationType="fade"
       transparent={false}
-      statusBarTranslucent
+      statusBarTranslucent={false}
       onRequestClose={close}
     >
-      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      <ExpoStatusBar style="light" backgroundColor="#000000" />
+      <StatusBar barStyle="light-content" backgroundColor="#000000" />
       <View style={styles.root}>
         <MediaPostPager
           posts={viewerPosts}

@@ -1048,7 +1048,7 @@ export function PostCard({
         <View
           style={[
             styles.actionBar,
-            { backgroundColor: civic.actionBar, borderColor: civic.cardBorder },
+            {  borderColor: civic.cardBorder },
           ]}
         >
           <Pressable
@@ -1570,7 +1570,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingVertical: 8,
     paddingHorizontal: 4,
-    borderRadius: 12,
+    borderRadius: 50,
     borderWidth: StyleSheet.hairlineWidth,
   },
   actionItem: {

@@ -7,11 +7,8 @@ import {
   ActivityIndicator,
   Pressable,
 } from "react-native";
-import {
-  Call,
-  StreamCall,
-  useStreamVideoClient,
-} from "@stream-io/video-react-native-sdk";
+import { RtcSessionProvider, useStreamVideoClient } from "@/rtc";
+import type { RtcCall } from "@/rtc/RtcCall";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,7 +22,7 @@ const CallScreen = () => {
   const isHost =
     (Array.isArray(params.isHost) ? params.isHost[0] : params.isHost) === "true";
 
-  const [call, setCall] = useState<Call | null>(null);
+  const [call, setCall] = useState<RtcCall | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const client = useStreamVideoClient();
@@ -53,9 +50,9 @@ const CallScreen = () => {
 
         if (isHost) {
           await streamCall.getOrCreate();
-          await streamCall.join({ create: true });
+          await streamCall.join({ create: true, video: false });
         } else {
-          await streamCall.join({ create: false });
+          await streamCall.join({ create: false, video: false, role: "audience" });
         }
 
         if (!active || joinGenRef.current !== gen) {
@@ -143,11 +140,11 @@ const CallScreen = () => {
   }
 
   return (
-    <StreamCall call={call}>
+    <RtcSessionProvider call={call}>
       <View style={styles.container}>
         <AudioRoomUI goToHomeScreen={goBack} isHost={isHost} />
       </View>
-    </StreamCall>
+    </RtcSessionProvider>
   );
 };
 
@@ -159,11 +156,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    gap: 10,
   },
-  loadingText: {
-    marginTop: 12,
-    color: "rgba(255,255,255,0.72)",
-    fontSize: 14,
-    fontWeight: "600",
-  },
+  loadingText: { color: "#fff", fontSize: 13, fontWeight: "600" },
 });

@@ -15,14 +15,16 @@ import {
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
-import { Call, StreamVideoClient } from "@stream-io/video-react-native-sdk";
+import type { AgoraRtcClient } from "@/rtc/RtcCall";
+import type { LiveSessionRecord } from "@/rtc/types";
+import { fetchActiveLives } from "@/rtc/agoraApi";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
 import { MediaColors, MediaGradients } from "@/constants/mediaTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { isStreamCallLive } from "@/utils/isStreamCallLive";
+import { isStreamCallOnAir } from "@/utils/isStreamCallLive";
 import {
   isMarketLiveCall,
   isCommunityLiveCall,
@@ -36,23 +38,15 @@ const { width } = Dimensions.get("window");
 const MIN_QUERY_INTERVAL_MS = 45_000;
 const FOCUS_POLL_MS = 60_000;
 
-function getRetryAfterMs(error: unknown): number {
-  const err = error as { status?: number; response?: { headers?: Record<string, string> } };
-  if (err?.status !== 429) return 30_000;
-  const raw = err.response?.headers?.["retry-after"];
-  const sec = raw ? parseInt(String(raw), 10) : NaN;
-  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 30_000;
-}
-
 /** Survives HomeScreen unmount when user enters a live session */
 const liveCallsCache = {
   clientId: "",
-  calls: [] as Call[],
+  calls: [] as LiveSessionRecord[],
   fetchedAt: 0,
 };
 
 type Props = {
-  client: StreamVideoClient;
+  client: AgoraRtcClient;
   joinCall: (
     callId: string,
     meta?: { playlist?: string[]; initialIndex?: number },
@@ -72,6 +66,7 @@ type Props = {
   pendingMarketLive?: MarketLiveProduct | null;
   openGoLiveOnMount?: boolean;
   onGoLiveModalOpened?: () => void;
+  onMarketLivePromptConsumed?: () => void;
 };
 
 export const HomeScreen = ({
@@ -88,11 +83,11 @@ export const HomeScreen = ({
   const { currentLevel, userDetails } = useLevel();
   const insets = useSafeAreaInsets();
 
-  const clientId = (client as { user?: { id?: string } })?.user?.id ?? "";
+  const clientId = client?.userId ?? "";
   const cacheValid =
     liveCallsCache.clientId === clientId && liveCallsCache.calls.length > 0;
 
-  const [calls, setCalls] = useState<Call[]>(() =>
+  const [calls, setCalls] = useState<LiveSessionRecord[]>(() =>
     cacheValid ? liveCallsCache.calls : [],
   );
   const [loading, setLoading] = useState(!cacheValid);
@@ -110,7 +105,18 @@ export const HomeScreen = ({
   const textMain = isDark ? MediaColors.textPrimary : theme.text;
   const textSub = isDark ? MediaColors.textSecondary : theme.subtext;
 
-  const isCallLive = (call: Call) => isStreamCallLive(call);
+  const sessionAsCallLike = (session: LiveSessionRecord) => ({
+    id: session.callId,
+    state: {
+      custom: session.custom ?? {},
+      createdBy: { id: session.hostClerkId },
+      backstage: false,
+      endedAt: null,
+    },
+  });
+
+  const isCallLive = (session: LiveSessionRecord) =>
+    isStreamCallOnAir(sessionAsCallLike(session));
 
   const fetchCalls = useCallback(
     async (options?: { force?: boolean; silent?: boolean }) => {
@@ -134,11 +140,9 @@ export const HomeScreen = ({
       }
 
       try {
-        const res = await client.queryCalls({
-          filter_conditions: { type: "livestream" },
-          sort: [{ field: "created_at", direction: -1 }],
-        });
-        const visible = (res.calls ?? []).filter(isCallLive);
+        const variant = mode === "market" ? "market" : "community";
+        const sessions = (await fetchActiveLives(variant)) as LiveSessionRecord[];
+        const visible = sessions.filter(isCallLive);
         setCalls(visible);
         hasLoadedRef.current = true;
         lastFetchAtRef.current = Date.now();
@@ -146,16 +150,7 @@ export const HomeScreen = ({
         liveCallsCache.calls = visible;
         liveCallsCache.fetchedAt = lastFetchAtRef.current;
       } catch (e) {
-        const status = (e as { status?: number })?.status;
-        if (status === 429) {
-          const waitMs = getRetryAfterMs(e);
-          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-          retryTimerRef.current = setTimeout(() => {
-            void fetchCalls({ silent: true });
-          }, waitMs);
-        } else {
-          console.log("queryCalls error:", e);
-        }
+        console.log("fetchActiveLives error:", e);
       } finally {
         fetchInFlightRef.current = false;
         if (!silent) {
@@ -225,33 +220,39 @@ export const HomeScreen = ({
 
   const liveCalls = useMemo(
     () =>
-      calls.filter(
-        (call) =>
-          isCallLive(call) &&
-          (mode === "market" ? isMarketLiveCall(call) : isCommunityLiveCall(call)),
-      ),
+      calls.filter((session) => {
+        const callLike = sessionAsCallLike(session);
+        return (
+          isCallLive(session) &&
+          (mode === "market"
+            ? isMarketLiveCall(callLike)
+            : isCommunityLiveCall(callLike))
+        );
+      }),
     [calls, mode],
   );
 
   const listData = liveCalls;
 
-  const openLive = (item: Call) => {
-    const createdById = item.state?.createdBy?.id;
+  const openLive = (item: LiveSessionRecord) => {
+    const createdById = item.hostClerkId;
     const me = userDetails?.clerkId;
-    const playlist = liveCalls.map((call) => call.id);
-    const initialIndex = Math.max(0, playlist.indexOf(item.id));
+    const playlist = liveCalls.map((call) => call.callId);
+    const initialIndex = Math.max(0, playlist.indexOf(item.callId));
+    const roomTitle = item.roomTitle;
+    const level = item.level;
+
     if (createdById && me && createdById === me) {
-      liveScreen(item.id);
+      liveScreen(item.callId, { roomTitle, level });
     } else {
-      joinCall(item.id, { playlist, initialIndex });
+      joinCall(item.callId, { playlist, initialIndex });
     }
   };
 
-  const renderLiveRow = ({ item }: { item: Call }) => {
-    const displayTitle =
-      item.state?.custom?.title || (item.state as { title?: string })?.title || "Live now";
-    const host = item.state?.createdBy?.name || "Broadcaster";
-    const viewers = item.state?.participants?.length || 0;
+  const renderLiveRow = ({ item }: { item: LiveSessionRecord }) => {
+    const displayTitle = item.roomTitle || "Live now";
+    const host = "Broadcaster";
+    const viewers = item.viewerCount || 0;
 
     return (
       <Pressable
@@ -349,7 +350,7 @@ export const HomeScreen = ({
 
       <FlashList
         data={listData}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.callId}
         renderItem={renderLiveRow}
         estimatedItemSize={112}
         drawDistance={360}

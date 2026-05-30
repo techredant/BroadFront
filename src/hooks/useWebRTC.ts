@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Call } from "@stream-io/video-react-native-sdk";
-import { CallingState, callManager } from "@stream-io/video-react-native-sdk";
-import { syncCallMedia } from "@/utils/callMedia";
+import type { RtcCall } from "@/rtc/RtcCall";
+import { callManager } from "@/rtc";
 import { callDebug } from "@/utils/callDebug";
 
 export type AudioRoute = "speaker" | "earpiece";
 
+/** Audio route + camera flip only — media publish lives in joinCallWithMedia. */
 export function useWebRTC(
-  call: Call | null | undefined,
+  call: RtcCall | null | undefined,
   isVideoCall: boolean,
   isActive: boolean,
 ) {
   const [audioRoute, setAudioRoute] = useState<AudioRoute>(
     isVideoCall ? "speaker" : "earpiece",
   );
-  const [permissionError, setPermissionError] = useState<string | null>(null);
-  const mediaReadyRef = useRef(false);
+  const audioRouteRef = useRef(audioRoute);
+  audioRouteRef.current = audioRoute;
 
   const applyAudioRoute = useCallback(
     (route: AudioRoute) => {
@@ -35,13 +35,15 @@ export function useWebRTC(
   );
 
   const toggleSpeaker = useCallback(() => {
-    applyAudioRoute(audioRoute === "speaker" ? "earpiece" : "speaker");
-  }, [applyAudioRoute, audioRoute]);
+    applyAudioRoute(
+      audioRouteRef.current === "speaker" ? "earpiece" : "speaker",
+    );
+  }, [applyAudioRoute]);
 
   const flipCamera = useCallback(async () => {
     if (!call || !isVideoCall) return;
     try {
-      await call.camera.flip();
+      call.switchCamera();
       callDebug.log("camera-flip");
     } catch (err) {
       callDebug.warn("camera-flip-failed", err);
@@ -49,56 +51,14 @@ export function useWebRTC(
   }, [call, isVideoCall]);
 
   useEffect(() => {
-    if (!call || !isActive) {
-      mediaReadyRef.current = false;
-      return;
-    }
-
-    const unsubSession = call.on("call.session_participant_joined", (e) => {
-      callDebug.log("participant-joined", e.participant?.user?.id);
-    });
-
-    callDebug.log("connection-change", call.state.callingState);
-
-    return () => {
-      unsubSession();
-      mediaReadyRef.current = false;
-    };
-  }, [call, isActive]);
-
-  useEffect(() => {
-    if (
-      !call ||
-      !isActive ||
-      call.state.callingState !== CallingState.JOINED ||
-      mediaReadyRef.current
-    ) {
-      return;
-    }
-
-    mediaReadyRef.current = true;
-
-    void syncCallMedia(call, isVideoCall)
-      .then(() => {
-        applyAudioRoute(isVideoCall ? "speaker" : "earpiece");
-        setPermissionError(null);
-      })
-      .catch((err) => {
-        mediaReadyRef.current = false;
-        const message =
-          err instanceof Error
-            ? err.message
-            : "Camera or microphone permission denied";
-        setPermissionError(message);
-        callDebug.warn("media-enable-failed", err);
-      });
+    if (!call || !isActive) return;
+    applyAudioRoute(isVideoCall ? "speaker" : "earpiece");
   }, [applyAudioRoute, call, isActive, isVideoCall]);
 
   return {
     audioRoute,
-    permissionError,
+    permissionError: null,
     toggleSpeaker,
     flipCamera,
-    applyAudioRoute,
   };
 }

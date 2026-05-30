@@ -1,17 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
-import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { useTheme } from "@/context/ThemeContext";
 import { useCallRingtone } from "@/hooks/useCallRingtone";
 import { getCallVideoClient } from "@/utils/callSessionRegistry";
 import { rejectRingingCall } from "@/utils/callBusy";
 import { cancelIncomingCallNotification } from "@/utils/notifeeNotifications";
 import { callDebug } from "@/utils/callDebug";
-import { joinCallWithMedia, prewarmIncomingCall } from "@/utils/callMedia";
+import { prewarmIncomingCall } from "@/utils/callMedia";
 import { setIncomingCallDispatcher } from "@/utils/incomingCallDispatch";
 
 export type IncomingCallPayload = {
@@ -40,20 +38,21 @@ function IncomingCallModal({
   onAccept: () => void;
   onDecline: () => void;
 }) {
-  const { isDark } = useTheme();
+  const isVideo = incomingCall.callMode !== "audio";
 
   useCallRingtone(true, true);
 
   return (
     <Modal
       visible
-      animationType="fade"
-      transparent
+      animationType="slide"
+      presentationStyle="fullScreen"
       statusBarTranslucent
+      hardwareAccelerated
       onRequestClose={onDecline}
     >
-      <BlurView intensity={80} tint={isDark ? "dark" : "light"} style={styles.backdrop}>
-        <View style={styles.sheet}>
+      <View style={styles.fullscreen}>
+        <View style={styles.top}>
           {incomingCall.callerImage ? (
             <Image
               source={{ uri: incomingCall.callerImage }}
@@ -62,27 +61,35 @@ function IncomingCallModal({
             />
           ) : (
             <View style={styles.avatarFallback}>
-              <Ionicons name="person" size={44} color="#fff" />
+              <Ionicons name="person" size={56} color="#fff" />
             </View>
           )}
 
           <Text style={styles.name}>{incomingCall.callerName || "Incoming call"}</Text>
           <Text style={styles.subtitle}>
-            {incomingCall.callMode === "audio"
-              ? "Incoming voice call"
-              : "Incoming video call"}
+            {isVideo ? "Incoming video call" : "Incoming voice call"}
           </Text>
-
-          <View style={styles.actions}>
-            <Pressable style={[styles.btn, styles.decline]} onPress={onDecline}>
-              <Ionicons name="close" size={28} color="#fff" />
-            </Pressable>
-            <Pressable style={[styles.btn, styles.accept]} onPress={onAccept}>
-              <Ionicons name="call" size={26} color="#fff" />
-            </Pressable>
-          </View>
         </View>
-      </BlurView>
+
+        <View style={styles.actions}>
+          <Pressable style={styles.actionWrap} onPress={onDecline}>
+            <View style={[styles.circleBtn, styles.decline]}>
+              <Ionicons name="close" size={32} color="#fff" />
+            </View>
+            <Text style={styles.btnLabel}>Decline</Text>
+          </Pressable>
+          <Pressable style={styles.actionWrap} onPress={onAccept}>
+            <View style={[styles.circleBtn, styles.accept]}>
+              <Ionicons
+                name={isVideo ? "videocam" : "call"}
+                size={28}
+                color="#fff"
+              />
+            </View>
+            <Text style={styles.btnLabel}>Accept</Text>
+          </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -99,7 +106,7 @@ export function IncomingCallProvider({ children }: { children: React.ReactNode }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     const client = getCallVideoClient();
     if (client) {
-      prewarmIncomingCall(client, payload.callId, payload.callMode !== "audio");
+      prewarmIncomingCall(client, payload.callId);
     }
     setIncomingCall((current) => current ?? payload);
   }, []);
@@ -114,28 +121,10 @@ export function IncomingCallProvider({ children }: { children: React.ReactNode }
       const call = payload ?? incomingCall;
       if (!call) return;
 
-      const isVideo = call.callMode !== "audio";
-
       dismissIncomingCall();
       void cancelIncomingCallNotification(call.callId).catch(() => {});
 
-      const client = getCallVideoClient();
-      if (client) {
-        const streamCall = client.call("default", call.callId, {
-          reuseInstance: true,
-        });
-        void (async () => {
-          try {
-            if (!streamCall.ringing) {
-              await streamCall.get({ ring: true, video: isVideo }).catch(() => {});
-            }
-            await joinCallWithMedia(streamCall, isVideo);
-          } catch (err) {
-            callDebug.warn("accept-incoming-join-failed", err);
-          }
-        })();
-      }
-
+      // useCallManager is the sole join authority when accepted=true on the call screen.
       router.push({
         pathname: "/(drawer)/(stream)/call/[callId]",
         params: {
@@ -143,6 +132,8 @@ export function IncomingCallProvider({ children }: { children: React.ReactNode }
           isCaller: "false",
           callMode: call.callMode ?? "video",
           accepted: "true",
+          peerName: call.callerName,
+          ...(call.callerImage ? { peerImage: call.callerImage } : {}),
         },
       } as never);
     },
@@ -210,55 +201,65 @@ export function useIncomingCallOverlay() {
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  fullscreen: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-    backgroundColor: "rgba(0,0,0,0.55)",
-  },
-  sheet: {
-    width: "100%",
-    maxWidth: 360,
-    alignItems: "center",
-    paddingVertical: 32,
+    backgroundColor: "#0b0b0f",
+    justifyContent: "space-between",
+    paddingTop: 72,
+    paddingBottom: 48,
     paddingHorizontal: 24,
   },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    marginBottom: 20,
-  },
-  avatarFallback: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(255,255,255,0.15)",
+  top: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 20,
+  },
+  avatar: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    marginBottom: 24,
+  },
+  avatarFallback: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
   },
   name: {
     color: "#fff",
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "800",
     textAlign: "center",
   },
   subtitle: {
-    color: "rgba(255,255,255,0.75)",
-    fontSize: 15,
-    marginTop: 6,
-    marginBottom: 36,
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 16,
+    marginTop: 8,
+    textAlign: "center",
   },
   actions: {
     flexDirection: "row",
-    gap: 48,
+    justifyContent: "center",
+    alignItems: "flex-end",
+    gap: 56,
   },
-  btn: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+  actionWrap: {
+    alignItems: "center",
+    gap: 10,
+  },
+  btnLabel: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  circleBtn: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: "center",
     justifyContent: "center",
   },

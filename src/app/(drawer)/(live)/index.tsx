@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import {
-  StreamVideo,
-  StreamVideoClient,
-} from "@stream-io/video-react-native-sdk";
+import { useStreamVideoClient } from "@/rtc";
+import { fetchActiveLives } from "@/rtc/agoraApi";
 import { HomeScreen } from "@/components/live/HomeLivescreen";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchStreamToken } from "@/utils/streamToken";
 import LiveScreen from "@/components/live/LiveScreen";
-
-const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
+import {
+  clearActiveCommunityLiveSession,
+  getActiveCommunityLiveSession,
+  setActiveCommunityLiveSession,
+} from "@/utils/communityLiveSession";
 
 type Session = {
   callId: string;
@@ -26,18 +26,20 @@ export default function App() {
   const { userDetails } = useLevel();
   const { theme } = useTheme();
   const { callId: deepCallId } = useLocalSearchParams<{ callId?: string }>();
+  const client = useStreamVideoClient();
 
-  const [client, setClient] = useState<StreamVideoClient | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [booting, setBooting] = useState(true);
-  const clientRef = useRef<StreamVideoClient | null>(null);
+  const [session, setSession] = useState<Session | null>(
+    () => getActiveCommunityLiveSession(),
+  );
   const deepLinkHandledRef = useRef<string | null>(null);
 
   const goToHomeScreen = useCallback(() => setSession(null), []);
 
   const startAsHost = useCallback(
     (id: string, meta?: { roomTitle?: string; level?: string }) => {
-      setSession({ callId: id, isHost: true, ...meta });
+      const next = { callId: id, isHost: true, ...meta };
+      setActiveCommunityLiveSession(next);
+      setSession(next);
     },
     [],
   );
@@ -56,6 +58,7 @@ export default function App() {
             ...prev,
             callId: id,
             initialIndex: index,
+            isHost: false,
           }
         : { callId: id, isHost: false, initialIndex: index },
     );
@@ -71,93 +74,60 @@ export default function App() {
     if (!id || !client || session) return;
     if (deepLinkHandledRef.current === id) return;
     deepLinkHandledRef.current = id;
-    joinAsViewer(id);
-  }, [deepCallId, client, session, joinAsViewer]);
 
-  useEffect(() => {
-    const clerkId = userDetails?.clerkId;
-    if (!clerkId) {
-      setBooting(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    const initClient = async () => {
+    const resolveDeepLink = async () => {
+      const me = userDetails?.clerkId;
       try {
-        const displayName =
-          `${userDetails.firstName ?? ""} ${userDetails.lastName ?? ""} ${userDetails.nickName ?? ""}`.trim() ||
-          clerkId;
+        const sessions = await fetchActiveLives("community");
+        const match = sessions.find(
+          (s: { callId?: string }) => s.callId === id,
+        );
+        const roomTitle =
+          typeof match?.roomTitle === "string" ? match.roomTitle : undefined;
+        const level =
+          typeof match?.level === "string" ? match.level : undefined;
 
-        const videoClient = StreamVideoClient.getOrCreateInstance({
-          apiKey,
-          user: {
-            id: clerkId,
-            name: displayName,
-            image: userDetails.image,
-          },
-          tokenProvider: () =>
-            fetchStreamToken({
-              userId: clerkId,
-              name: displayName,
-              image: userDetails.image,
-            }),
-        });
-
-        if (!cancelled) {
-          clientRef.current = videoClient;
-          setClient(videoClient);
+        if (me && match?.hostClerkId === me) {
+          startAsHost(id, { roomTitle, level });
+        } else {
+          joinAsViewer(id);
         }
-      } catch (err) {
-        console.error("Failed to initialize StreamVideoClient", err);
-      } finally {
-        if (!cancelled) setBooting(false);
+      } catch {
+        joinAsViewer(id);
       }
     };
 
-    initClient();
+    void resolveDeepLink();
+  }, [deepCallId, client, session, joinAsViewer, startAsHost, userDetails?.clerkId]);
 
-    return () => {
-      cancelled = true;
-      clientRef.current = null;
-      setClient(null);
-    };
-  }, [
-    userDetails?.clerkId,
-    userDetails?.firstName,
-    userDetails?.lastName,
-    userDetails?.nickName,
-    userDetails?.image,
-  ]);
+  if (!userDetails?.clerkId || !client) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="small" color={theme.text} />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: "#000" }}>
-
-      {booting || !client ? (
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator size="small" color={theme.text} />
-        </View>
+      {session ? (
+        <LiveScreen
+          goToHomeScreen={goToHomeScreen}
+          onSwitchLive={switchViewerLive}
+          callId={session.callId}
+          isHost={session.isHost}
+          roomTitle={session.roomTitle}
+          level={session.level}
+          playlist={session.playlist}
+          initialIndex={session.initialIndex}
+          onHostEnded={() => clearActiveCommunityLiveSession()}
+        />
       ) : (
-        <StreamVideo client={client}>
-          {session ? (
-            <LiveScreen
-              goToHomeScreen={goToHomeScreen}
-              onSwitchLive={switchViewerLive}
-              callId={session.callId}
-              isHost={session.isHost}
-              roomTitle={session.roomTitle}
-              level={session.level}
-              playlist={session.playlist}
-              initialIndex={session.initialIndex}
-            />
-          ) : (
-            <HomeScreen
-              client={client}
-              joinCall={joinAsViewer}
-              liveScreen={startAsHost}
-            />
-          )}
-        </StreamVideo>
+        <HomeScreen
+          client={client}
+          joinCall={joinAsViewer}
+          liveScreen={startAsHost}
+        />
       )}
     </View>
   );

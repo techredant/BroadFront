@@ -1,59 +1,68 @@
 import React, { useEffect, useState, useRef } from "react";
 import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
+import axios from "axios";
 import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import { PostCard } from "@/components/posts/PostCard";
 import { useIsFocused } from "@react-navigation/native";
 import { Socket } from "socket.io-client";
-import { useLevel } from "@/context/LevelContext";
+import { API_PUBLIC_URL } from "@/constants/api";
 
-const BASE_URL = "https://cast-api-zeta.vercel.app";
+function parseInitialPost(raw?: string | string[]) {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
 
 export default function PostId() {
-  const { id } = useLocalSearchParams();
+  const { id, initialPost } = useLocalSearchParams<{
+    id?: string;
+    initialPost?: string;
+  }>();
+  const postId = Array.isArray(id) ? id[0] : id;
+  const cachedPost = parseInitialPost(initialPost);
   const { theme } = useTheme();
-  const [post, setPost] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const { currentLevel } = useLevel();
+  const [post, setPost] = useState<any>(cachedPost);
+  const [loading, setLoading] = useState(!cachedPost);
+  const [notFound, setNotFound] = useState(false);
   const isFocused = useIsFocused();
   const socketRef = useRef<Socket | null>(null);
 
-  // ✅ Fetch ONLY one post
-useEffect(() => {
-  if (!id || !currentLevel?.type || !currentLevel?.value) return;
+  useEffect(() => {
+    if (!postId) return;
 
-  const fetchPost = async () => {
-    try {
-      setLoading(true);
+    let cancelled = false;
 
-      const res = await fetch(
-        `${BASE_URL}/api/posts?levelType=${currentLevel.type}&levelValue=${currentLevel.value}`,
-      );
+    const fetchPost = async () => {
+      try {
+        if (!cachedPost) setLoading(true);
+        setNotFound(false);
 
-      const data = await res.json();
-      const list = data.posts || data || [];
+        const res = await axios.get(
+          `${API_PUBLIC_URL}/api/posts/item/${postId}`,
+        );
+        if (!cancelled) setPost(res.data);
+      } catch (err) {
+        console.log("Failed to fetch post", err);
+        if (!cancelled && !cachedPost) setNotFound(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
 
-      // ✅ find clicked post
-      const foundPost = list.find((p: any) => p._id === id);
+    fetchPost();
 
-   
+    return () => {
+      cancelled = true;
+    };
+  }, [postId, cachedPost]);
 
-      setPost(foundPost);
-    } catch (err) {
-      console.log("Failed to fetch post", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  fetchPost();
-}, [id, currentLevel]);
-
-  
-
-  // ✅ Loader
-  if (loading || !post) {
+  if (loading && !post) {
     return (
       <View
         style={{
@@ -68,9 +77,33 @@ useEffect(() => {
     );
   }
 
+  if (!post || notFound) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.background,
+          paddingTop: 20,
+        }}
+      >
+        <Pressable onPress={() => router.back()} style={{ padding: 12 }}>
+          <Ionicons name="arrow-back" size={28} color={theme.text} />
+        </Pressable>
+        <Text
+          style={{
+            textAlign: "center",
+            marginTop: 40,
+            color: theme.subtext,
+          }}
+        >
+          Post not found
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
-      {/* HEADER */}
       <View
         style={{
           flexDirection: "row",
@@ -91,18 +124,17 @@ useEffect(() => {
             color: theme.text,
           }}
         >
-          Post 
+          Post
         </Text>
       </View>
 
-      {/* ✅ SINGLE POST */}
       <PostCard
         post={post}
         isVisible={isFocused}
         socket={socketRef.current}
         allPosts={[post]}
         onRefresh={() => {}}
-        onUpdatePost={() => {}}
+        onUpdatePost={setPost}
         onDeletePost={() => router.back()}
       />
     </View>

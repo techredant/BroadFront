@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type { Call } from "@stream-io/video-react-native-sdk";
+import type { RtcCall } from "@/rtc/RtcCall";
 import { apiClient } from "@/lib/api-client";
 import {
   LIVE_EVENT,
@@ -17,7 +17,7 @@ const EMIT_THROTTLE_MS = 280;
 const REACTION_LIFETIME_MS = 1500;
 
 type Options = {
-  call: Call | null | undefined;
+  call: RtcCall | null | undefined;
   callId: string;
   myUserId?: string;
   onBumpLikes?: (n?: number) => void;

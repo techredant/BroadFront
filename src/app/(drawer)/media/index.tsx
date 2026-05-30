@@ -1,23 +1,14 @@
-<<<<<<< HEAD
-import React, { useState, useCallback } from "react";
-=======
-import React, { useState, useCallback, useRef } from "react";
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
+import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import {
   View,
   Text,
   FlatList,
-<<<<<<< HEAD
   StyleSheet,
   RefreshControl,
-  ScrollView,
-=======
   Pressable,
-  StyleSheet,
-  Dimensions,
-  RefreshControl,
-  Animated,
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
+  ActivityIndicator,
+  useWindowDimensions,
+  AppState,
 } from "react-native";
 import axios from "axios";
 import LoaderKitView from "react-native-loader-kit";
@@ -25,165 +16,151 @@ import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
 import { useFocusEffect, useRouter } from "expo-router";
-<<<<<<< HEAD
-import { API_PUBLIC_URL } from "@/constants/api";
-import { MediaGalleryCard } from "@/components/media/MediaGalleryCard";
 import {
-  flattenPostsToMediaItems,
-  splitMediaGalleryItems,
+  API_PUBLIC_URL,
+  HOSTED_FEED_REFRESH_MS,
+  SOCKET_IO_DISABLED_ON_HOST,
+} from "@/constants/api";
+import { MediaGalleryTile } from "@/components/media/MediaGalleryTile";
+import {
+  countMediaItemsInGroups,
+  groupMediaItemsByPost,
+  mergeMediaPosts,
+  sortMediaPostsNewestFirst,
   type MediaGalleryItem,
+  type MediaGalleryGroup,
 } from "@/utils/mediaGallery";
+import { fetchRemovedPostIds, filterRemovedPosts } from "@/utils/postVisibility";
+import type { MediaKind } from "@/utils/mediaUtils";
 
 type MediaPost = {
   _id: string;
+  userId?: string;
+  createdAt?: string;
+  updatedAt?: string;
   media?: string[];
-  user?: { nickName?: string; nickname?: string };
+  user?: { clerkId?: string; nickName?: string; nickname?: string };
 };
 
-function MediaGalleryRow({
-  title,
-  items,
-  onPressItem,
-  textColor,
-}: {
-  title: string;
-  items: MediaGalleryItem[];
-  onPressItem: (item: MediaGalleryItem) => void;
-  textColor: string;
-}) {
-  if (items.length === 0) return null;
+type MediaTab = "videos" | "audio" | "images";
 
-  return (
-    <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: textColor }]}>{title}</Text>
-      <FlatList
-        horizontal
-        data={items}
-        keyExtractor={(item) => item.id}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.rowContent}
-        renderItem={({ item }) => (
-          <MediaGalleryCard item={item} onPress={() => onPressItem(item)} />
-        )}
-      />
-    </View>
-  );
-}
-=======
-import { Post } from "@/types/post";
-import { LightMediaTile } from "@/components/posts/LightMediaTile";
+const TABS: { key: MediaTab; label: string; kind: MediaKind }[] = [
+  { key: "videos", label: "Videos", kind: "video" },
+  { key: "audio", label: "Audio", kind: "audio" },
+  { key: "images", label: "Images", kind: "image" },
+];
 
-const BASE_URL = "https://cast-api-zeta.vercel.app";
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const POST_MARGIN = 2;
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
+const GRID_COLUMNS = 3;
+const GRID_GAP = 2;
+const HORIZONTAL_PADDING = 2;
 
 export default function MediaScreen() {
-  const { currentLevel } = useLevel();
-  const { theme } = useTheme();
+  const { currentLevel, posts: feedPosts } = useLevel();
+  const { theme, isDark } = useTheme();
   const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
 
-<<<<<<< HEAD
+  const cellSize =
+    (screenWidth -
+      HORIZONTAL_PADDING * 2 -
+      GRID_GAP * (GRID_COLUMNS - 1)) /
+    GRID_COLUMNS;
+
+  const levelKey = `${currentLevel?.type ?? ""}-${currentLevel?.value ?? ""}`;
+  const levelKeyRef = useRef(levelKey);
+  const fetchSeqRef = useRef(0);
+  const hasLoadedRef = useRef(false);
+
+  const [activeTab, setActiveTab] = useState<MediaTab>("videos");
   const [mediaPosts, setMediaPosts] = useState<MediaPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+
+  const feedMediaPosts = useMemo((): MediaPost[] => {
+    const withMedia = feedPosts
+      .map((post) => post as unknown as MediaPost)
+      .filter((post) => (post.media?.length ?? 0) > 0);
+    return sortMediaPostsNewestFirst(withMedia);
+  }, [feedPosts]);
+
+  const allMediaPosts = useMemo(
+    () => mergeMediaPosts(mediaPosts, feedMediaPosts),
+    [mediaPosts, feedMediaPosts],
+  );
+
+  useEffect(() => {
+    if (levelKeyRef.current === levelKey) return;
+    levelKeyRef.current = levelKey;
+    hasLoadedRef.current = false;
+    fetchSeqRef.current += 1;
+    setMediaPosts([]);
+    setPage(1);
+    setHasMore(true);
+    setLoading(true);
+  }, [levelKey]);
 
   const fetchMedia = useCallback(
-    async (refresh = false) => {
+    async (pageNumber = 1, refresh = false) => {
       if (!currentLevel?.type || !currentLevel?.value) return;
 
+      const fetchId = ++fetchSeqRef.current;
+
       try {
-        if (!refresh) setLoading(true);
+        if (pageNumber === 1 && !refresh && !hasLoadedRef.current) {
+          setLoading(true);
+        } else if (pageNumber > 1) {
+          setLoadingMore(true);
+        }
 
         const url =
           `${API_PUBLIC_URL}/api/posts/media` +
           `?levelType=${currentLevel.type}` +
           `&levelValue=${currentLevel.value}` +
-          `&page=1` +
-          `&limit=50`;
+          `&page=${pageNumber}` +
+          `&limit=20`;
 
         const res = await axios.get<MediaPost[]>(url);
-        setMediaPosts(res.data ?? []);
-=======
-  const [mediaPosts, setMediaPosts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [visiblePostId, setVisiblePostId] = useState<string | null>(null);
+        if (fetchId !== fetchSeqRef.current) return;
 
-  const [page, setPage] = useState(1);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true)
-  const listRef = useRef<FlatList>(null);
-  const [showScrollTop, setShowScrollTop] = useState(false);
-  const scrollTopOpacity = useRef(new Animated.Value(0)).current;
-  const levelBtnOpacity = useRef(new Animated.Value(1)).current; // starts visible
-  
-  const handleScroll = (event: any) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
+        const newPosts = sortMediaPostsNewestFirst(res.data ?? []);
+        setHasMore(newPosts.length === 20);
 
-    const shouldShow = offsetY > 400;
+        const applyMerged = (merged: MediaPost[]) => {
+          void fetchRemovedPostIds(merged.map((post) => String(post._id ?? ""))).then(
+            (removedIds) => {
+              if (fetchId !== fetchSeqRef.current) return;
+              setMediaPosts(filterRemovedPosts(merged, removedIds));
+            },
+          );
+        };
 
-    setShowScrollTop(shouldShow);
-
-    // 🔥 Fade Top Button
-    Animated.timing(scrollTopOpacity, {
-      toValue: shouldShow ? 1 : 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-
-    // 🔥 Fade FloatingLevelButton (opposite behavior)
-    Animated.timing(levelBtnOpacity, {
-      toValue: shouldShow ? 0 : 1,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  // ---------------- FlatList viewability ----------------
-  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      setVisiblePostId(viewableItems[0].item._id);
-    }
-  }).current;
-  const viewabilityConfig = { itemVisiblePercentThreshold: 80 };
-  // -------------------- Fetch --------------------
-  const fetchMedia = useCallback(
-    async (pageNumber = 1, refresh = false) => {
-      if (!currentLevel?.type || !currentLevel?.value) return;
-
-      try {
-        if (pageNumber === 1) setLoading(true);
-        else setLoadingMore(true);
-
-        const url =
-          `${BASE_URL}/api/posts/media` +
-          `?levelType=${currentLevel.type}` +
-          `&levelValue=${currentLevel.value}` +
-          `&page=${pageNumber}` +
-          `&limit=10`;
-
-        const res = await axios.get<Post[]>(url);
-
-        const newPosts = res.data ?? [];
-
-        setHasMore(newPosts.length === 10);
-
-        if (refresh || pageNumber === 1) {
-          setMediaPosts(newPosts);
+        if (pageNumber === 1) {
+          hasLoadedRef.current = true;
+          setMediaPosts((prev) => {
+            const merged = mergeMediaPosts(prev, newPosts);
+            applyMerged(merged);
+            return merged;
+          });
+          setPage(1);
         } else {
-          setMediaPosts((prev) => [...prev, ...newPosts]);
+          setMediaPosts((prev) => {
+            const merged = mergeMediaPosts(prev, newPosts);
+            applyMerged(merged);
+            return merged;
+          });
+          setPage(pageNumber);
         }
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
       } catch (err) {
         console.error(err);
       } finally {
-        setLoading(false);
-<<<<<<< HEAD
-=======
-        setLoadingMore(false);
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
-        setRefreshing(false);
+        if (fetchId === fetchSeqRef.current) {
+          setLoading(false);
+          setLoadingMore(false);
+          setRefreshing(false);
+        }
       }
     },
     [currentLevel],
@@ -191,83 +168,135 @@ export default function MediaScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchMedia();
+      fetchMedia(1);
     }, [fetchMedia]),
   );
 
+  useEffect(() => {
+    if (!SOCKET_IO_DISABLED_ON_HOST || !currentLevel?.type || !currentLevel?.value) {
+      return;
+    }
+
+    let appState = AppState.currentState;
+    let syncing = false;
+
+    const syncMedia = () => {
+      if (appState !== "active" || syncing) return;
+      syncing = true;
+      fetchMedia(1, true).finally(() => {
+        syncing = false;
+      });
+    };
+
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      appState = nextState;
+      if (nextState === "active") syncMedia();
+    });
+
+    const interval = setInterval(syncMedia, HOSTED_FEED_REFRESH_MS);
+    syncMedia();
+
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
+  }, [currentLevel?.type, currentLevel?.value, fetchMedia]);
+
   const onRefresh = () => {
     setRefreshing(true);
-<<<<<<< HEAD
-    fetchMedia(true);
+    fetchMedia(1, true);
   };
 
-  const galleryItems = flattenPostsToMediaItems(mediaPosts);
-  const { videos, images } = splitMediaGalleryItems(galleryItems);
+  const loadMore = () => {
+    if (loadingMore || !hasMore || loading) return;
+    fetchMedia(page + 1);
+  };
+
+  const tabGroups = useMemo(
+    () => ({
+      videos: groupMediaItemsByPost(allMediaPosts, "video"),
+      audio: groupMediaItemsByPost(allMediaPosts, "audio"),
+      images: groupMediaItemsByPost(allMediaPosts, "image"),
+    }),
+    [allMediaPosts],
+  );
+
+  const activeGroups = tabGroups[activeTab];
 
   const openItem = (item: MediaGalleryItem) => {
+    const post = allMediaPosts.find((p) => p._id === item.postId);
     router.push({
       pathname: "/media/[id]",
-      params: { id: item.postId },
+      params: {
+        id: item.postId,
+        ...(post ? { initialPost: JSON.stringify(post) } : {}),
+      },
     });
   };
 
-  const hasMedia = videos.length > 0 || images.length > 0;
+  const emptyLabel =
+    activeTab === "videos"
+      ? "No videos yet"
+      : activeTab === "audio"
+        ? "No audio yet"
+        : "No images yet";
 
-=======
-    fetchMedia();
-  };
+  const showInitialLoader = loading && allMediaPosts.length === 0;
 
-  const numColumns = 3;
-  const ITEM_SIZE =
-    (SCREEN_WIDTH - POST_MARGIN * (numColumns * 2)) / numColumns;
-
-  // -------------------- Render Item --------------------
-  const renderItem = ({ item }: { item: Post }) => {
-    const firstMedia = item.media?.[0];
-    if (!firstMedia) return null;
-
-    return (
-      <Pressable
-        onPress={() =>
-          router.push({
-            pathname: "/media/[id]",
-            params: { id: item._id },
-          })
-        }
-      >
-        <View style={[styles.tileWrap, { width: ITEM_SIZE, height: ITEM_SIZE }]}>
-          <LightMediaTile
-            uri={firstMedia}
-            width={ITEM_SIZE}
-            height={ITEM_SIZE}
-            borderRadius={10}
-          />
-
-          {item.media.length > 1 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{item.media.length}</Text>
-            </View>
-          )}
-        </View>
-      </Pressable>
-    );
-  };
-
-  // -------------------- UI --------------------
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       <DrawerMenuButton />
 
-<<<<<<< HEAD
       <View style={[styles.headerContainer, { backgroundColor: theme.card }]}>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Media</Text>
-        <Text style={[styles.headerSubtitle, { color: theme.subtext }]}>
-          Videos and photos from your feed level
-        </Text>
       </View>
 
-      {loading ? (
+      <View
+        style={[
+          styles.tabBar,
+          {
+            backgroundColor: theme.card,
+            borderBottomColor: isDark
+              ? "rgba(255,255,255,0.08)"
+              : "rgba(0,0,0,0.08)",
+          },
+        ]}
+      >
+        {TABS.map((tab) => {
+          const selected = activeTab === tab.key;
+          const count = countMediaItemsInGroups(tabGroups[tab.key]);
+          return (
+            <Pressable
+              key={tab.key}
+              onPress={() => setActiveTab(tab.key)}
+              style={[
+                styles.tab,
+                selected && {
+                  borderBottomColor: theme.primary,
+                  borderBottomWidth: 2,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.tabLabel,
+                  { color: selected ? theme.text : theme.subtext },
+                  selected && styles.tabLabelActive,
+                ]}
+              >
+                {tab.label}
+              </Text>
+              {count > 0 ? (
+                <Text style={[styles.tabCount, { color: theme.subtext }]}>
+                  {count}
+                </Text>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {showInitialLoader ? (
         <View style={styles.center}>
           <LoaderKitView
             style={{ width: 50, height: 50 }}
@@ -275,140 +304,99 @@ export default function MediaScreen() {
             color={theme.text}
           />
         </View>
-      ) : !hasMedia ? (
-        <View style={styles.center}>
-          <Text style={{ color: theme.subtext }}>No media yet</Text>
-        </View>
       ) : (
-        <ScrollView
+        <FlatList
+          key={activeTab}
+          numColumns={GRID_COLUMNS}
+          data={activeGroups}
+          keyExtractor={(group: MediaGalleryGroup) => group.groupId}
+          columnWrapperStyle={styles.column}
+          contentContainerStyle={[
+            styles.listContent,
+            activeGroups.length === 0 && styles.listContentEmpty,
+          ]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
-          contentContainerStyle={styles.scrollContent}
-          nestedScrollEnabled
-        >
-          <MediaGalleryRow
-            title="Videos"
-            items={videos}
-            onPressItem={openItem}
-            textColor={theme.text}
-          />
-          <MediaGalleryRow
-            title="Photos"
-            items={images}
-            onPressItem={openItem}
-            textColor={theme.text}
-          />
-        </ScrollView>
-      )}
-=======
-      {/* HEADER */}
-      <View style={[styles.headerContainer, { backgroundColor: theme.card }]}>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Media</Text>
-      </View>
-
-      {/* GRID */}
-      <FlatList
-        data={mediaPosts}
-        keyExtractor={(item) => item._id}
-        renderItem={renderItem}
-        numColumns={numColumns}
-        viewabilityConfig={viewabilityConfig}
-        initialNumToRender={10}
-        maxToRenderPerBatch={10}
-        windowSize={10}
-        removeClippedSubviews
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: "flex-start",
-          paddingBottom: 50,
-        }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          loading ? (
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
+          ListEmptyComponent={
             <View style={styles.center}>
-              <LoaderKitView
-                style={{ width: 50, height: 50 }}
-                name="BallScaleRippleMultiple"
+              <Text style={{ color: theme.subtext }}>{emptyLabel}</Text>
+            </View>
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator
+                style={styles.loadMore}
                 color={theme.text}
               />
-            </View>
-          ) : (
-            <View style={styles.center}>
-              <Text style={{ color: theme.subtext }}>No media yet</Text>
-            </View>
-          )
-        }
-      />
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
+            ) : null
+          }
+          renderItem={({ item: group }) => (
+            <MediaGalleryTile
+              group={group}
+              size={cellSize}
+              onPressItem={openItem}
+            />
+          )}
+        />
+      )}
     </View>
   );
 }
 
-<<<<<<< HEAD
-=======
-// -------------------- Styles --------------------
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 const styles = StyleSheet.create({
   headerContainer: {
     paddingHorizontal: 16,
     paddingTop: 30,
-    paddingBottom: 16,
+    paddingBottom: 12,
   },
   headerTitle: {
     fontSize: 23,
     fontWeight: "700",
     textAlign: "center",
   },
-<<<<<<< HEAD
-  headerSubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    textAlign: "center",
+  tabBar: {
+    flexDirection: "row",
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-=======
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
+  tab: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    gap: 2,
+  },
+  tabLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  tabLabelActive: {
+    fontWeight: "700",
+  },
+  tabCount: {
+    fontSize: 11,
+  },
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    paddingVertical: 48,
   },
-<<<<<<< HEAD
-  scrollContent: {
-    paddingTop: 8,
+  listContent: {
+    paddingHorizontal: HORIZONTAL_PADDING,
+    paddingTop: GRID_GAP,
     paddingBottom: 40,
   },
-  section: {
-    marginBottom: 24,
+  listContentEmpty: {
+    flexGrow: 1,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    paddingHorizontal: 16,
-    marginBottom: 12,
+  column: {
+    gap: GRID_GAP,
+    marginBottom: GRID_GAP,
   },
-  rowContent: {
-    paddingHorizontal: 16,
-=======
-  tileWrap: {
-    margin: POST_MARGIN,
-    position: "relative",
-  },
-  badge: {
-    position: "absolute",
-    top: 5,
-    right: 5,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  badgeText: {
-    color: "#fff",
-    fontSize: 9,
-    fontWeight: "600",
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
+  loadMore: {
+    marginVertical: 16,
   },
 });

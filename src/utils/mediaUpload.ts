@@ -8,25 +8,9 @@ import {
   isLocalMediaUri,
   isVideoMedia,
   MEDIA_LIMITS,
-<<<<<<< HEAD
   resolveMediaUrl,
 } from "./mediaUtils";
 
-=======
-} from "./mediaUtils";
-
-/**
- * Legacy server-proxy cap (kept around for reference only — Cloudinary direct
- * uploads handle far larger files). We no longer block uploads on it.
- */
-export const UPLOAD_SIZE_LIMIT_BYTES = 4 * 1024 * 1024;
-
-/**
- * Soft target for on-device video compression. We still shrink very chunky
- * clips to keep upload time + user data usage reasonable, but we no longer
- * need to squeeze under Vercel's body-size cap.
- */
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 const VIDEO_TARGET_BYTES = 25 * 1024 * 1024;
 
 const API_URL = API_PUBLIC_URL;
@@ -34,17 +18,6 @@ const API_URL = API_PUBLIC_URL;
 const DEFAULT_UPLOAD_FOLDER = "broadcast/uploads";
 const AVATAR_UPLOAD_FOLDER = "broadcast/avatars";
 
-<<<<<<< HEAD
-=======
-type SignedUploadPayload = {
-  cloudName: string;
-  apiKey: string;
-  timestamp: number;
-  signature: string;
-  folder: string;
-};
-
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 export class MediaUploadError extends Error {
   constructor(message: string) {
     super(message);
@@ -84,13 +57,6 @@ async function getLocalFileSize(uri: string): Promise<number | null> {
   }
 }
 
-<<<<<<< HEAD
-=======
-/**
- * Mild on-device video compression. Cloudinary will re-encode/optimize on
- * delivery, so we mostly want to keep upload bandwidth + user data in check.
- */
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 export async function compressVideo(uri: string): Promise<string> {
   if (!isLocalMediaUri(uri)) return uri;
 
@@ -118,10 +84,6 @@ export async function compressVideo(uri: string): Promise<string> {
 
     if (size != null && size > VIDEO_TARGET_BYTES) {
       compressed = await compressPass(compressed, 720, 1_400_000);
-<<<<<<< HEAD
-=======
-      size = await getLocalFileSize(compressed);
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
     }
 
     return compressed;
@@ -131,132 +93,11 @@ export async function compressVideo(uri: string): Promise<string> {
   }
 }
 
-<<<<<<< HEAD
 export type UploadMediaOptions = {
   folder?: string;
 };
 
 async function uploadToServer(
-=======
-/**
- * Ask the backend for a short-lived signed upload payload. Uses GET — the
- * route accepts both GET and POST; GET keeps things simple (no body, fewer
- * surprises with native FormData/JSON content-types on RN).
- */
-async function fetchSignedUploadPayload(
-  folder: string,
-): Promise<SignedUploadPayload> {
-  const url = `${API_URL}/api/media/sign?folder=${encodeURIComponent(folder)}`;
-  const res = await fetch(url, { method: "GET" });
-
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const body = await res.text();
-      detail = body ? ` — ${body.slice(0, 240)}` : "";
-    } catch {
-      // ignore body parse failures
-    }
-    throw new MediaUploadError(
-      `Failed to sign Cloudinary upload (HTTP ${res.status})${detail}`,
-    );
-  }
-
-  const data = (await res.json()) as Partial<SignedUploadPayload>;
-  if (
-    !data.cloudName ||
-    !data.apiKey ||
-    !data.signature ||
-    typeof data.timestamp !== "number" ||
-    !data.folder
-  ) {
-    throw new MediaUploadError("Sign endpoint returned an incomplete payload");
-  }
-
-  return data as SignedUploadPayload;
-}
-
-export type UploadMediaOptions = {
-  /** Cloudinary folder override (defaults to `broadcast/uploads`). */
-  folder?: string;
-};
-
-export async function uploadMedia(
-  uri: string,
-  type: "image" | "video",
-  opts: UploadMediaOptions = {},
-): Promise<string | null> {
-  const folder = opts.folder ?? DEFAULT_UPLOAD_FOLDER;
-
-  let uploadUri = uri;
-  if (type === "image") {
-    uploadUri = await compressImage(uri);
-  } else {
-    uploadUri = await compressVideo(uri);
-  }
-
-  let signed: SignedUploadPayload;
-  try {
-    signed = await fetchSignedUploadPayload(folder);
-  } catch (err) {
-    console.error("[mediaUpload] sign failed:", err);
-    return uploadViaServerProxy(uploadUri, type, folder);
-  }
-
-  const mimeType = getUploadMimeType(uploadUri, type);
-  const fileName = getUploadFileName(uploadUri, type);
-
-  const formData = new FormData();
-  formData.append("file", {
-    uri: uploadUri,
-    type: mimeType,
-    name: fileName,
-  } as unknown as Blob);
-  formData.append("api_key", signed.apiKey);
-  formData.append("timestamp", String(signed.timestamp));
-  formData.append("signature", signed.signature);
-  formData.append("folder", signed.folder);
-
-  const resourceType = type === "video" ? "video" : "image";
-  const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${signed.cloudName}/${resourceType}/upload`;
-
-  try {
-    const res = await fetch(cloudinaryUrl, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!res.ok) {
-      let detail = "";
-      try {
-        const body = await res.text();
-        detail = body ? ` — ${body.slice(0, 240)}` : "";
-      } catch {
-        // ignore body parse failures
-      }
-      console.error(
-        `[mediaUpload] cloudinary upload failed: HTTP ${res.status}${detail}`,
-      );
-
-      // Signed direct upload can fail with 401 when API secret/key mismatch on
-      // the server — fall back to server-side upload which uses the SDK secret.
-      if (res.status === 401 || res.status === 403) {
-        return uploadViaServerProxy(uploadUri, type, folder);
-      }
-      return null;
-    }
-
-    const data = (await res.json()) as { secure_url?: string; url?: string };
-    return data.secure_url ?? data.url ?? null;
-  } catch (err) {
-    console.error("[mediaUpload] cloudinary upload error:", err);
-    return uploadViaServerProxy(uploadUri, type, folder);
-  }
-}
-
-/** Server-side Cloudinary upload — avoids client signature issues. */
-async function uploadViaServerProxy(
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   uploadUri: string,
   type: "image" | "video",
   folder: string,
@@ -286,30 +127,19 @@ async function uploadViaServerProxy(
         // ignore
       }
       console.error(
-<<<<<<< HEAD
         `[mediaUpload] upload failed: HTTP ${res.status}${detail ? ` — ${detail}` : ""}`,
-=======
-        `[mediaUpload] server proxy upload failed: HTTP ${res.status}${detail ? ` — ${detail}` : ""}`,
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
       );
       return null;
     }
 
     const data = (await res.json()) as { url?: string };
-<<<<<<< HEAD
     return resolveMediaUrl(data.url ?? null);
   } catch (err) {
     console.error("[mediaUpload] upload error:", err);
-=======
-    return data.url ?? null;
-  } catch (err) {
-    console.error("[mediaUpload] server proxy upload error:", err);
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
     return null;
   }
 }
 
-<<<<<<< HEAD
 export async function uploadMedia(
   uri: string,
   type: "image" | "video",
@@ -327,9 +157,6 @@ export async function uploadMedia(
   return uploadToServer(uploadUri, type, folder);
 }
 
-=======
-/** Upload local files; pass through existing http(s) URLs */
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 export async function uploadLocalMedia(
   uri: string,
   type?: "image" | "video",

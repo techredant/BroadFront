@@ -22,27 +22,45 @@ export type LiveGiftDef = {
   label: string;
   /** KES amount for M-Pesa STK */
   amount: number;
+  category: "roses" | "hearts" | "lions" | "cars" | "premium";
 };
 
 /** TikTok-style gifts — amounts in KES */
-export const LIVE_GIFTS: LiveGiftDef[] = [
-  { id: "rose", emoji: "🌹", label: "Rose", amount: 10 },
-  { id: "heart", emoji: "💝", label: "Heart", amount: 20 },
-  { id: "star", emoji: "⭐", label: "Star", amount: 50 },
-  { id: "fire", emoji: "🔥", label: "Fire", amount: 100 },
-  { id: "rocket", emoji: "🚀", label: "Rocket", amount: 200 },
-  { id: "lion", emoji: "🦁", label: "Lion", amount: 500 },
-  { id: "universe", emoji: "🌌", label: "Universe", amount: 1000 },
+export const LIVE_GIFT_CATEGORIES: {
+  id: LiveGiftDef["category"];
+  label: string;
+}[] = [
+  { id: "roses", label: "Roses" },
+  { id: "hearts", label: "Hearts" },
+  { id: "lions", label: "Lions" },
+  { id: "cars", label: "Cars" },
+  { id: "premium", label: "Premium" },
 ];
 
-export const LIVE_DONATION_PRESETS = [50, 100, 200, 500, 1000] as const;
+export const LIVE_GIFTS: LiveGiftDef[] = [
+  { id: "rose", emoji: "🌹", label: "Rose", amount: 10, category: "roses" },
+  { id: "bouquet", emoji: "💐", label: "Bouquet", amount: 30, category: "roses" },
+  { id: "heart", emoji: "💝", label: "Heart", amount: 20, category: "hearts" },
+  { id: "hearts", emoji: "💕", label: "Hearts", amount: 50, category: "hearts" },
+  { id: "star", emoji: "⭐", label: "Star", amount: 50, category: "hearts" },
+  { id: "fire", emoji: "🔥", label: "Fire", amount: 100, category: "hearts" },
+  { id: "lion", emoji: "🦁", label: "Lion", amount: 500, category: "lions" },
+  { id: "crown", emoji: "👑", label: "Crown", amount: 800, category: "lions" },
+  { id: "car", emoji: "🚗", label: "Sports Car", amount: 1200, category: "cars" },
+  { id: "rocket", emoji: "🚀", label: "Rocket", amount: 200, category: "premium" },
+  { id: "universe", emoji: "🌌", label: "Universe", amount: 1000, category: "premium" },
+];
+
+export const LIVE_DONATION_PRESETS = [50, 100, 500, 1000] as const;
 
 export type LiveMessage = {
   id: string;
-  kind: "chat" | "join" | "system" | "donation";
+  kind: "chat" | "join" | "system" | "donation" | "gift";
   userId?: string;
   userName: string;
   text: string;
+  isHost?: boolean;
+  giftEmoji?: string;
   /** Auto-hide join rows after this timestamp */
   expiresAt?: number;
 };

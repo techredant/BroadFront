@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useCall, useCallStateHooks } from "@stream-io/video-react-native-sdk";
+import { useCall, useCallStateHooks } from "@/rtc";
 
 export const ToggleLiveButton = () => {
   const call = useCall();
@@ -10,8 +10,8 @@ export const ToggleLiveButton = () => {
 
   const handlePress = () => {
     if (!call) return;
-    if (isLive) call.stopLive();
-    else call.goLive();
+    if (isLive) void call.stopLive();
+    else void call.goLive();
   };
 
   return (

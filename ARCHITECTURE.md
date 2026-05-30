@@ -57,5 +57,4 @@ Copy `.env.example` to `.env` and fill in. Everything prefixed with
 | `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key. |
 | `EXPO_PUBLIC_API_URL` | Hosted REST API base (Vercel). |
 | `EXPO_PUBLIC_USE_LOCAL_API` / `EXPO_PUBLIC_API_URL_DEV` / `EXPO_PUBLIC_USE_USB_API` | Dev-only routing to a local Node backend so Socket.IO works. |
-| `EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name. Consumed by `buildCloudinaryUrl()` in `src/utils/mediaUtils.ts` to splice `f_auto,q_auto` transforms onto new uploads and wrap legacy `/api/media/<id>` URLs as Cloudinary fetch URLs. When unset, `buildCloudinaryUrl` is a graceful no-op. |
 | `EXPO_PUBLIC_SOCKET_URL` | Optional override for the Socket.IO server (defaults to `EXPO_PUBLIC_API_URL`). |

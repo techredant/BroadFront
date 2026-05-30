@@ -1,11 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import {
-  CallingState,
-  useCall,
-  useCallStateHooks,
-} from "@stream-io/video-react-native-sdk";
+import { useCall, useCallStateHooks } from "@/rtc";
+import { RtcConnectionState } from "@/rtc/types";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { joinCallWithMedia } from "@/utils/callMedia";
 
 const RED = "#ef4444";
@@ -26,7 +24,7 @@ export function BroadcastIncomingCallControls({
   const [busy, setBusy] = useState<"accept" | "reject" | null>(null);
 
   const reject = async () => {
-    if (!call || callingState === CallingState.LEFT) return;
+    if (!call || callingState === RtcConnectionState.LEFT) return;
     setBusy("reject");
     try {
       await call.leave({ reject: true, reason: "decline" });
@@ -57,7 +55,7 @@ export function BroadcastIncomingCallControls({
       />
       <CircleButton
         iconColor={GREEN}
-        icon="call"
+        icon={isVideoCall ? "videocam" : "call"}
         onPress={accept}
         loading={busy === "accept"}
       />
@@ -72,7 +70,7 @@ export function BroadcastOutgoingCallControls({ onDone }: ControlProps) {
   const [loading, setLoading] = useState(false);
 
   const hangUp = async () => {
-    if (!call || callingState === CallingState.LEFT) return;
+    if (!call || callingState === RtcConnectionState.LEFT) return;
     setLoading(true);
     try {
       await call.leave({ reject: true, reason: "cancel" });
@@ -110,18 +108,19 @@ export function BroadcastActiveCallControls({
   onToggleSpeaker?: () => void;
   onFlipCamera?: () => void;
 }) {
-  const call = useCall();
-  const micOn = call?.microphone.state.status === "enabled";
-  const camOn = call?.camera.state.status === "enabled";
+  const insets = useSafeAreaInsets();
+  const { useMicrophoneState, useCameraState } = useCallStateHooks();
+  const { microphone, optimisticIsMute } = useMicrophoneState();
+  const { camera, isEnabled: cameraEnabled } = useCameraState();
 
   return (
-    <View style={styles.activeRow}>
+    <View style={[styles.activeRow, { bottom: Math.max(insets.bottom, 16) + 12 }]}>
       {showSpeakerToggle ? (
         <SmallButton icon="volume-high" onPress={() => onToggleSpeaker?.()} />
       ) : null}
       <SmallButton
-        icon={micOn ? "mic" : "mic-off"}
-        onPress={() => call?.microphone.toggle()}
+        icon={!optimisticIsMute ? "mic" : "mic-off"}
+        onPress={() => void microphone.toggle()}
       />
       <CircleButton
         iconColor={RED}
@@ -134,8 +133,8 @@ export function BroadcastActiveCallControls({
         <SmallButton icon="camera-reverse" onPress={() => onFlipCamera?.()} />
       ) : showCamera ? (
         <SmallButton
-          icon={camOn ? "videocam" : "videocam-off"}
-          onPress={() => call?.camera.toggle()}
+          icon={cameraEnabled ? "videocam" : "videocam-off"}
+          onPress={() => void camera.toggle()}
         />
       ) : (
         <View style={styles.smallBtnPlaceholder} />
@@ -213,8 +212,9 @@ const styles = StyleSheet.create({
   },
   activeRow: {
     position: "absolute",
-    bottom: 40,
-    width: "100%",
+    left: 0,
+    right: 0,
+    zIndex: 40,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",

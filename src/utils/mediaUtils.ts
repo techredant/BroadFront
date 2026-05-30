@@ -31,6 +31,28 @@ export function isVideoMedia(uri: string): boolean {
   );
 }
 
+export function isAudioMedia(uri: string): boolean {
+  if (!uri) return false;
+  const path = uri.split("?")[0].toLowerCase();
+  return (
+    path.endsWith(".mp3") ||
+    path.endsWith(".wav") ||
+    path.endsWith(".m4a") ||
+    path.endsWith(".aac") ||
+    path.endsWith(".ogg") ||
+    path.endsWith(".flac") ||
+    path.includes("/audio/")
+  );
+}
+
+export type MediaKind = "image" | "video" | "audio";
+
+export function getMediaKind(uri: string): MediaKind {
+  if (isVideoMedia(uri)) return "video";
+  if (isAudioMedia(uri)) return "audio";
+  return "image";
+}
+
 export const imagePickerMediaOptions = {
   quality: MEDIA_LIMITS.pickerQuality,
   videoMaxDuration: MEDIA_LIMITS.videoMaxDuration,
@@ -132,172 +154,4 @@ export function resolveMediaUrls(uris: string[] | undefined | null): string[] {
     .map((u) => resolveMediaUrl(u))
     .filter((u): u is string => Boolean(u));
 }
-<<<<<<< HEAD
-=======
 
-// --- Cloudinary delivery -----------------------------------------------------
-
-export type CldKind = "image" | "video" | "thumb";
-
-export type CldOpts = {
-  width?: number;
-  height?: number;
-  kind?: CldKind;
-  dpr?: number;
-};
-
-const CLOUDINARY_CLOUD_NAME =
-  process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME?.trim() || "";
-
-const CLOUDINARY_HOST = "res.cloudinary.com";
-
-/**
- * Matches `https://res.cloudinary.com/<cloud>/(image|video)/upload/<rest>` and
- * captures the cloud, the resource type, and everything after `/upload/`.
- */
-const CLOUDINARY_DELIVERY_RE =
-  /^https:\/\/res\.cloudinary\.com\/([^/]+)\/(image|video)\/upload\/(.+)$/i;
-
-function roundDim(n: number | undefined): number | undefined {
-  if (typeof n !== "number" || !isFinite(n) || n <= 0) return undefined;
-  return Math.max(1, Math.round(n));
-}
-
-function buildImageTransform(width?: number, dpr?: number): string {
-  const parts = ["f_auto", "q_auto"];
-  const w = roundDim(width);
-  if (w) {
-    parts.push(`w_${w}`);
-    parts.push("c_limit");
-  }
-  const d = roundDim(dpr);
-  if (d && d > 1) parts.push(`dpr_${d}`);
-  return parts.join(",");
-}
-
-function buildVideoTransform(width?: number, dpr?: number): string {
-  const parts = ["f_auto", "q_auto", "vc_auto"];
-  const w = roundDim(width);
-  if (w) {
-    parts.push(`w_${w}`);
-    parts.push("c_limit");
-  }
-  const d = roundDim(dpr);
-  if (d && d > 1) parts.push(`dpr_${d}`);
-  return parts.join(",");
-}
-
-function buildThumbTransform(width?: number): string {
-  const parts = ["so_2", "f_jpg"];
-  const w = roundDim(width);
-  if (w) {
-    parts.push(`w_${w}`);
-    parts.push("c_limit");
-  }
-  return parts.join(",");
-}
-
-/** A Cloudinary path segment is a transformation chain if any comma-separated
- *  token matches `<letters>_<value>` (e.g. `f_auto`, `w_540`, `so_2`).
- *  A version segment like `v1700000000` does NOT match (no underscore), and
- *  folder names like `broadcast` also don't match. */
-function isTransformationSegment(segment: string): boolean {
-  if (!segment) return false;
-  return segment.split(",").some((token) => /^[a-z]+_/i.test(token));
-}
-
-function hasExistingTransform(rest: string): boolean {
-  const firstSegment = rest.split("/", 1)[0] ?? "";
-  return isTransformationSegment(firstSegment);
-}
-
-function rewriteCloudinaryUrl(
-  match: RegExpMatchArray,
-  opts: CldOpts | undefined,
-  original: string,
-): string {
-  const [, cloud, resourceType, rest] = match;
-  const kind = opts?.kind;
-  const isVideoResource = resourceType.toLowerCase() === "video";
-
-  // If the URL already carries a transformation chain (e.g. it's the result
-  // of a previous buildCloudinaryUrl call, or a thumb produced upstream),
-  // keep it as-is rather than chaining redundant transforms.
-  if (hasExistingTransform(rest)) return original;
-
-  if (kind === "thumb" && isVideoResource) {
-    const transform = buildThumbTransform(opts?.width);
-    // Rewrite the trailing extension to .jpg for the poster frame.
-    const pathWithJpg = rest.replace(/\.[a-z0-9]+(\?.*)?$/i, (_, q) =>
-      q ? `.jpg${q}` : ".jpg",
-    );
-    const finalPath = /\.[a-z0-9]+(\?|$)/i.test(pathWithJpg)
-      ? pathWithJpg
-      : `${pathWithJpg}.jpg`;
-    return `https://${CLOUDINARY_HOST}/${cloud}/video/upload/${transform}/${finalPath}`;
-  }
-
-  const transform =
-    kind === "video" || (isVideoResource && kind !== "thumb")
-      ? buildVideoTransform(opts?.width, opts?.dpr)
-      : buildImageTransform(opts?.width, opts?.dpr);
-
-  return `https://${CLOUDINARY_HOST}/${cloud}/${resourceType}/upload/${transform}/${rest}`;
-}
-
-function buildFetchUrl(
-  absoluteUrl: string,
-  opts: CldOpts | undefined,
-): string {
-  const transform = buildImageTransform(opts?.width, opts?.dpr);
-  return `https://${CLOUDINARY_HOST}/${CLOUDINARY_CLOUD_NAME}/image/fetch/${transform}/${encodeURIComponent(
-    absoluteUrl,
-  )}`;
-}
-
-function isOurBackendMediaUrl(absoluteUrl: string): boolean {
-  // resolveMediaUrl already normalises legacy paths onto API_PUBLIC_URL, so we
-  // just need to detect the `/api/media/<id>` shape on an https URL.
-  try {
-    const parsed = new URL(absoluteUrl);
-    if (parsed.protocol !== "https:") return false;
-    return parsed.pathname.startsWith("/api/media/");
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Produce a Cloudinary-optimized URL for delivery. Pass through unchanged in:
- *  - empty/null input
- *  - local picker URIs (file://, content://, ph://)
- *  - EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME unset (graceful dev no-op)
- *  - hosts we don't recognise (third-party CDN, Clerk, Stream, etc.)
- *  - legacy mp4 on our backend (free-tier Cloudinary fetch is image-only;
- *    caller falls back to expo-video-thumbnails for the poster frame)
- */
-export function buildCloudinaryUrl(
-  uri: string | null | undefined,
-  opts?: CldOpts,
-): string | null {
-  const resolved = resolveMediaUrl(uri);
-  if (!resolved) return null;
-
-  if (isLocalMediaUri(resolved)) return resolved;
-
-  if (!CLOUDINARY_CLOUD_NAME) return resolved;
-
-  const cldMatch = resolved.match(CLOUDINARY_DELIVERY_RE);
-  if (cldMatch) return rewriteCloudinaryUrl(cldMatch, opts, resolved);
-
-  if (isOurBackendMediaUrl(resolved)) {
-    // Free-tier Cloudinary fetch is image-only — leave legacy videos and
-    // their on-device thumbs alone.
-    if (opts?.kind === "video" || isVideoMedia(resolved)) return resolved;
-    if (opts?.kind === "thumb") return resolved;
-    return buildFetchUrl(resolved, opts);
-  }
-
-  return resolved;
-}
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408

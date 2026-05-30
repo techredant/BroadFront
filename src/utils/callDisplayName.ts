@@ -38,10 +38,29 @@ export function resolveCallParticipantName(
   participantName?: string | null,
 ): string {
   const mapped = displayNames[userId]?.trim();
-  if (mapped && mapped !== userId) return mapped;
+  if (mapped && mapped !== userId && mapped !== "User") return mapped;
 
   const raw = participantName?.trim();
-  if (raw && raw !== userId) return raw;
+  if (raw && raw !== userId && !/^\d+$/.test(raw)) return raw;
 
   return "User";
+}
+
+/** 1:1 calls — prefer chat peer name over Agora uid labels. */
+export function resolveRemoteCallDisplayName(
+  remotePeer: { name: string },
+  displayNames: Record<string, string>,
+  localUserId?: string | null,
+): string {
+  if (remotePeer.name && remotePeer.name !== "User") return remotePeer.name;
+
+  for (const [id, name] of Object.entries(displayNames)) {
+    if (!id || id === localUserId || id === "ai-assistant") continue;
+    const label = name?.trim();
+    if (label && label !== "User" && label !== "You" && label !== id) {
+      return label;
+    }
+  }
+
+  return remotePeer.name && remotePeer.name !== "User" ? remotePeer.name : "Member";
 }

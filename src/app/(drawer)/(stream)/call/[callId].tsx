@@ -15,13 +15,13 @@ import {
 } from "@/utils/callStatus";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  CallingState,
-  StreamCall,
+  RtcSessionProvider,
   useCall,
   useCallStateHooks,
   useStreamVideoClient,
-} from "@stream-io/video-react-native-sdk";
-import { useEffect, useState } from "react";
+} from "@/rtc";
+import { RtcConnectionState } from "@/rtc/types";
+import { useEffect, useMemo } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ActivityIndicator,
@@ -33,6 +33,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useChatContext } from "stream-chat-expo";
 import type { CallMode } from "@/utils/callMode";
+import { useCallDuration } from "@/hooks/useCallDuration";
+import { streamChannelPath } from "@/utils/notificationRouting";
+import { StreamConnectionOverlay } from "@/components/call/StreamConnectionOverlay";
 
 function resolveCallId(raw: string) {
   return raw.includes(":") ? raw.split(":").pop()! : raw;
@@ -44,11 +47,15 @@ const CallScreen = () => {
     isCaller: callerParam,
     callMode: callModeParam,
     accepted: acceptedParam,
+    peerName,
+    peerImage,
   } = useLocalSearchParams<{
     callId: string;
     isCaller: string;
     callMode?: string;
     accepted?: string;
+    peerName?: string;
+    peerImage?: string;
   }>();
 
   const callId = rawCallId ? resolveCallId(rawCallId) : "";
@@ -67,6 +74,7 @@ const CallScreen = () => {
     remotePeer,
     displayNames,
     effectiveCallMode,
+    channelId,
   } = useCallManager({
     videoClient,
     chatClient,
@@ -74,6 +82,11 @@ const CallScreen = () => {
     isCaller,
     urlCallMode: callMode,
     userId: chatClient?.userID,
+    callAccepted: acceptedFromOverlay,
+    initialRemotePeer: {
+      name: typeof peerName === "string" ? peerName : undefined,
+      image: typeof peerImage === "string" ? peerImage : undefined,
+    },
   });
 
   if (loading) {
@@ -89,15 +102,15 @@ const CallScreen = () => {
   if (!call) return <ErrorCallUI error="Call unavailable" />;
 
   return (
-    <StreamCall call={call}>
+    <RtcSessionProvider call={call}>
       <CallUI
         isCaller={isCaller}
         callMode={effectiveCallMode}
         displayNames={displayNames}
         remotePeer={remotePeer}
-        acceptedFromOverlay={acceptedFromOverlay}
+        channelId={channelId}
       />
-    </StreamCall>
+    </RtcSessionProvider>
   );
 };
 
@@ -106,76 +119,68 @@ function CallUI({
   callMode,
   displayNames,
   remotePeer,
-  acceptedFromOverlay,
+  channelId,
 }: {
   isCaller: boolean;
   callMode: CallMode;
   displayNames: Record<string, string>;
   remotePeer: { name: string; image?: string };
-  acceptedFromOverlay: boolean;
+  channelId: string;
 }) {
   const isVideoCall = callMode === "video";
   const call = useCall();
   const router = useRouter();
-  const { useCallCallingState } = useCallStateHooks();
+  const { useCallCallingState, useRemoteParticipants } = useCallStateHooks();
   const callingState = useCallCallingState();
-  const [calleeConnected, setCalleeConnected] = useState(!isCaller);
+  const remoteParticipants = useRemoteParticipants();
 
-  useEffect(() => {
-    if (!call || !isCaller) return;
+  const calleeConnected = useMemo(() => {
+    if (!isCaller || !call) return true;
+    return remoteParticipants.some((p) => p.userId !== call.currentUserId);
+  }, [isCaller, call, remoteParticipants]);
 
-    const markConnected = (userId?: string) => {
-      if (!userId || userId === call.currentUserId) return;
-      setCalleeConnected(true);
-    };
+  const exitToChat = () => {
+    if (channelId) {
+      router.replace(streamChannelPath(channelId) as never);
+      return;
+    }
+    router.back();
+  };
 
-    const unsubAccepted = call.on("call.accepted", (event) => {
-      markConnected(event.user?.id);
-    });
-    const unsubJoined = call.on("call.session_participant_joined", (event) => {
-      markConnected(event.participant?.user?.id);
-    });
-
-    return () => {
-      unsubAccepted();
-      unsubJoined();
-    };
-  }, [call, isCaller]);
-
-  const isJoined = callingState === CallingState.JOINED;
+  const isJoined = callingState === RtcConnectionState.JOINED;
   const waitingForCallee = isCaller && !calleeConnected;
+  const isCalleeConnecting =
+    !isCaller && callingState === RtcConnectionState.JOINING;
+  const callDuration = useCallDuration(isJoined);
 
   const isRinging = isCaller
-    ? waitingForCallee ||
-      [CallingState.RINGING, CallingState.JOINING, CallingState.IDLE].includes(
-        callingState,
-      ) ||
-      Boolean(
-        call?.ringing &&
-          callingState !== CallingState.JOINED &&
-          callingState !== CallingState.LEFT,
-      )
-    : callingState === CallingState.RINGING &&
-      Boolean(call?.ringing) &&
-      !acceptedFromOverlay;
+    ? !isJoined &&
+      (waitingForCallee ||
+        [RtcConnectionState.RINGING, RtcConnectionState.JOINING, RtcConnectionState.IDLE].includes(
+          callingState as RtcConnectionState,
+        ) ||
+        Boolean(
+          call?.ringing &&
+            callingState !== RtcConnectionState.LEFT,
+        ))
+    : !isJoined &&
+      callingState !== RtcConnectionState.LEFT &&
+      !isCalleeConnecting;
 
-  const sessionStatus = mapCallingStateToStatus(callingState, {
-    ringing: Boolean(call?.ringing),
-    isCaller,
-  });
+  const sessionStatus = mapCallingStateToStatus(callingState);
 
   useCallRingtone(
     isCaller
-      ? callingState !== CallingState.JOINED &&
-          callingState !== CallingState.LEFT
-      : callingState === CallingState.RINGING && Boolean(call?.ringing),
+      ? callingState !== RtcConnectionState.JOINED &&
+          callingState !== RtcConnectionState.LEFT
+      : isRinging,
     !isCaller,
   );
 
   const { toggleSpeaker, flipCamera, permissionError } = useWebRTC(
     call,
     isVideoCall,
-    isJoined && !waitingForCallee,
+    isJoined,
   );
 
   const hangup = async () => {
@@ -184,14 +189,14 @@ function CallUI({
     } else {
       await call?.leave();
     }
-    router.back();
+    exitToChat();
   };
 
   useEffect(() => {
-    if (callingState === CallingState.LEFT) {
-      router.back();
+    if (callingState === RtcConnectionState.LEFT) {
+      exitToChat();
     }
-  }, [callingState, router]);
+  }, [callingState, channelId, router]);
 
   if (permissionError && isJoined) {
     return <ErrorCallUI error={permissionError} />;
@@ -207,11 +212,11 @@ function CallUI({
         statusText={statusLabel(sessionStatus)}
         controls={
           isCaller ? (
-            <BroadcastOutgoingCallControls onDone={() => router.back()} />
+            <BroadcastOutgoingCallControls onDone={exitToChat} />
           ) : (
             <BroadcastIncomingCallControls
               isVideoCall={isVideoCall}
-              onDone={() => router.back()}
+              onDone={exitToChat}
             />
           )
         }
@@ -223,11 +228,14 @@ function CallUI({
     if (!isVideoCall) {
       return (
         <SafeAreaView style={styles.activeRoot}>
+          <StreamConnectionOverlay />
           <View style={styles.audioCallBody}>
             <Ionicons name="call" size={48} color="rgba(255,255,255,0.9)" />
             <Text style={styles.audioCallLabel}>{remotePeer.name}</Text>
             <Text style={styles.audioCallSub}>
-              {statusLabel(sessionStatus) || "Voice call"}
+              {isJoined
+                ? callDuration
+                : statusLabel(sessionStatus) || "Voice call"}
             </Text>
           </View>
           <BroadcastActiveCallControls
@@ -264,10 +272,13 @@ function CallUI({
   }
 
   return (
-    <SafeAreaView style={styles.activeRoot} edges={["top"]}>
+    <SafeAreaView style={styles.activeRoot} edges={[]}>
+      <StreamConnectionOverlay />
       <BroadcastVideoCallLayout
         displayNames={displayNames}
         remotePeer={remotePeer}
+        duration={callDuration}
+        localUserId={call?.currentUserId}
       />
       <BroadcastActiveCallControls
         showCamera

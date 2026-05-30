@@ -1,10 +1,6 @@
 import { useCallback, useState } from "react";
 import { Alert } from "react-native";
-import {
-  OwnCapability,
-  useCall,
-  useCallStateHooks,
-} from "@stream-io/video-react-native-sdk";
+import { OwnCapability, useCall, useCallStateHooks } from "@/rtc";
 import { LIVE_EVENT } from "@/utils/livestreamSession";
 
 type Options = {
@@ -40,7 +36,7 @@ export function useLiveModeration({ isHost, hostUserId, myUserId }: Options) {
   );
 
   const muteParticipant = useCallback(
-    async (userId: string, displayName: string) => {
+    async (userId: string, _displayName: string) => {
       if (!call || !canModerate || userId === hostUserId) return;
       await withMuting(userId, async () => {
         await call.muteUser(userId, "audio");
@@ -61,7 +57,7 @@ export function useLiveModeration({ isHost, hostUserId, myUserId }: Options) {
   );
 
   const removeFromLive = useCallback(
-    async (userId: string, displayName: string) => {
+    async (userId: string, _displayName: string) => {
       if (!call || !canModerate || userId === hostUserId) return;
       await withMuting(userId, async () => {
         await call.muteUser(userId, "audio");

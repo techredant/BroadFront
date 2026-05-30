@@ -1,10 +1,6 @@
 import React, { useMemo } from "react";
 import { View, Text, StyleSheet } from "react-native";
-import {
-  useCallStateHooks,
-  VideoRenderer,
-} from "@stream-io/video-react-native-sdk";
-import { hasScreenShare } from "@stream-io/video-client";
+import { useCallStateHooks } from "@/rtc";
 import { Ionicons } from "@expo/vector-icons";
 import { MediaColors } from "@/constants/mediaTheme";
 
@@ -16,7 +12,7 @@ export default function AudioPresenterBanner() {
   const participants = useParticipants();
 
   const presenter = useMemo(
-    () => participants.find((p) => hasScreenShare(p)),
+    () => participants.find((p) => p.publishedTracks?.includes("screenShareTrack")),
     [participants],
   );
 
@@ -29,13 +25,6 @@ export default function AudioPresenterBanner() {
         <Text style={styles.badgeText} numberOfLines={1}>
           {presenter.name || "Presenter"} is presenting
         </Text>
-      </View>
-      <View style={styles.preview}>
-        <VideoRenderer
-          participant={presenter}
-          trackType="screenShareTrack"
-          isVisible
-        />
       </View>
     </View>
   );
@@ -64,9 +53,5 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 11,
-  },
-  preview: {
-    height: 120,
-    backgroundColor: "#000",
   },
 });

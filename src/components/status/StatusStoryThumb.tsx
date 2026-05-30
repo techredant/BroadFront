@@ -2,10 +2,6 @@ import { View, Text, StyleSheet } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import {
-<<<<<<< HEAD
-=======
-  buildCloudinaryUrl,
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   isVideoMedia,
   resolveMediaUrl,
 } from "@/utils/mediaUtils";
@@ -13,10 +9,6 @@ import { useVideoThumbnail } from "@/utils/videoThumbnail";
 import { STATUS_AVATAR_INSET } from "@/constants/statusTheme";
 
 const DEFAULT_CAPTION_BG = "#075E54";
-<<<<<<< HEAD
-=======
-const STORY_THUMB_TARGET_WIDTH = 180;
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 
 type Props = {
   status: { media?: string[]; caption?: string; backgroundColor?: string } | null;
@@ -48,13 +40,7 @@ export function StatusStoryThumb({ status, ringSize }: Props) {
 
   if (mediaUrl) {
     const previewUri = isVideo ? thumbUri ?? mediaUrl : mediaUrl;
-<<<<<<< HEAD
     const optimizedPreview = previewUri;
-=======
-    const optimizedPreview =
-      buildCloudinaryUrl(previewUri, { width: STORY_THUMB_TARGET_WIDTH }) ??
-      previewUri;
->>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
     return (
       <View style={frameStyle}>
         <Image

@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { useCallStateHooks } from "@stream-io/video-react-native-sdk";
+import { useCallStateHooks } from "@/rtc";
 import { MediaColors } from "@/constants/mediaTheme";
 
 export default function AudioRoomDescription() {
@@ -9,8 +9,8 @@ export default function AudioRoomDescription() {
   const participants = useParticipants();
   const isLive = useIsCallLive();
 
-  const title = (custom as any)?.title || "Audio room";
-  const category = (custom as any)?.category;
+  const title = (custom as Record<string, unknown>)?.title || "Audio room";
+  const category = (custom as Record<string, unknown>)?.category;
 
   return (
     <View style={styles.container}>
@@ -20,11 +20,11 @@ export default function AudioRoomDescription() {
           <Text style={styles.liveText}>{isLive ? "LIVE" : "OFFLINE"}</Text>
         </View>
         {category ? (
-          <Text style={styles.category}>{category}</Text>
+          <Text style={styles.category}>{String(category)}</Text>
         ) : null}
       </View>
       <Text style={styles.title} numberOfLines={2}>
-        {title}
+        {String(title)}
       </Text>
       <Text style={styles.count}>
         {participants.length} {participants.length === 1 ? "listener" : "listeners"}

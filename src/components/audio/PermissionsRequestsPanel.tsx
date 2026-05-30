@@ -1,9 +1,5 @@
-import {
-  OwnCapability,
-  PermissionRequestEvent,
-  useCall,
-  useCallStateHooks,
-} from "@stream-io/video-react-native-sdk";
+import { OwnCapability, useCall, useCallStateHooks } from "@/rtc";
+import type { PermissionRequestEvent } from "@/rtc/types";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Text,
@@ -29,9 +25,10 @@ export const PermissionRequestsPanel = () => {
   useEffect(() => {
     if (!call || !canModerate) return;
     return call.on("call.permission_request", (request) => {
+      const req = request as PermissionRequestEvent;
       setRequests((prev) => {
-        if (prev.some((r) => r.user.id === request.user.id)) return prev;
-        return [...prev, request];
+        if (prev.some((r) => r.user.id === req.user.id)) return prev;
+        return [...prev, req];
       });
     });
   }, [call, canModerate]);

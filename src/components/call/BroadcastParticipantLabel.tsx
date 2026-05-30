@@ -1,19 +1,15 @@
 import { StyleSheet, Text, View } from "react-native";
-import { useI18n } from "@stream-io/video-react-bindings";
-import type { ParticipantLabelProps } from "@stream-io/video-react-native-sdk";
+import type { RtcParticipant } from "@/rtc/types";
 import { resolveCallParticipantName } from "@/utils/callDisplayName";
 
-type Props = ParticipantLabelProps & {
+type Props = {
+  participant: RtcParticipant & { isLocalParticipant?: boolean; name?: string };
   displayNames: Record<string, string>;
 };
 
-export function BroadcastParticipantLabel({
-  participant,
-  displayNames,
-}: Props) {
-  const { t } = useI18n();
+export function BroadcastParticipantLabel({ participant, displayNames }: Props) {
   const label = participant.isLocalParticipant
-    ? t("You")
+    ? "You"
     : resolveCallParticipantName(
         participant.userId,
         displayNames,
@@ -31,6 +27,9 @@ export function BroadcastParticipantLabel({
 
 const styles = StyleSheet.create({
   wrap: {
+    position: "absolute",
+    left: 12,
+    bottom: 12,
     backgroundColor: "rgba(0,0,0,0.55)",
     paddingHorizontal: 10,
     paddingVertical: 6,

@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
-import NetInfo from "@react-native-community/netinfo";
-import type { Call, StreamVideoClient } from "@stream-io/video-react-native-sdk";
-import { CallingState, callManager } from "@stream-io/video-react-native-sdk";
+import type { RtcCall } from "@/rtc/RtcCall";
+import type { AgoraRtcClient } from "@/rtc/RtcCall";
+import { CallingState } from "@/rtc";
+import { RtcConnectionState } from "@/rtc/types";
+import { useAgoraRtc } from "@/rtc/AgoraRtcContext";
 import type { StreamChat } from "stream-chat";
+import { API_PUBLIC_URL } from "@/constants/api";
 import {
   buildCallMemberDisplayNames,
   displayNameFromChatUser,
   getRemoteChatMember,
+  resolveCallParticipantName,
 } from "@/utils/callDisplayName";
+import { syncChatMemberProfiles } from "@/utils/streamUser";
 import {
   messagingChannelCid,
   messagingChannelIdFromRoute,
@@ -23,6 +27,9 @@ import { joinCallWithMedia, isCallJoinInProgress } from "@/utils/callMedia";
 import { upsertStreamUser } from "@/utils/streamUser";
 import { isUserBusyInAnotherCall, rejectRingingCall } from "@/utils/callBusy";
 import { callDebug } from "@/utils/callDebug";
+import { configureCallDefaults } from "@/utils/streamCallLifecycle";
+import { setActiveRtcCall } from "@/rtc/RtcCall";
+import { fetchCallSession } from "@/rtc/agoraApi";
 
 export type CallRemotePeer = {
   name: string;
@@ -30,12 +37,14 @@ export type CallRemotePeer = {
 };
 
 type UseCallManagerOptions = {
-  videoClient: StreamVideoClient | null | undefined;
+  videoClient: AgoraRtcClient | null | undefined;
   chatClient: StreamChat | null | undefined;
   rawCallId: string;
   isCaller: boolean;
   urlCallMode: CallMode;
   userId: string | null | undefined;
+  callAccepted?: boolean;
+  initialRemotePeer?: { name?: string; image?: string };
 };
 
 export function useCallManager({
@@ -45,21 +54,28 @@ export function useCallManager({
   isCaller,
   urlCallMode,
   userId,
+  callAccepted = false,
+  initialRemotePeer,
 }: UseCallManagerOptions) {
+  const { socket } = useAgoraRtc();
   const channelId = rawCallId ? messagingChannelIdFromRoute(rawCallId) : "";
   const videoCallId = channelId ? streamVideoCallId(channelId) : "";
 
-  const [call, setCall] = useState<Call | null>(null);
+  const [call, setCall] = useState<RtcCall | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [effectiveCallMode, setEffectiveCallMode] =
     useState<CallMode>(urlCallMode);
-  const [remotePeer, setRemotePeer] = useState<CallRemotePeer>({ name: "User" });
+  const [remotePeer, setRemotePeer] = useState<CallRemotePeer>(() => ({
+    name: initialRemotePeer?.name?.trim() || "Member",
+    image: initialRemotePeer?.image,
+  }));
   const [displayNames, setDisplayNames] = useState<Record<string, string>>({});
-  const callRef = useRef<Call | null>(null);
+  const callRef = useRef<RtcCall | null>(null);
   callRef.current = call;
   const chatUserId = chatClient?.userID;
   const acceptHandledRef = useRef(false);
+  const calleeJoinStartedRef = useRef(false);
   const setupGenerationRef = useRef(0);
 
   useEffect(() => {
@@ -76,11 +92,10 @@ export function useCallManager({
     const generation = ++setupGenerationRef.current;
     let cancelled = false;
     acceptHandledRef.current = false;
+    calleeJoinStartedRef.current = false;
 
-    const resolveCallMode = (streamCall: Call) => {
-      const custom = streamCall.state?.custom as
-        | { callMode?: string }
-        | undefined;
+    const resolveCallMode = (streamCall: RtcCall) => {
+      const custom = streamCall.state?.custom as { callMode?: string } | undefined;
       if (custom?.callMode === "audio") return "audio" as const;
       if (custom?.callMode === "video") return "video" as const;
       return urlCallMode;
@@ -94,10 +109,32 @@ export function useCallManager({
       const nameMap = buildCallMemberDisplayNames(channel, myId);
       const remote = getRemoteChatMember(channel, myId);
 
+      const memberIds = Object.keys(channel.state.members).filter(
+        (id) => id && id !== "ai-assistant",
+      );
+      try {
+        const profiles = await syncChatMemberProfiles(memberIds);
+        for (const profile of profiles) {
+          if (profile.name?.trim()) {
+            nameMap[profile.clerkId] = profile.name.trim();
+          }
+        }
+      } catch {
+        /* keep chat-derived names */
+      }
+
+      const remoteName = remote?.user_id
+        ? resolveCallParticipantName(
+            remote.user_id,
+            nameMap,
+            remote.user?.name,
+          )
+        : "Member";
+
       if (!cancelled && generation === setupGenerationRef.current) {
         setDisplayNames(nameMap);
         setRemotePeer({
-          name: displayNameFromChatUser(remote?.user),
+          name: remoteName !== "User" ? remoteName : displayNameFromChatUser(remote?.user),
           image: remote?.user?.image,
         });
       }
@@ -121,81 +158,75 @@ export function useCallManager({
 
       try {
         if (isCaller && isUserBusyInAnotherCall(videoClient, videoCallId)) {
-          if (!cancelled) {
-            setError("You are already in another call.");
-          }
+          if (!cancelled) setError("You are already in another call.");
           return;
         }
 
         if (!isCaller && isUserBusyInAnotherCall(videoClient, videoCallId)) {
           await rejectRingingCall(videoClient, videoCallId, "busy");
-          if (!cancelled) {
-            setError("You are already in another call.");
-          }
+          if (!cancelled) setError("You are already in another call.");
           return;
         }
 
         if (!isCaller) {
-          const streamCall = videoClient.call("default", videoCallId, {
-            reuseInstance: true,
-          });
+          const streamCall = videoClient.call("default", videoCallId);
+          configureCallDefaults(streamCall);
+
+          const session = await fetchCallSession(videoCallId);
+          if (!session || session.status === "ended") {
+            if (!cancelled) setError("Call ended.");
+            return;
+          }
+
+          if (session.callMode) {
+            streamCall.state.custom = {
+              ...streamCall.state.custom,
+              callMode: session.callMode,
+            };
+          }
+
+          if (streamCall.state.callingState === RtcConnectionState.LEFT) {
+            streamCall.resetForIncomingRing({
+              callMode: session.callMode,
+            });
+          }
+
           const mode = resolveCallMode(streamCall);
 
-          if (streamCall.state.callingState === CallingState.LEFT) {
-            if (!cancelled) {
-              setError("Call ended.");
-            }
-            return;
-          }
-
-          if (
-            streamCall.state.callingState === CallingState.JOINING ||
-            isCallJoinInProgress(videoCallId)
-          ) {
-            if (!cancelled && generation === setupGenerationRef.current) {
-              setEffectiveCallMode(mode);
-              setCall(streamCall);
-            }
-            void hydratePeerInfo().catch(() => {});
-            void joinCallWithMedia(streamCall, mode === "video").catch((err) =>
-              callDebug.warn("callee-join-failed", err),
-            );
-            return;
-          }
-
-          if (streamCall.state.callingState !== CallingState.JOINED) {
-            if (!streamCall.ringing) {
-              await streamCall.get({
-                ring: true,
-                video: mode === "video",
-              });
-            }
-            await joinCallWithMedia(streamCall, mode === "video");
-          } else {
-            await joinCallWithMedia(streamCall, mode === "video");
+          if (streamCall.state.callingState === RtcConnectionState.IDLE) {
+            await streamCall.get({ ring: false, video: mode === "video" });
           }
 
           if (!cancelled && generation === setupGenerationRef.current) {
             setEffectiveCallMode(mode);
             setCall(streamCall);
+            setActiveRtcCall(streamCall);
           }
 
           void hydratePeerInfo().catch(() => {});
           return;
         }
 
-        await endStaleCallBeforeOutgoing(videoClient, videoCallId);
+        await endStaleCallBeforeOutgoing(videoClient, videoCallId, chatUserId);
 
         const channel = chatClient.channel("messaging", channelId);
+        await channel.watch();
+
         const myId = chatUserId;
-        const streamCall = videoClient.call("default", videoCallId, {
-          reuseInstance: false,
-        });
+        const streamCall = videoClient.call("default", videoCallId);
+        configureCallDefaults(streamCall);
         const isVideoCall = urlCallMode === "video";
         const memberIds = new Set<string>([myId]);
         Object.values(channel.state.members).forEach((m) => {
           if (m.user_id) memberIds.add(m.user_id);
         });
+
+        if (memberIds.size < 2) {
+          if (!cancelled) {
+            setError("Could not find anyone to call in this chat.");
+          }
+          return;
+        }
 
         const watchPromise = hydratePeerInfo().catch((err) =>
           callDebug.warn("hydrate-peer-failed", err),
@@ -218,15 +249,20 @@ export function useCallManager({
 
         if (!cancelled && generation === setupGenerationRef.current) {
           setCall(streamCall);
+          setActiveRtcCall(streamCall);
         }
 
         void watchPromise;
       } catch (err) {
-        callDebug.error("setup-failed", err);
+        callDebug.error("setup-failed", err, { apiBase: API_PUBLIC_URL });
         if (!cancelled && generation === setupGenerationRef.current) {
-          setError(
-            err instanceof Error ? err.message : "Failed to start the call.",
-          );
+          const message =
+            err instanceof Error
+              ? err.message
+              : typeof err === "string"
+                ? err
+                : "Failed to start the call.";
+          setError(message);
         }
       } finally {
         if (!cancelled && generation === setupGenerationRef.current) {
@@ -252,24 +288,46 @@ export function useCallManager({
   ]);
 
   useEffect(() => {
+    if (!call || isCaller) return;
+    if (!callAccepted && call.state.callingState !== RtcConnectionState.JOINED) return;
+    if (calleeJoinStartedRef.current) return;
+    if (isCallJoinInProgress(call.id)) return;
+
+    calleeJoinStartedRef.current = true;
+    void joinCallWithMedia(call, effectiveCallMode === "video").catch((err) =>
+      callDebug.warn("callee-join-failed", err),
+    );
+  }, [call, isCaller, callAccepted, effectiveCallMode]);
+
+  useEffect(() => {
+    if (!call || !socket) return;
+
+    const onEnded = (payload: { channelName?: string }) => {
+      if (payload.channelName !== call.id) return;
+      if (call.state.callingState === RtcConnectionState.LEFT) return;
+      void call.leave().catch(() => {});
+      setError("Call ended.");
+    };
+
+    socket.on("call:ended", onEnded);
+    return () => {
+      socket.off("call:ended", onEnded);
+    };
+  }, [call, socket]);
+
+  useEffect(() => {
     if (!call || !isCaller) return;
 
-    const joinCaller = async () => {
+    const mode = effectiveCallMode === "video";
+
+    const joinCallerMedia = async () => {
       if (acceptHandledRef.current) return;
-      if (call.state.callingState === CallingState.LEFT) return;
-      if (call.state.callingState === CallingState.JOINING) return;
+      if (call.state.callingState === RtcConnectionState.LEFT) return;
       if (isCallJoinInProgress(call.id)) return;
-
-      const shouldJoin =
-        call.state.callingState === CallingState.JOINED ||
-        !call.ringing ||
-        call.state.remoteParticipants.length > 0;
-
-      if (!shouldJoin) return;
 
       acceptHandledRef.current = true;
       try {
-        await joinCallWithMedia(call, effectiveCallMode === "video");
+        await joinCallWithMedia(call, mode);
         callDebug.log("caller-joined-on-accept");
       } catch (err) {
         acceptHandledRef.current = false;
@@ -277,53 +335,42 @@ export function useCallManager({
       }
     };
 
-    const onAccepted = (event: { user: { id?: string } }) => {
-      if (event.user?.id === call.currentUserId) return;
-      void joinCaller();
-    };
-    const onJoined = (event: { participant?: { user?: { id?: string } } }) => {
-      if (event.participant?.user?.id === call.currentUserId) return;
-      void joinCaller();
+    const onAccepted = (payload: { channelName: string; userId: string }) => {
+      if (payload.channelName !== call.id) return;
+      if (payload.userId === call.currentUserId) return;
+      void joinCallerMedia();
     };
 
-    void joinCaller();
+    const onRemoteJoined = () => {
+      const remoteJoined = call.state.remoteParticipants.some(
+        (participant) => participant.userId !== call.currentUserId,
+      );
+      if (!remoteJoined && call.ringing) return;
+      void joinCallerMedia();
+    };
 
-    const unsubAccepted = call.on("call.accepted", onAccepted);
-    const unsubJoined = call.on("call.session_participant_joined", onJoined);
+    onRemoteJoined();
+
+    const unsubCall = call.on("call.accepted", onAccepted);
+    socket?.on("call:accepted", onAccepted);
+
+    const pollAccepted = setInterval(() => {
+      if (acceptHandledRef.current) return;
+      void fetchCallSession(call.id).then((session) => {
+        if (session?.status !== "active") return;
+        const peerAccepted = (session.acceptedBy ?? []).some(
+          (id) => id && id !== call.currentUserId,
+        );
+        if (peerAccepted) void joinCallerMedia();
+      });
+    }, 2000);
 
     return () => {
-      unsubAccepted();
-      unsubJoined();
+      unsubCall();
+      socket?.off("call:accepted", onAccepted);
+      clearInterval(pollAccepted);
     };
-  }, [call, isCaller, effectiveCallMode]);
-
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (next) => {
-      const activeCall = callRef.current;
-      if (next !== "active" || !activeCall) return;
-      if (activeCall.state.callingState !== CallingState.JOINED) return;
-
-      void joinCallWithMedia(activeCall, effectiveCallMode === "video").catch(
-        (err) => callDebug.warn("resume-media-failed", err),
-      );
-    });
-
-    return () => sub.remove();
-  }, [effectiveCallMode]);
-
-  useEffect(() => {
-    const unsub = NetInfo.addEventListener((state) => {
-      const activeCall = callRef.current;
-      if (!state.isConnected || !activeCall) return;
-      if (activeCall.state.callingState !== CallingState.JOINED) return;
-
-      void joinCallWithMedia(activeCall, effectiveCallMode === "video").catch(
-        (err) => callDebug.warn("reconnect-media-failed", err),
-      );
-    });
-
-    return unsub;
-  }, [effectiveCallMode]);
+  }, [call, isCaller, effectiveCallMode, socket]);
 
   useEffect(() => {
     return () => {
@@ -331,32 +378,15 @@ export function useCallManager({
       if (!activeCall) return;
 
       const state = activeCall.state.callingState;
-      if (state === CallingState.LEFT || state === CallingState.JOINING) {
+      if (state === RtcConnectionState.LEFT || state === RtcConnectionState.JOINING) {
         return;
       }
 
-      if (state === CallingState.RINGING || activeCall.ringing) {
-        try {
-          callManager.stop();
-        } catch {
-          /* ignore */
-        }
-
-        void activeCall
-          .leave({
-            reject: true,
-            reason: activeCall.isCreatedByMe ? "cancel" : "decline",
-          })
-          .catch(() => {});
-        return;
-      }
-
-      if (state === CallingState.JOINED) {
-        try {
-          callManager.stop();
-        } catch {
-          /* ignore */
-        }
+      if (
+        activeCall.isCreatedByMe &&
+        (state === RtcConnectionState.RINGING || activeCall.ringing)
+      ) {
+        void activeCall.leave({ reject: true, reason: "cancel" }).catch(() => {});
       }
     };
   }, []);
@@ -372,3 +402,5 @@ export function useCallManager({
     channelId,
   };
 }
+
+export { CallingState };

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { ActivityIndicator, StatusBar, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { useStreamVideoClient } from "@/rtc";
+import { fetchActiveLives } from "@/rtc/agoraApi";
 import {
   consumeStashedMarketLiveProduct,
   marketLiveCallId,
@@ -13,21 +15,11 @@ import {
   setActiveMarketLiveSession,
   type MarketLiveSession,
 } from "@/utils/marketLiveSession";
-import {
-  StreamVideo,
-  StreamVideoClient,
-} from "@stream-io/video-react-native-sdk";
 import { HomeScreen } from "@/components/live/HomeLivescreen";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchStreamToken } from "@/utils/streamToken";
 import LiveScreen from "@/components/live/LiveScreen";
-// Market live host paywall — disabled until we ship billing (re-enable later).
-// import { LiveHostPaywall } from "@/components/live/LiveHostPaywall";
 import type { LiveHostPaywallMeta } from "@/components/live/LiveHostPaywall";
-// import { verifyHostAccessPaid } from "@/utils/liveHostPayments";
-
-const apiKey = process.env.EXPO_PUBLIC_STREAM_API_KEY!;
 
 type Session = MarketLiveSession;
 
@@ -39,6 +31,7 @@ type HostPending = {
 export default function MarketLiveRoute() {
   const { userDetails, currentLevel } = useLevel();
   const { isDark, theme } = useTheme();
+  const client = useStreamVideoClient();
   const params = useLocalSearchParams<{
     callId?: string;
     startMarketLive?: string;
@@ -56,17 +49,13 @@ export default function MarketLiveRoute() {
   const [openGoLiveModal, setOpenGoLiveModal] = useState(false);
   const marketLiveHandledRef = useRef(false);
 
-  const [client, setClient] = useState<StreamVideoClient | null>(null);
   const [session, setSession] = useState<Session | null>(
     () => getActiveMarketLiveSession(),
   );
   const [hostPending, setHostPending] = useState<HostPending | null>(null);
-  const [booting, setBooting] = useState(true);
-  const clientRef = useRef<StreamVideoClient | null>(null);
   const deepLinkHandledRef = useRef<string | null>(null);
 
   const goToHomeScreen = useCallback(() => {
-    clearActiveMarketLiveSession();
     setSession(null);
     setHostPending(null);
   }, []);
@@ -92,18 +81,7 @@ export default function MarketLiveRoute() {
 
   const requestHostLive = useCallback(
     async (id: string, meta?: LiveHostPaywallMeta) => {
-      // Paywall bypassed — go straight to host session (same as community live).
       enterHostSession(id, meta);
-
-      // --- Paywall (re-enable when ready) ---
-      // const clerkId = userDetails?.clerkId;
-      // if (!clerkId) return;
-      // const paid = await verifyHostAccessPaid(clerkId, id);
-      // if (paid) {
-      //   enterHostSession(id, meta);
-      //   return;
-      // }
-      // setHostPending({ callId: id, meta: meta ?? {} });
     },
     [enterHostSession],
   );
@@ -173,104 +151,80 @@ export default function MarketLiveRoute() {
       return;
     }
 
-    joinAsViewer(id);
-  }, [deepCallId, client, session, hostPending, joinAsViewer]);
-
-  useEffect(() => {
-    const clerkId = userDetails?.clerkId;
-    if (!clerkId) {
-      setBooting(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    const initClient = async () => {
+    const resolveDeepLink = async () => {
+      const me = userDetails?.clerkId;
       try {
-        const displayName =
-          `${userDetails.firstName ?? ""} ${userDetails.lastName ?? ""} ${userDetails.nickName ?? ""}`.trim() ||
-          clerkId;
+        const sessions = await fetchActiveLives("market");
+        const match = sessions.find(
+          (s: { callId?: string }) => s.callId === id,
+        );
 
-        const videoClient = StreamVideoClient.getOrCreateInstance({
-          apiKey,
-          user: {
-            id: clerkId,
-            name: displayName,
-            image: userDetails.image,
-          },
-          tokenProvider: () =>
-            fetchStreamToken({
-              userId: clerkId,
-              name: displayName,
-              image: userDetails.image,
-            }),
-        });
-
-        if (!cancelled) {
-          clientRef.current = videoClient;
-          setClient(videoClient);
+        if (me && match?.hostClerkId === me) {
+          enterHostSession(id, {
+            roomTitle:
+              typeof match?.roomTitle === "string" ? match.roomTitle : undefined,
+            level:
+              typeof match?.level === "string" ? match.level : undefined,
+          });
+        } else {
+          joinAsViewer(id);
         }
-      } catch (err) {
-        console.error("Failed to initialize StreamVideoClient", err);
-      } finally {
-        if (!cancelled) setBooting(false);
+      } catch {
+        joinAsViewer(id);
       }
     };
 
-    initClient();
+    void resolveDeepLink();
+  }, [
+    deepCallId,
+    client,
+    session,
+    hostPending,
+    joinAsViewer,
+    enterHostSession,
+    userDetails?.clerkId,
+  ]);
 
-    return () => {
-      cancelled = true;
-      if (!getActiveMarketLiveSession()) {
-        clientRef.current?.disconnectUser().catch(() => {});
-        clientRef.current = null;
-        setClient(null);
-      }
-    };
-  }, [userDetails?.clerkId]);
+  if (!userDetails?.clerkId || !client) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="small" color={theme.text} />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
-      {booting || !client ? (
-        <>
-          <StatusBar
-            translucent
-            backgroundColor="transparent"
-            barStyle={isDark ? "light-content" : "dark-content"}
-          />
-          <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-            <ActivityIndicator size="small" color={theme.text} />
-          </View>
-        </>
+      <StatusBar
+        translucent
+        backgroundColor="transparent"
+        barStyle={isDark ? "light-content" : "dark-content"}
+      />
+      {session ? (
+        <LiveScreen
+          variant="market"
+          goToHomeScreen={goToHomeScreen}
+          onHostEnded={() => clearActiveMarketLiveSession()}
+          callId={session.callId}
+          isHost={session.isHost}
+          roomTitle={session.roomTitle}
+          level={session.level}
+          productId={session.productId}
+          productTitle={session.productTitle}
+          productPrice={session.productPrice}
+          productImage={session.productImage}
+        />
       ) : (
-        <StreamVideo client={client}>
-          {session ? (
-            <LiveScreen
-              variant="market"
-              goToHomeScreen={goToHomeScreen}
-              callId={session.callId}
-              isHost={session.isHost}
-              roomTitle={session.roomTitle}
-              level={session.level}
-              productId={session.productId}
-              productTitle={session.productTitle}
-              productPrice={session.productPrice}
-              productImage={session.productImage}
-            />
-          ) : (
-            /* Paywall UI disabled — restore LiveHostPaywall block here when billing ships. */
-            <HomeScreen
-              mode="market"
-              client={client}
-              joinCall={joinAsViewer}
-              liveScreen={requestHostLive}
-              pendingMarketLive={marketLivePrompt}
-              onMarketLivePromptConsumed={() => setMarketLivePrompt(null)}
-              openGoLiveOnMount={openGoLiveModal}
-              onGoLiveModalOpened={() => setOpenGoLiveModal(false)}
-            />
-          )}
-        </StreamVideo>
+        <HomeScreen
+          mode="market"
+          client={client}
+          joinCall={joinAsViewer}
+          liveScreen={requestHostLive}
+          pendingMarketLive={marketLivePrompt}
+          onMarketLivePromptConsumed={() => setMarketLivePrompt(null)}
+          openGoLiveOnMount={openGoLiveModal}
+          onGoLiveModalOpened={() => setOpenGoLiveModal(false)}
+        />
       )}
     </View>
   );

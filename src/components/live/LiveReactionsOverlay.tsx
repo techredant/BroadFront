@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { memo, useEffect } from "react";
 import { StyleSheet } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -19,14 +19,14 @@ function FloatingReaction({ left, emoji }: { left: number; emoji: string }) {
   const scale = useSharedValue(1);
 
   useEffect(() => {
-    y.value = withTiming(-520, { duration: 1500 });
-    opacity.value = withTiming(0, { duration: 1500 });
-    scale.value = withTiming(1.35, { duration: 800 });
+    y.value = withTiming(-640, { duration: 1600 });
+    opacity.value = withTiming(0, { duration: 1600 });
+    scale.value = withTiming(1.4, { duration: 900 });
   }, [opacity, scale, y]);
 
   const style = useAnimatedStyle(() => ({
     position: "absolute",
-    bottom: 120,
+    bottom: TT.railBottom - 20,
     left,
     transform: [{ translateY: y.value }, { scale: scale.value }],
     opacity: opacity.value,
@@ -37,7 +37,7 @@ function FloatingReaction({ left, emoji }: { left: number; emoji: string }) {
   );
 }
 
-export function LiveReactionsOverlay({
+export const LiveReactionsOverlay = memo(function LiveReactionsOverlay({
   reactions,
 }: {
   reactions: FloatingReactionItem[];
@@ -49,7 +49,7 @@ export function LiveReactionsOverlay({
       ))}
     </>
   );
-}
+});
 
 const styles = StyleSheet.create({
   emoji: { fontSize: 31 },

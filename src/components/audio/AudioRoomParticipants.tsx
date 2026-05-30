@@ -1,10 +1,5 @@
 import React, { useCallback, useState } from "react";
-import {
-  useCall,
-  useCallStateHooks,
-  OwnCapability,
-} from "@stream-io/video-react-native-sdk";
-import { hasAudio } from "@stream-io/video-client";
+import { useCall, useCallStateHooks, OwnCapability } from "@/rtc";
 import {
   StyleSheet,
   Text,
@@ -129,7 +124,8 @@ export default function AudioRoomParticipants({ isHost = false }: Props) {
     return 0;
   });
 
-  const isPublishingAudio = (p: (typeof participants)[0]) => hasAudio(p);
+  const isPublishingAudio = (p: (typeof participants)[0]) =>
+    p.hasAudio ?? Boolean(p.hasAudio);
 
   return (
     <View style={styles.container}>

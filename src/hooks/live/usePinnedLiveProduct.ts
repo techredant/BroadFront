@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Call } from "@stream-io/video-react-native-sdk";
+import type { RtcCall } from "@/rtc/RtcCall";
 import type { MarketLiveProduct } from "@/utils/marketLive";
 import {
   buildMarketLiveCustom,
@@ -8,7 +8,7 @@ import {
 import { LIVE_EVENT } from "@/utils/livestreamSession";
 
 type Options = {
-  call: Call | null | undefined;
+  call: RtcCall | null | undefined;
   custom: Record<string, unknown> | undefined;
   isHost: boolean;
 };
@@ -33,12 +33,12 @@ export function usePinnedLiveProduct({ call, custom, isHost }: Options) {
         (call.state.custom as { hostUserId?: string })?.hostUserId ??
         call.state.createdBy?.id ??
         "";
-      const custom = buildMarketLiveCustom({
+      const nextCustom = buildMarketLiveCustom({
         hostClerkId: hostId,
         product,
       });
       await call.update({
-        custom: { ...custom, pinnedAt: Date.now() },
+        custom: { ...nextCustom, pinnedAt: Date.now() },
       });
       await call.sendCustomEvent({
         type: LIVE_EVENT.PIN_PRODUCT,

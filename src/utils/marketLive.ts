@@ -1,4 +1,3 @@
-import type { Call } from "@stream-io/video-react-native-sdk";
 import type { Router } from "expo-router";
 
 export const STREAM_KIND_MARKET = "market" as const;
@@ -69,14 +68,14 @@ export function parseMarketCallId(callId: string): {
   return { hostId: middle };
 }
 
-export function isMarketLiveCall(call: Call): boolean {
+export function isMarketLiveCall(call: { id: string; state?: { custom?: Record<string, unknown> } }): boolean {
   const custom = call.state?.custom as Record<string, unknown> | undefined;
   if (custom?.streamKind === STREAM_KIND_MARKET) return true;
   if (custom?.marketLive === true) return true;
   return call.id.startsWith("market_") || call.id.startsWith("mkt_");
 }
 
-export function isCommunityLiveCall(call: Call): boolean {
+export function isCommunityLiveCall(call: { id: string; state?: { custom?: Record<string, unknown> } }): boolean {
   return !isMarketLiveCall(call);
 }
 

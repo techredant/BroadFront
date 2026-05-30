@@ -1,5 +1,5 @@
 import { Alert, Linking, Platform } from "react-native";
-import type { Call } from "@stream-io/video-client";
+import type { RtcCall } from "@/rtc/RtcCall";
 
 type ScreenShareError = {
   message?: string;
@@ -65,7 +65,9 @@ export function alertScreenShareError(err: unknown) {
   ]);
 }
 
-export async function toggleCallScreenShare(call: Call): Promise<"started" | "stopped"> {
+export async function toggleCallScreenShare(
+  call: RtcCall,
+): Promise<"started" | "stopped"> {
   if (call.screenShare.enabled) {
     await call.screenShare.disable(true);
     return "stopped";

@@ -14,18 +14,18 @@ import { useAuth, useUser } from "@clerk/clerk-expo";
 import { Socket } from "socket.io-client";
 
 import { Post } from "@/types/post";
-import { API_PUBLIC_URL, SOCKET_IO_DISABLED_ON_HOST } from "@/constants/api";
+import { API_PUBLIC_URL, SOCKET_IO_DISABLED_ON_HOST, HOSTED_FEED_REFRESH_MS } from "@/constants/api";
 import {
   bindLevelRooms,
   createFeedSocket,
 } from "@/utils/feedSocket";
 import { bindPresenceSocket } from "@/utils/presenceSocket";
 import { useFeedPresenceSync } from "@/hooks/useFeedPresenceSync";
-import { getFeedRoomsForViewer } from "@/utils/feedRooms";
 import { AI_FEED_ENABLED } from "@/hooks/useAIRankedFeed";
+import { getFeedRoomsForViewer } from "@/utils/feedRooms";
+import { fetchRemovedPostIds, filterRemovedPosts } from "@/utils/postVisibility";
 
 const BASE_URL = API_PUBLIC_URL;
-const HOSTED_FEED_REFRESH_MS = 6000;
 
 /** Keep feed lists free of duplicate _id keys (FlatList / React warnings). */
 function dedupePostsById<T extends { _id?: string }>(posts: T[]): T[] {
@@ -57,11 +57,18 @@ function mergeRefreshedFeedPage<T extends { _id?: string; createdAt?: string; up
   existing: T[],
   refreshedPage: T[],
 ): T[] {
-  const refreshedIds = new Set(refreshedPage.map((post) => String(post?._id ?? "")));
-  return normalizeFeedPosts([
-    ...refreshedPage,
-    ...existing.filter((post) => !refreshedIds.has(String(post?._id ?? ""))),
-  ]);
+  if (refreshedPage.length === 0) {
+    return existing;
+  }
+
+  const refreshedIds = new Set(
+    refreshedPage.map((post) => String(post?._id ?? "")),
+  );
+  const tail = existing
+    .slice(refreshedPage.length)
+    .filter((post) => !refreshedIds.has(String(post?._id ?? "")));
+
+  return normalizeFeedPosts([...refreshedPage, ...tail] as Post[]) as T[];
 }
 
 interface Level {
@@ -225,7 +232,12 @@ const fetchPosts = useCallback(
 
       const aiUserId = userDetailsRef.current?.clerkId;
       const useAI =
-        AI_FEED_ENABLED && !!aiUserId && !loadMorePage && level.type !== "ward";
+        AI_FEED_ENABLED &&
+        !!aiUserId &&
+        !loadMorePage &&
+        !refresh &&
+        !silent &&
+        level.type !== "ward";
       const res = useAI
         ? await axios.get<{ posts: Post[] }>(`${BASE_URL}/api/ai/feed`, {
             params: {
@@ -246,16 +258,22 @@ const fetchPosts = useCallback(
 
       if (refresh || page === 1) {
         const previous = feedCache.current[key] || [];
-        const shouldPreserveLoadedFeed = silent && refresh && previous.length > data.length;
-        const nextPosts = shouldPreserveLoadedFeed
-          ? mergeRefreshedFeedPage(previous, data)
-          : data;
+        const nextPosts =
+          refresh && previous.length > 0
+            ? mergeRefreshedFeedPage(previous, data)
+            : data;
 
-        feedCache.current[key] = nextPosts;
-        setPosts(nextPosts);
-        feedPage.current[key] = shouldPreserveLoadedFeed
-          ? Math.max(feedPage.current[key] || 2, 2)
-          : 2;
+        const removedIds = await fetchRemovedPostIds(
+          nextPosts.map((post) => String(post._id ?? "")),
+        );
+        const finalPosts = filterRemovedPosts(nextPosts, removedIds);
+
+        feedCache.current[key] = finalPosts;
+        setPosts(finalPosts);
+        feedPage.current[key] =
+          refresh && previous.length > data.length
+            ? Math.max(feedPage.current[key] || 2, 2)
+            : 2;
       } else {
         const merged = normalizeFeedPosts([
           ...(feedCache.current[key] || []),
@@ -389,8 +407,9 @@ const fetchPosts = useCallback(
     });
 
     newSocket.on("deletePost", (postId: string) => {
+      const id = String(postId);
       setPosts((prev) => {
-        const updated = prev.filter((p) => p._id !== postId);
+        const updated = prev.filter((p) => String(p._id) !== id);
 
         feedCache.current[getKey(currentLevel)] = updated;
 
