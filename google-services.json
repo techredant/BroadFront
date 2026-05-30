@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "301691684116",
+    "project_id": "broadcastnotification-1cb1b",
+    "storage_bucket": "broadcastnotification-1cb1b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:301691684116:android:b6257332a2530bdc7b2e01",
+        "android_client_info": {
+          "package_name": "com.ant_apps.BroadCast"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBF_qM_5jIfp0MqcasNzv-bsYCGjlSPj8o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
