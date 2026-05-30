@@ -1,7 +1,20 @@
 import { useEffect, useState } from "react";
 import { File, Paths } from "expo-file-system";
 import * as VideoThumbnails from "expo-video-thumbnails";
+<<<<<<< HEAD
 import { isVideoMedia, resolveMediaUrl } from "@/utils/mediaUtils";
+=======
+import {
+  buildCloudinaryUrl,
+  isVideoMedia,
+  resolveMediaUrl,
+} from "@/utils/mediaUtils";
+
+const CLOUDINARY_VIDEO_RE =
+  /^https:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\//i;
+
+const CLOUDINARY_THUMB_WIDTH = 540;
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 
 const thumbnailCache = new Map<string, string>();
 const downloadCache = new Map<string, string>();
@@ -46,6 +59,23 @@ export async function getVideoThumbnailUri(
   const resolved = resolveMediaUrl(videoUri) ?? videoUri;
   if (!resolved || !isVideoMedia(resolved)) return null;
 
+<<<<<<< HEAD
+=======
+  // Cloudinary-hosted videos: skip the local download + native thumbnail
+  // pipeline and let Cloudinary render the poster frame on the CDN.
+  if (CLOUDINARY_VIDEO_RE.test(resolved)) {
+    const cdnThumb = buildCloudinaryUrl(resolved, {
+      kind: "thumb",
+      width: CLOUDINARY_THUMB_WIDTH,
+    });
+    if (cdnThumb) {
+      thumbnailCache.set(resolved, cdnThumb);
+      thumbnailCache.set(videoUri, cdnThumb);
+      return cdnThumb;
+    }
+  }
+
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   const cached = thumbnailCache.get(resolved);
   if (cached) return cached;
 
@@ -56,7 +86,10 @@ export async function getVideoThumbnailUri(
       quality: 0.72,
     });
     thumbnailCache.set(videoUri, uri);
+<<<<<<< HEAD
     thumbnailCache.set(resolved, uri);
+=======
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
     return uri;
   } catch (err) {
     console.warn("Video thumbnail failed:", videoUri, err);
@@ -64,12 +97,30 @@ export async function getVideoThumbnailUri(
   }
 }
 
+<<<<<<< HEAD
+=======
+function cloudinaryThumbFor(resolved: string | undefined): string | null {
+  if (!resolved || !CLOUDINARY_VIDEO_RE.test(resolved)) return null;
+  const cdnThumb = buildCloudinaryUrl(resolved, {
+    kind: "thumb",
+    width: CLOUDINARY_THUMB_WIDTH,
+  });
+  if (!cdnThumb) return null;
+  thumbnailCache.set(resolved, cdnThumb);
+  return cdnThumb;
+}
+
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 export function useVideoThumbnail(videoUri: string | undefined) {
   const resolved = videoUri ? resolveMediaUrl(videoUri) ?? videoUri : undefined;
 
   const [thumbUri, setThumbUri] = useState<string | null>(() => {
     if (!resolved) return null;
+<<<<<<< HEAD
     return thumbnailCache.get(resolved) ?? null;
+=======
+    return cloudinaryThumbFor(resolved) ?? thumbnailCache.get(resolved) ?? null;
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   });
 
   useEffect(() => {
@@ -78,6 +129,15 @@ export function useVideoThumbnail(videoUri: string | undefined) {
       return;
     }
 
+<<<<<<< HEAD
+=======
+    const cdnThumb = cloudinaryThumbFor(resolved);
+    if (cdnThumb) {
+      setThumbUri(cdnThumb);
+      return;
+    }
+
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
     const cached = thumbnailCache.get(resolved);
     if (cached) {
       setThumbUri(cached);

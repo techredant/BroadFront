@@ -11,7 +11,11 @@ import { Ionicons } from "@expo/vector-icons";
 import Video from "react-native-video";
 import { CachedImage, MediaSkeleton } from "@/components/media/CachedImage";
 import { useTheme } from "@/context/ThemeContext";
+<<<<<<< HEAD
 import { resolveMediaUrl } from "@/utils/mediaUtils";
+=======
+import { buildCloudinaryUrl, resolveMediaUrl } from "@/utils/mediaUtils";
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 import { useVideoThumbnail } from "@/utils/videoThumbnail";
 
 type Props = {
@@ -46,7 +50,25 @@ export function FeedVideoTile({
   const { theme, isDark } = useTheme();
   const resolvedUri = useMemo(() => resolveMediaUrl(uri) ?? uri, [uri]);
 
+<<<<<<< HEAD
   const videoUri = resolvedUri;
+=======
+  const effectiveTargetWidth =
+    typeof targetWidth === "number"
+      ? targetWidth
+      : typeof width === "number"
+        ? Math.round(width * PixelRatio.get())
+        : undefined;
+
+  const videoUri = useMemo(
+    () =>
+      buildCloudinaryUrl(resolvedUri, {
+        width: effectiveTargetWidth,
+        kind: "video",
+      }) ?? resolvedUri,
+    [resolvedUri, effectiveTargetWidth],
+  );
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   // Always preload the poster thumbnail so the tile is never empty, even
   // when the real <Video> never mounts. useVideoThumbnail already
   // short-circuits Cloudinary videos to a `so_2,f_jpg,w_<W>` URL — no need

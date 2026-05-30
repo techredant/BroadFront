@@ -6,6 +6,10 @@ import { Ionicons } from "@expo/vector-icons";
 import Video from "react-native-video";
 import { useTheme } from "@/context/ThemeContext";
 import {
+<<<<<<< HEAD
+=======
+  buildCloudinaryUrl,
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   isVideoMedia,
   resolveMediaUrl,
 } from "@/utils/mediaUtils";
@@ -24,7 +28,12 @@ type Props = {
   /** Muted autoplay length to hint that the tile is a video; 0 disables. */
   videoPreviewMs?: number;
   /**
+<<<<<<< HEAD
    * Pixel width hint for callers; media is compressed on upload.
+=======
+   * Pixel width Cloudinary should resize to. Defaults to `width` when it's a
+   * finite number, otherwise omitted (helper degrades gracefully).
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
    */
   targetWidth?: number;
 };
@@ -48,9 +57,43 @@ export function LightMediaTile({
   const videoPosterBg = isDark ? "#1a1a1a" : "#e8e8ed";
   const playIconColor = isDark ? "rgba(255,255,255,0.95)" : theme.primary;
 
+<<<<<<< HEAD
   const optimizedImageUri = resolvedUri;
   const optimizedVideoUri = resolvedUri;
   const optimizedThumbUri = thumbUri;
+=======
+  const effectiveTargetWidth =
+    typeof targetWidth === "number"
+      ? targetWidth
+      : typeof width === "number"
+        ? width
+        : undefined;
+
+  const optimizedImageUri = useMemo(
+    () =>
+      buildCloudinaryUrl(resolvedUri, { width: effectiveTargetWidth }) ??
+      resolvedUri,
+    [resolvedUri, effectiveTargetWidth],
+  );
+  const optimizedVideoUri = useMemo(
+    () =>
+      isVideo
+        ? buildCloudinaryUrl(resolvedUri, {
+            width: effectiveTargetWidth,
+            kind: "video",
+          }) ?? resolvedUri
+        : resolvedUri,
+    [isVideo, resolvedUri, effectiveTargetWidth],
+  );
+  const optimizedThumbUri = useMemo(
+    () =>
+      thumbUri
+        ? buildCloudinaryUrl(thumbUri, { width: effectiveTargetWidth }) ??
+          thumbUri
+        : null,
+    [thumbUri, effectiveTargetWidth],
+  );
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 
   const [previewDone, setPreviewDone] = useState(false);
 

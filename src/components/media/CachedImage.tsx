@@ -7,7 +7,11 @@ import {
   type ViewStyle,
 } from "react-native";
 import { MotiView } from "moti";
+<<<<<<< HEAD
 import { resolveMediaUrl } from "@/utils/mediaUtils";
+=======
+import { buildCloudinaryUrl } from "@/utils/mediaUtils";
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 
 const pulseTransition = {
   loop: true,
@@ -35,8 +39,15 @@ type CachedImageProps = ImageProps & {
   skeletonStyle?: StyleProp<ViewStyle>;
   showSkeleton?: boolean;
   /**
+<<<<<<< HEAD
    * Pixel width hint for future responsive loading. Media is already compressed
    * on upload; this is kept for API compatibility with callers.
+=======
+   * Pixel width the image will render at. Forwarded to Cloudinary's
+   * `w_<n>,c_limit` transform when `source.uri` lives on res.cloudinary.com
+   * (or is a legacy /api/media/ URL wrapped via fetch). Pass through unchanged
+   * for `require()` sources, third-party hosts, and local picker URIs.
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
    */
   targetWidth?: number;
 };
@@ -66,15 +77,27 @@ export function CachedImage({
     if (source == null) return source;
     if (typeof source === "number") return source;
     if (typeof source === "string") {
+<<<<<<< HEAD
       return resolveMediaUrl(source) ?? source;
+=======
+      const next = buildCloudinaryUrl(source, { width: targetWidth });
+      return next ?? source;
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
     }
     if (Array.isArray(source)) return source;
     const uri = (source as { uri?: unknown }).uri;
     if (typeof uri !== "string") return source;
+<<<<<<< HEAD
     const next = resolveMediaUrl(uri);
     if (!next || next === uri) return source;
     return { ...(source as object), uri: next };
   }, [source]);
+=======
+    const next = buildCloudinaryUrl(uri, { width: targetWidth });
+    if (!next || next === uri) return source;
+    return { ...(source as object), uri: next };
+  }, [source, targetWidth]);
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 
   const sourceKey =
     typeof optimizedSource === "number" || typeof optimizedSource === "string"

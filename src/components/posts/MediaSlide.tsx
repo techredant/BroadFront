@@ -5,7 +5,11 @@ import Video from "react-native-video";
 import Animated from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
 import LoaderKitView from "react-native-loader-kit";
+<<<<<<< HEAD
 import { isVideoMedia, resolveMediaUrl } from "@/utils/mediaUtils";
+=======
+import { buildCloudinaryUrl, isVideoMedia, resolveMediaUrl } from "@/utils/mediaUtils";
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 
 type MediaSlideProps = {
   item: string;
@@ -34,7 +38,20 @@ function MediaSlideComponent({
   const isVideo = useMemo(() => isVideoMedia(uri), [uri]);
   const [videoReady, setVideoReady] = useState(false);
   const [loading, setLoading] = useState(false);
+<<<<<<< HEAD
   const optimizedUri = uri;
+=======
+  const optimizedUri = useMemo(
+    () =>
+      pixelWidth
+        ? (buildCloudinaryUrl(uri, {
+            width: pixelWidth,
+            kind: isVideo ? "video" : "image",
+          }) ?? uri)
+        : uri,
+    [isVideo, pixelWidth, uri],
+  );
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 
   const mediaContent = (
     <Animated.View style={[styles.mediaFrame, zoomStyle]}>

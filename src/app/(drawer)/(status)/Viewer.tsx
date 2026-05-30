@@ -35,6 +35,10 @@ import { useAppContext } from "@/contexts/AppProvider";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { statusAvatarUri, statusDisplayName } from "@/utils/statusUser";
 import {
+<<<<<<< HEAD
+=======
+  buildCloudinaryUrl,
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   isVideoMedia,
   resolveMediaUrl,
 } from "@/utils/mediaUtils";
@@ -194,7 +198,16 @@ export default function Viewer() {
   const rawSlideMedia: string | undefined = current?.media?.[0];
   const optimizedSlideMedia = useMemo(() => {
     if (!rawSlideMedia) return rawSlideMedia;
+<<<<<<< HEAD
     return rawSlideMedia;
+=======
+    return (
+      buildCloudinaryUrl(rawSlideMedia, {
+        width: STORY_PIXEL_WIDTH,
+        kind: isVideo ? "video" : "image",
+      }) ?? rawSlideMedia
+    );
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   }, [rawSlideMedia, isVideo]);
   const [posterReplyText, setPosterReplyText] = useState("");
   const [posterBarFocused, setPosterBarFocused] = useState(false);

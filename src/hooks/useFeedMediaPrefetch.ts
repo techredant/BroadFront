@@ -1,17 +1,37 @@
 import { useCallback } from "react";
+<<<<<<< HEAD
 import { Image as ExpoImage } from "expo-image";
 import {
+=======
+import { Dimensions, PixelRatio } from "react-native";
+import { Image as ExpoImage } from "expo-image";
+import {
+  buildCloudinaryUrl,
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
   isVideoMedia,
   resolveMediaUrl,
 } from "@/utils/mediaUtils";
 
 const prefetchedImageUris = new Set<string>();
 
+<<<<<<< HEAD
+=======
+const PREFETCH_TARGET_WIDTH = Math.round(
+  Dimensions.get("window").width * PixelRatio.get(),
+);
+
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 function normalizeImageUri(uri: unknown): string | null {
   if (typeof uri !== "string") return null;
   const resolved = resolveMediaUrl(uri);
   if (!resolved || isVideoMedia(resolved)) return null;
+<<<<<<< HEAD
   return resolved;
+=======
+  return (
+    buildCloudinaryUrl(resolved, { width: PREFETCH_TARGET_WIDTH }) ?? resolved
+  );
+>>>>>>> 028b46649010975e10f1eb37987fd5cf1adb4408
 }
 
 function collectLinkPreviewImages(linkPreview: unknown): string[] {
