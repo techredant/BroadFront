@@ -5,7 +5,7 @@ import "../../global.css";
 
 import { AppProvider } from "@/contexts/AppProvider";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { LevelProvider, useLevel } from "@/context/LevelContext";
@@ -34,6 +34,9 @@ import {
 } from "@/utils/notificationRouting";
 
 void SplashScreen.preventAutoHideAsync();
+
+/** Never block the native splash longer than this (Play Store cold starts). */
+const SPLASH_MAX_MS = 2800;
 
 function useNotificationObserver() {
   const router = useRouter();
@@ -73,8 +76,8 @@ function SplashController() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const segments = useSegments();
-  const { isLoadingUser, loadingPosts, currentLevel } = useLevel();
   const { isReady: themeReady } = useTheme();
+  const splashHiddenRef = useRef(false);
 
   const inAuthGroup = segments[0] === "(auth)";
   const inOnboardingGroup = segments[0] === "(onboarding)";
@@ -110,22 +113,22 @@ function SplashController() {
     inDrawerGroup,
   ]);
 
-  const needsFeedBootstrap =
-    isSignedIn && !!onboardingComplete && inDrawerGroup;
-
-  const mainAppDataReady =
-    !isLoadingUser && !!currentLevel && !loadingPosts;
-
-  const canHideSplash =
-    themeReady &&
-    isLoaded &&
-    routingSettled &&
-    (!needsFeedBootstrap || mainAppDataReady);
+  /** Home uses skeletons — do not wait on profile/feed network before hiding splash. */
+  const canHideSplash = themeReady && isLoaded && routingSettled;
 
   useEffect(() => {
+    const hide = () => {
+      if (splashHiddenRef.current) return;
+      splashHiddenRef.current = true;
+      void SplashScreen.hideAsync();
+    };
+
     if (canHideSplash) {
-      SplashScreen.hideAsync();
+      hide();
     }
+
+    const maxTimer = setTimeout(hide, SPLASH_MAX_MS);
+    return () => clearTimeout(maxTimer);
   }, [canHideSplash]);
 
   return null;

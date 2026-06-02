@@ -17,6 +17,7 @@ type MediaSlideProps = {
   pinchGesture?: any;
   pixelWidth?: number;
   onBufferingChange?: (buffering: boolean) => void;
+  showVideoControls?: boolean;
 };
 
 function MediaSlideComponent({
@@ -29,6 +30,7 @@ function MediaSlideComponent({
   pinchGesture,
   pixelWidth,
   onBufferingChange,
+  showVideoControls = true,
 }: MediaSlideProps) {
   const uri = useMemo(() => resolveMediaUrl(item) ?? item, [item]);
   const isVideo = useMemo(() => isVideoMedia(uri), [uri]);
@@ -66,7 +68,7 @@ function MediaSlideComponent({
             resizeMode="contain"
             repeat
             muted={false}
-            controls={videoReady}
+            controls={showVideoControls && videoReady}
             playWhenInactive={false}
             onLoadStart={() => {
               setLoading(true);

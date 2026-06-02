@@ -13,6 +13,11 @@ import {
   RtcRemoteVideoView,
 } from "@/components/call/RtcVideoViews";
 import { configureLivestreamViewerMedia } from "@/utils/callMedia";
+import { clerkIdToUid, uidMatchesClerkId } from "@/utils/agoraUid";
+import { inviteLiveGuest, denyLiveGuest, leaveLiveViewer } from "@/rtc/agoraApi";
+import {
+  bindLiveSignaling,
+} from "@/rtc/agoraSignaling";
 import { clearActiveCommunityLiveSession } from "@/utils/communityLiveSession";
 import { clearActiveMarketLiveSession } from "@/utils/marketLiveSession";
 import {
@@ -49,15 +54,13 @@ import { useLiveKeyboardInset } from "@/hooks/live/useLiveKeyboardInset";
 import {
   LIVE_EVENT,
   LIVE_GIFTS,
-  LIVE_JOIN_TOAST_MS,
+  LIVE_JOIN_BATCH_MS,
   LIVE_CHAT_VISIBLE_MAX,
   appendMessage,
   type LiveMessage,
   type SpeakRequest,
-  type JoinToast,
   type DonationToast,
 } from "@/utils/livestreamSession";
-import { LiveJoinToastLayer } from "./LiveJoinToastLayer";
 import { LiveChatPanel } from "./LiveChatPanel";
 import { LiveGuestStrip } from "./LiveGuestStrip";
 import { LiveTopBar } from "./LiveTopBar";
@@ -73,19 +76,21 @@ import { LiveDonationPopup } from "./LiveDonationPopup";
 import { LiveFullScreenGift, type FullScreenGiftPayload } from "./LiveFullScreenGift";
 import { LiveHostControlsBar } from "./LiveHostControlsBar";
 import { useLiveStreamDuration } from "@/hooks/live/useLiveStreamDuration";
-import { syncChatMemberProfiles } from "@/utils/streamUser";
+import { useLiveModeration } from "@/hooks/live/useLiveModeration";
+import { syncChatMemberProfiles, type ChatMemberProfile } from "@/utils/streamUser";
 import {
   completeLiveMpesaPayment,
   type LivePayResult,
 } from "@/utils/livePayments";
-import { API_PUBLIC_URL } from "@/constants/api";
+import { API_PUBLIC_URL, HOSTED_LIVE_POLL_MS, SOCKET_IO_DISABLED_ON_HOST } from "@/constants/api";
+import { fetchLiveEvents } from "@/rtc/agoraApi";
+import { acquireLiveSocket, releaseLiveSocket } from "@/utils/liveSocket";
 import { io } from "socket.io-client";
 import {
   productFromLiveCustom,
   type MarketLiveProduct,
 } from "@/utils/marketLive";
 import { LiveProductsDropdown } from "@/components/live/LiveProductsDropdown";
-import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 import NetInfo from "@react-native-community/netinfo";
 import {
   resolveLiveHostRole,
@@ -95,7 +100,6 @@ import { LivestreamAutoJoin } from "@/components/live/LivestreamAutoJoin";
 import { StreamConnectionOverlay } from "@/components/call/StreamConnectionOverlay";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const LIVE_JOIN_BATCH_MS = 140;
 const LIVE_SWIPE_THRESHOLD = 90;
 type NetworkTier = "good" | "constrained" | "poor";
 
@@ -105,6 +109,7 @@ type Props = {
   onSwitchLive?: (callId: string, index: number) => void;
   callId: string;
   isHost?: boolean;
+  hostClerkId?: string;
   roomTitle?: string;
   level?: string;
   playlist?: string[];
@@ -122,6 +127,7 @@ export default function LiveScreen({
   onSwitchLive,
   callId,
   isHost = false,
+  hostClerkId: hostClerkIdProp,
   roomTitle,
   level,
   playlist,
@@ -155,7 +161,7 @@ export default function LiveScreen({
     variant,
     roomTitle,
     level,
-    hostClerkId: userDetails?.clerkId,
+    hostClerkId: isHost ? userDetails?.clerkId : hostClerkIdProp,
     initialMarketProduct,
     onEnded: () => goHomeRef.current(),
     onHostEnded,
@@ -376,6 +382,10 @@ function LiveCanvasJoined({
   const localParticipant = useLocalParticipant();
   const participants = useRawParticipants();
   const hostUserId = call?.state.createdBy?.id;
+  const hostAgoraUid = useMemo(
+    () => (hostUserId ? clerkIdToUid(hostUserId) : null),
+    [hostUserId],
+  );
   const canUpdatePermissions = useHasPermissions(
     OwnCapability.UPDATE_CALL_PERMISSIONS,
   );
@@ -401,10 +411,23 @@ function LiveCanvasJoined({
       kind: "system",
       userName: "Live",
       text: "Say hi in the chat!",
+      createdAt: Date.now(),
     },
   ]);
   const [speakRequests, setSpeakRequests] = useState<SpeakRequest[]>([]);
-  const [showGuests, setShowGuests] = useState(false);
+  const [acceptedGuestIds, setAcceptedGuestIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [stageGuestNames, setStageGuestNames] = useState<Record<string, string>>(
+    {},
+  );
+  const [guestProfiles, setGuestProfiles] = useState<
+    Record<string, ChatMemberProfile>
+  >({});
+  const [pendingGuestInvite, setPendingGuestInvite] = useState<{
+    token: string;
+    uid?: number;
+  } | null>(null);
   const [input, setInput] = useState("");
   const [reactions, setReactions] = useState<
     { id: string; emoji: string; left: number }[]
@@ -418,7 +441,6 @@ function LiveCanvasJoined({
     }[]
   >([]);
   const [showGiftPicker, setShowGiftPicker] = useState(false);
-  const [joinToasts, setJoinToasts] = useState<JoinToast[]>([]);
   const [donationPopup, setDonationPopup] = useState<DonationToast | null>(null);
   const [likeCount, setLikeCount] = useState(0);
   const [heartBurstKey, setHeartBurstKey] = useState(0);
@@ -427,6 +449,9 @@ function LiveCanvasJoined({
   const [mpesaTab, setMpesaTab] = useState<"gift" | "donate">("gift");
   const [fullScreenGift, setFullScreenGift] =
     useState<FullScreenGiftPayload | null>(null);
+  const [hostMutedGuestIds, setHostMutedGuestIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [topDonors, setTopDonors] = useState<DonationLeaderEntry[]>([]);
   const [hostProfile, setHostProfile] = useState<{
     name?: string;
@@ -436,6 +461,7 @@ function LiveCanvasJoined({
   const streamDuration = useLiveStreamDuration(true);
   const { inset: keyboardInset, open: keyboardOpen } = useLiveKeyboardInset();
   const { handleFollow, following } = useFollowContext();
+  const chatInputRef = useRef<TextInput>(null);
   const lastTap = useRef(0);
   const reactionTapTimes = useRef<number[]>([]);
   const announcedJoins = useRef(new Set<string>());
@@ -447,6 +473,168 @@ function LiveCanvasJoined({
   const donationQueueRef = useRef<DonationToast[]>([]);
   const donationShowingRef = useRef(false);
   const broadcastedPaymentsRef = useRef(new Set<string>());
+  const liveSocketRef = useRef<ReturnType<typeof acquireLiveSocket>>(null);
+  const liveEndedHandledRef = useRef(false);
+  const guestEverInChannelRef = useRef<Set<string>>(new Set());
+
+  const {
+    muteParticipant,
+    unmuteParticipant,
+    muteEveryone,
+    mutingIds,
+  } = useLiveModeration({
+    isHost: effectiveIsHost,
+    hostUserId,
+    myUserId,
+  });
+
+  const markGuestOnStage = useCallback((userId: string, userName?: string) => {
+    if (!userId) return;
+    setAcceptedGuestIds((prev) => {
+      if (prev.has(userId)) return prev;
+      const next = new Set(prev);
+      next.add(userId);
+      return next;
+    });
+    if (userName) {
+      setStageGuestNames((prev) =>
+        prev[userId] === userName ? prev : { ...prev, [userId]: userName },
+      );
+    }
+  }, []);
+
+  const markGuestOffStage = useCallback((userId: string) => {
+    if (!userId) return;
+    guestEverInChannelRef.current.delete(userId);
+    setAcceptedGuestIds((prev) => {
+      if (!prev.has(userId)) return prev;
+      const next = new Set(prev);
+      next.delete(userId);
+      return next;
+    });
+    setStageGuestNames((prev) => {
+      if (!(userId in prev)) return prev;
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+  }, []);
+
+  const pushPresenceComment = useCallback(
+    (kind: "join" | "leave", userName: string, userId?: string) => {
+      setMessages((prev) =>
+        appendMessage(prev, {
+          kind,
+          userName,
+          userId,
+          text:
+            kind === "join"
+              ? `${userName} joined`
+              : `${userName} left`,
+        }),
+      );
+    },
+    [],
+  );
+
+  const acceptGuestInvite = useCallback(async () => {
+    if (!call || !pendingGuestInvite || !myUserId) return;
+    try {
+      await call.promoteAsLiveGuest(
+        pendingGuestInvite.token,
+        pendingGuestInvite.uid,
+      );
+      markGuestOnStage(myUserId, myName);
+      await call.sendCustomEvent({
+        type: LIVE_EVENT.GUEST_ON_STAGE,
+        senderName: myName,
+      });
+      setMessages((prev) =>
+        appendMessage(prev, {
+          kind: "system",
+          userName: myName,
+          text: "You're on stage",
+          userId: myUserId,
+        }),
+      );
+      setPendingGuestInvite(null);
+    } catch (e) {
+      console.log("guest accept error:", e);
+      Alert.alert("Could not join stage", "Please try again.");
+    }
+  }, [call, pendingGuestInvite, markGuestOnStage, myUserId, myName]);
+
+  const declineGuestInvite = useCallback(async () => {
+    if (!call || !pendingGuestInvite) return;
+    setPendingGuestInvite(null);
+    try {
+      await denyLiveGuest({
+        callId: call.id,
+        guestUserId: myUserId,
+        hostClerkId: hostUserId || undefined,
+      });
+      await call.sendCustomEvent({
+        type: LIVE_EVENT.GUEST_OFF_STAGE,
+        targetUserId: myUserId,
+        senderName: myName,
+      });
+    } catch {
+      /* ignore */
+    }
+  }, [call, pendingGuestInvite, myUserId, myName, hostUserId]);
+
+  const removeGuestFromStage = useCallback(
+    async (userId: string, userName: string) => {
+      if (!call || !canModerate || userId === hostUserId) return;
+      markGuestOffStage(userId);
+      setHostMutedGuestIds((prev) => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+      try {
+        await call.sendCustomEvent({
+          type: LIVE_EVENT.GUEST_OFF_STAGE,
+          targetUserId: userId,
+          senderName: myName,
+        });
+        setMessages((prev) =>
+          appendMessage(prev, {
+            kind: "system",
+            userName: "You",
+            text: `removed ${userName} from stage`,
+          }),
+        );
+      } catch (e) {
+        console.log("remove guest error:", e);
+      }
+    },
+    [call, canModerate, hostUserId, myName, markGuestOffStage],
+  );
+
+  const exitStage = useCallback(async () => {
+    if (!call || !myUserId || effectiveIsHost) return;
+    try {
+      await call.demoteToLiveViewer();
+      markGuestOffStage(myUserId);
+      await call.sendCustomEvent({
+        type: LIVE_EVENT.GUEST_OFF_STAGE,
+        targetUserId: myUserId,
+        senderName: myName,
+      });
+      setMessages((prev) =>
+        appendMessage(prev, {
+          kind: "system",
+          userName: myName,
+          text: "left the stage",
+          userId: myUserId,
+        }),
+      );
+    } catch (e) {
+      console.log("exit stage error:", e);
+      Alert.alert("Could not leave stage", "Please try again.");
+    }
+  }, [call, myUserId, myName, effectiveIsHost, markGuestOffStage]);
 
   useEffect(() => {
     if (!call || effectiveIsHost || callingState !== RtcConnectionState.JOINED) return;
@@ -474,30 +662,58 @@ function LiveCanvasJoined({
     [],
   );
 
-  const appendLiveMessage = useCallback((msg: Omit<LiveMessage, "id">) => {
-    setMessages((prev) => appendMessage(prev, msg));
-  }, []);
+  const isGuestOnStage = useMemo(
+    () =>
+      Boolean(
+        !effectiveIsHost &&
+          myUserId &&
+          acceptedGuestIds.has(myUserId),
+      ),
+    [effectiveIsHost, myUserId, acceptedGuestIds],
+  );
 
-  const enqueueMessage = useCallback((msg: Omit<LiveMessage, "id">) => {
-    if (msg.kind === "chat") {
-      appendLiveMessage(msg);
-      return;
-    }
+  const isHostParticipant = useCallback(
+    (p: EnrichedRtcParticipant) =>
+      Boolean(
+        hostUserId &&
+          (p.userId === hostUserId ||
+            uidMatchesClerkId(p.uid, hostUserId) ||
+            (hostAgoraUid != null && p.uid === hostAgoraUid)),
+      ),
+    [hostUserId, hostAgoraUid],
+  );
 
-    messageQueueRef.current.push(msg);
-    if (messageFlushTimerRef.current) return;
-    messageFlushTimerRef.current = setTimeout(() => {
-      messageFlushTimerRef.current = null;
-      const queued = messageQueueRef.current.splice(0);
-      if (!queued.length) return;
-      setMessages((prev) => {
-        const stamped = queued
-          .reverse()
-          .map((item) => ({ ...item, id: `${Date.now()}-${Math.random()}` }));
-        return [...stamped, ...prev].slice(0, LIVE_CHAT_VISIBLE_MAX);
-      });
-    }, LIVE_JOIN_BATCH_MS);
-  }, [appendLiveMessage]);
+  const appendLiveMessage = useCallback(
+    (msg: Omit<LiveMessage, "id" | "createdAt">) => {
+      setMessages((prev) => appendMessage(prev, msg));
+    },
+    [],
+  );
+
+  const enqueueMessage = useCallback(
+    (msg: Omit<LiveMessage, "id" | "createdAt">) => {
+      if (msg.kind === "chat" || msg.kind === "join" || msg.kind === "leave") {
+        appendLiveMessage(msg);
+        return;
+      }
+
+      messageQueueRef.current.push(msg);
+      if (messageFlushTimerRef.current) return;
+      messageFlushTimerRef.current = setTimeout(() => {
+        messageFlushTimerRef.current = null;
+        const queued = messageQueueRef.current.splice(0);
+        if (!queued.length) return;
+        setMessages((prev) => {
+          let next = prev;
+          for (const item of queued) {
+            next = appendMessage(next, item);
+          }
+          return next;
+        });
+      }, LIVE_JOIN_BATCH_MS);
+    },
+    [appendLiveMessage],
+  );
 
   useEffect(
     () => () => {
@@ -509,43 +725,167 @@ function LiveCanvasJoined({
     [],
   );
 
-  const guestViewers = useMemo(
-    () =>
-      participants.filter(
-        (p) =>
-          !p.isLocalParticipant &&
-          !isPublishingVideo(p) &&
-          p.userId !== call?.state.createdBy?.id,
-      ),
-    [participants, call?.state.createdBy?.id, isPublishingVideo],
-  );
-
-  const onStage = useMemo(
-    () => participants.filter((p) => isPublishingVideo(p)),
-    [participants, isPublishingVideo],
-  );
-
   const primaryParticipant = useMemo(() => {
     if (effectiveIsHost && localParticipant) return localParticipant;
-    const hostPublishing = participants.find(
-      (p) => p.userId === hostUserId && isPublishingVideo(p),
+
+    const hostParticipant = participants.find(
+      (p) => !p.isLocalParticipant && isHostParticipant(p),
     );
-    if (hostPublishing) return hostPublishing;
-    const hostAny = participants.find((p) => p.userId === hostUserId);
-    if (hostAny) return hostAny;
-    return (
-      onStage[0] ??
-      participants.find((p) => !p.isLocalParticipant) ??
-      localParticipant
+    if (hostParticipant) return hostParticipant;
+
+    const remotePublishing = participants.find(
+      (p) => !p.isLocalParticipant && isPublishingVideo(p),
     );
-  }, [effectiveIsHost, localParticipant, participants, hostUserId, onStage, isPublishingVideo]);
+    if (remotePublishing) return remotePublishing;
+
+    const anyRemote = participants.find((p) => !p.isLocalParticipant);
+    if (anyRemote) return anyRemote;
+
+    return undefined;
+  }, [
+    effectiveIsHost,
+    localParticipant,
+    participants,
+    isHostParticipant,
+    isPublishingVideo,
+  ]);
 
   const miniParticipants = useMemo(() => {
-    if (!primaryParticipant) return [];
-    return onStage.filter(
-      (p) => p.sessionId !== primaryParticipant.sessionId,
+    if (!acceptedGuestIds.size) return [];
+
+    const guests: EnrichedRtcParticipant[] = [];
+
+    for (const userId of acceptedGuestIds) {
+      if (userId === hostUserId) continue;
+
+      const fromChannel = participants.find(
+        (p) =>
+          p.userId === userId &&
+          !isHostParticipant(p) &&
+          p.sessionId !== primaryParticipant?.sessionId,
+      );
+      if (fromChannel) {
+        guests.push({
+          ...fromChannel,
+          name:
+            fromChannel.name ||
+            stageGuestNames[userId] ||
+            guestProfiles[userId]?.name ||
+            "Guest",
+          image:
+            fromChannel.image ||
+            guestProfiles[userId]?.image ||
+            (userId === myUserId ? userDetails?.image : undefined) ||
+            undefined,
+        });
+        continue;
+      }
+
+      if (
+        userId === myUserId &&
+        localParticipant &&
+        !isHostParticipant(localParticipant) &&
+        localParticipant.sessionId !== primaryParticipant?.sessionId
+      ) {
+        guests.push({
+          ...localParticipant,
+          name:
+            localParticipant.name ||
+            stageGuestNames[userId] ||
+            guestProfiles[userId]?.name ||
+            myName,
+          image:
+            localParticipant.image ||
+            guestProfiles[userId]?.image ||
+            userDetails?.image ||
+            undefined,
+        });
+        continue;
+      }
+
+      guests.push({
+        userId,
+        uid: 0,
+        name:
+          stageGuestNames[userId] ||
+          guestProfiles[userId]?.name ||
+          "Guest",
+        image: guestProfiles[userId]?.image || undefined,
+        sessionId: `stage-${userId}`,
+        isLocalParticipant: userId === myUserId,
+        isSpeaking: false,
+        publishedTracks: [],
+        hasVideo: false,
+        hasAudio: false,
+      });
+    }
+
+    return guests;
+  }, [
+    acceptedGuestIds,
+    participants,
+    isHostParticipant,
+    primaryParticipant?.sessionId,
+    localParticipant,
+    myUserId,
+    hostUserId,
+    stageGuestNames,
+    guestProfiles,
+    userDetails?.image,
+    myName,
+  ]);
+
+  const mutedGuestIds = hostMutedGuestIds;
+
+  const toggleGuestMute = useCallback(
+    async (userId: string, userName: string, currentlyMuted: boolean) => {
+      if (!call || !canModerate) return;
+      try {
+        if (currentlyMuted) {
+          await unmuteParticipant(userId);
+          setHostMutedGuestIds((prev) => {
+            const next = new Set(prev);
+            next.delete(userId);
+            return next;
+          });
+        } else {
+          await muteParticipant(userId, userName);
+          setHostMutedGuestIds((prev) => new Set(prev).add(userId));
+        }
+      } catch (e) {
+        console.log("toggle guest mute error:", e);
+      }
+    },
+    [call, canModerate, muteParticipant, unmuteParticipant],
+  );
+
+  const muteAllGuests = useCallback(() => {
+    if (!call || !canModerate) return;
+    Alert.alert(
+      "Mute all guests",
+      "Mute every on-stage guest? You will stay unmuted.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Mute all",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              try {
+                const guestIds = miniParticipants
+                  .filter((p) => !p.isLocalParticipant)
+                  .map((p) => p.userId);
+                await muteEveryone(guestIds);
+                setHostMutedGuestIds(new Set(guestIds));
+              } catch (e) {
+                console.log("mute all guests error:", e);
+              }
+            })();
+          },
+        },
+      ],
     );
-  }, [onStage, primaryParticipant]);
+  }, [call, canModerate, miniParticipants, muteEveryone]);
 
   const playDonationSound = useCallback(() => {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -600,26 +940,18 @@ function LiveCanvasJoined({
     [playDonationSound],
   );
 
-  const pushJoinToast = useCallback((userName: string) => {
-    const id = `${Date.now()}-${Math.random()}`;
-    setJoinToasts((prev) => [...prev, { id, userName }].slice(-4));
-    setMessages((prev) =>
-      appendMessage(prev, {
-        kind: "join",
-        userName,
-        text: `${userName} joined`,
-        expiresAt: Date.now() + LIVE_JOIN_TOAST_MS,
-      }),
-    );
-  }, []);
-
   const bumpLikes = useCallback((n = 1) => {
     setLikeCount((c) => c + n);
   }, []);
 
   const pushReaction = useCallback(
-    (emoji: string, left: number) => {
-      if (emoji === "❤️" || emoji === "heart") bumpLikes(1);
+    (emoji: string, left: number, skipLikeBump = false) => {
+      if (
+        !skipLikeBump &&
+        (emoji === "❤️" || emoji === "heart")
+      ) {
+        bumpLikes(1);
+      }
       const id = `${Date.now()}-${Math.random()}`;
       setReactions((prev) => [...prev, { id, emoji, left }]);
       setTimeout(() => {
@@ -645,19 +977,25 @@ function LiveCanvasJoined({
       positions.forEach((left) => pushReaction(emoji, left));
       void (async () => {
         if (!call) return;
+        const reactionId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+        const sentAt = Date.now();
         try {
           await call.sendCustomEvent({
             type: LIVE_EVENT.REACTION,
             emoji,
             left: positions[0],
             burst,
+            burstCount: burst ? positions.length : 1,
+            reactionId,
+            sentAt,
+            senderName: myName,
           });
         } catch (e) {
           console.log("reaction send error:", e);
         }
       })();
     },
-    [call, networkTier, pushReaction],
+    [call, myName, networkTier, pushReaction],
   );
 
   const pushGiftToast = useCallback(
@@ -692,6 +1030,53 @@ function LiveCanvasJoined({
       .catch(() => {});
   }, [hostUserId]);
 
+  useEffect(() => {
+    const ids = [
+      ...Array.from(acceptedGuestIds),
+      ...speakRequests.map((r) => r.userId),
+      myUserId,
+    ].filter(Boolean) as string[];
+    const unique = [...new Set(ids)];
+    if (!unique.length) return;
+
+    void syncChatMemberProfiles(unique)
+      .then((profiles) => {
+        if (!profiles.length) return;
+        setGuestProfiles((prev) => {
+          const next = { ...prev };
+          for (const profile of profiles) {
+            next[profile.clerkId] = profile;
+          }
+          return next;
+        });
+        setStageGuestNames((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          for (const profile of profiles) {
+            if (profile.name?.trim() && next[profile.clerkId] !== profile.name) {
+              next[profile.clerkId] = profile.name;
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      })
+      .catch(() => {});
+  }, [acceptedGuestIds, speakRequests, myUserId]);
+
+  const stageProfileImages = useMemo(() => {
+    const map: Record<string, string | null | undefined> = {};
+    if (myUserId && userDetails?.image) {
+      map[myUserId] = userDetails.image;
+    }
+    for (const [userId, profile] of Object.entries(guestProfiles)) {
+      if (profile.image) {
+        map[userId] = profile.image;
+      }
+    }
+    return map;
+  }, [guestProfiles, myUserId, userDetails?.image]);
+
   const chatMaxHeight = useMemo(() => {
     const base = keyboardOpen ? TT.chatHeightKeyboard : TT.chatHeight;
     return canModerate ? base - 20 : base;
@@ -724,7 +1109,95 @@ function LiveCanvasJoined({
   }, [hostClerkId, followBusy, handleFollow]);
 
   useEffect(() => {
-    if (!call) return;
+    for (const p of participants) {
+      if (acceptedGuestIds.has(p.userId)) {
+        guestEverInChannelRef.current.add(p.userId);
+      }
+    }
+  }, [participants, acceptedGuestIds]);
+
+  useEffect(() => {
+    if (!call || !acceptedGuestIds.size) return;
+
+    for (const uid of acceptedGuestIds) {
+      if (uid === hostUserId) continue;
+      const inChannel = participants.some((p) => p.userId === uid);
+      if (inChannel) continue;
+      if (!guestEverInChannelRef.current.has(uid)) continue;
+
+      markGuestOffStage(uid);
+      if (canModerate || uid === myUserId) {
+        void call
+          .sendCustomEvent({
+            type: LIVE_EVENT.GUEST_OFF_STAGE,
+            targetUserId: uid,
+            senderName: myName,
+          })
+          .catch(() => {});
+      }
+    }
+  }, [
+    acceptedGuestIds,
+    participants,
+    call,
+    canModerate,
+    hostUserId,
+    myUserId,
+    myName,
+    markGuestOffStage,
+  ]);
+
+  const liveEventCtxRef = useRef({
+    myUserId,
+    hostUserId,
+    canModerate,
+    networkTier,
+    effectiveIsHost,
+    enqueueMessage,
+    pushReaction,
+    pushGiftToast,
+    pushDonation,
+    pushPresenceComment,
+    markGuestOnStage,
+    markGuestOffStage,
+    bumpLikes,
+  });
+  liveEventCtxRef.current = {
+    myUserId,
+    hostUserId,
+    canModerate,
+    networkTier,
+    effectiveIsHost,
+    enqueueMessage,
+    pushReaction,
+    pushGiftToast,
+    pushDonation,
+    pushPresenceComment,
+    markGuestOnStage,
+    markGuestOffStage,
+    bumpLikes,
+  };
+  const callRef = useRef(call);
+  callRef.current = call;
+
+  useEffect(() => {
+    liveEndedHandledRef.current = false;
+  }, [call?.id]);
+
+  const handleRemoteLiveEnded = useCallback(() => {
+    if (liveEndedHandledRef.current || !call) return;
+    liveEndedHandledRef.current = true;
+    void call.markLiveEnded({ skipBackend: true }).catch((e) => {
+      console.log("remote live end error:", e);
+      liveEndedHandledRef.current = false;
+    });
+  }, [call]);
+
+  useEffect(() => {
+    const call = callRef.current;
+    if (!call?.id) return;
+
+    const ctx = () => liveEventCtxRef.current;
 
     const resolvePayload = (event: {
       custom?: Record<string, unknown>;
@@ -737,24 +1210,31 @@ function LiveCanvasJoined({
       return null;
     };
 
-    const onCustom = (rawEvent: unknown) => {
-      const event = rawEvent as {
-        custom?: Record<string, unknown>;
-        user?: { id?: string; name?: string };
-        cid?: string;
-        created_at?: string;
-        createdAt?: string;
-      };
-      const payload = resolvePayload(event);
-      const senderId = event.user?.id;
-      const senderName = event.user?.name || "Viewer";
+    const ingestLiveEvent = (
+      payload: Record<string, unknown>,
+      meta?: { senderId?: string; senderName?: string; dedupeKey?: string },
+    ) => {
+      const senderId =
+        meta?.senderId ?? (payload.senderId as string | undefined);
+      const senderName =
+        meta?.senderName ??
+        (payload.senderName as string | undefined) ??
+        (payload.userName as string | undefined) ??
+        "Member";
 
       if (!payload?.type) return;
       const eventKey =
-        event.cid ||
+        meta?.dedupeKey ||
+        (typeof payload.eventId === "string" ? payload.eventId : undefined) ||
+        (typeof payload.messageId === "string" ? payload.messageId : undefined) ||
+        (typeof payload.reactionId === "string" ? payload.reactionId : undefined) ||
+        (typeof payload.giftEventId === "string" ? payload.giftEventId : undefined) ||
+        (typeof payload.donationEventId === "string"
+          ? payload.donationEventId
+          : undefined) ||
         `${senderId || "anon"}:${String(payload.type)}:${String(
           payload.text || payload.emoji || payload.giftId || payload.targetUserId || "",
-        )}:${event.created_at || event.createdAt || ""}`;
+        )}:${String(payload.sentAt || "")}`;
       if (seenLiveEvents.current.has(eventKey)) return;
       seenLiveEvents.current.add(eventKey);
       if (seenLiveEvents.current.size > 500) {
@@ -762,6 +1242,7 @@ function LiveCanvasJoined({
       }
 
       if (payload.type === LIVE_EVENT.CHAT && typeof payload.text === "string") {
+        const { myUserId, hostUserId, enqueueMessage } = ctx();
         if (senderId === myUserId) return;
         enqueueMessage({
           kind: "chat",
@@ -777,16 +1258,26 @@ function LiveCanvasJoined({
         payload.type === LIVE_EVENT.REACTION &&
         typeof payload.emoji === "string"
       ) {
+        const { myUserId, networkTier, bumpLikes, pushReaction } = ctx();
         if (senderId === myUserId) return;
+        const burstCount =
+          payload.burst && typeof payload.burstCount === "number"
+            ? payload.burstCount
+            : 1;
         const baseLeft =
           typeof payload.left === "number"
             ? payload.left
             : TT.reactionSpawnX + (Math.random() * 40 - 20);
         const positions = payload.burst
-          ? spawnBurstPositions(networkTier === "good" ? 10 : 4, baseLeft)
+          ? spawnBurstPositions(
+              Math.min(burstCount, networkTier === "good" ? 10 : 4),
+              baseLeft,
+            )
           : [baseLeft];
-        if (payload.emoji === "❤️") bumpLikes(1);
-        positions.forEach((left) => pushReaction(payload.emoji as string, left));
+        if (payload.emoji === "❤️") bumpLikes(burstCount);
+        positions.forEach((left) =>
+          pushReaction(payload.emoji as string, left, true),
+        );
         return;
       }
 
@@ -794,6 +1285,7 @@ function LiveCanvasJoined({
         payload.type === LIVE_EVENT.GIFT &&
         typeof payload.giftId === "string"
       ) {
+        const { myUserId, pushGiftToast, enqueueMessage } = ctx();
         if (senderId === myUserId) return;
         const gift = LIVE_GIFTS.find((g) => g.id === payload.giftId);
         if (!gift) return;
@@ -813,6 +1305,7 @@ function LiveCanvasJoined({
         payload.type === LIVE_EVENT.DONATION &&
         typeof payload.amount === "number"
       ) {
+        const { myUserId, pushDonation } = ctx();
         if (senderId === myUserId) return;
         pushDonation(
           (payload.senderName as string) || senderName,
@@ -823,6 +1316,7 @@ function LiveCanvasJoined({
       }
 
       if (payload.type === LIVE_EVENT.SPEAK_REQUEST && senderId) {
+        const { canModerate, enqueueMessage } = ctx();
         if (!canModerate) return;
         setSpeakRequests((prev) => {
           if (prev.some((r) => r.userId === senderId)) return prev;
@@ -837,31 +1331,97 @@ function LiveCanvasJoined({
         return;
       }
 
+      if (payload.type === LIVE_EVENT.JOIN) {
+        const { myUserId, pushPresenceComment } = ctx();
+        const uid = senderId || (payload.userId as string | undefined);
+        const name =
+          senderName ||
+          (payload.userName as string | undefined) ||
+          "Member";
+        if (!uid || uid === myUserId) return;
+        if (announcedJoins.current.has(uid)) return;
+        announcedJoins.current.add(uid);
+        pushPresenceComment("join", name, uid);
+        return;
+      }
+
+      if (payload.type === LIVE_EVENT.LEAVE) {
+        const { myUserId, pushPresenceComment, markGuestOffStage } = ctx();
+        const uid = senderId || (payload.userId as string | undefined);
+        const name =
+          senderName ||
+          (payload.userName as string | undefined) ||
+          "Member";
+        if (!uid || uid === myUserId) return;
+        announcedJoins.current.delete(uid);
+        markGuestOffStage(uid);
+        pushPresenceComment("leave", name, uid);
+        return;
+      }
+
+      if (payload.type === LIVE_EVENT.GUEST_ON_STAGE && senderId) {
+        ctx().markGuestOnStage(
+          senderId,
+          senderName || (payload.senderName as string | undefined),
+        );
+        return;
+      }
+
+      if (payload.type === LIVE_EVENT.GUEST_OFF_STAGE) {
+        const uid =
+          (payload.targetUserId as string | undefined) || senderId;
+        if (uid) {
+          ctx().markGuestOffStage(uid);
+          if (uid === ctx().myUserId) {
+            void callRef.current?.demoteToLiveViewer().catch(() => {});
+          }
+        }
+        return;
+      }
+
+      if (payload.type === LIVE_EVENT.GUEST_MUTED) {
+        const targetUserId = payload.targetUserId as string | undefined;
+        if (!targetUserId) return;
+        const rtc = callRef.current;
+        if (!rtc) return;
+        if (targetUserId === ctx().myUserId) {
+          void rtc.microphone.disable();
+        } else {
+          void rtc.muteUser(targetUserId, "audio");
+        }
+        return;
+      }
+
+      if (payload.type === LIVE_EVENT.GUEST_UNMUTED) {
+        const targetUserId = payload.targetUserId as string | undefined;
+        if (!targetUserId) return;
+        const rtc = callRef.current;
+        if (!rtc) return;
+        if (targetUserId === ctx().myUserId) {
+          void rtc.microphone.enable();
+        } else {
+          void rtc.unmuteUser(targetUserId, "audio");
+        }
+        return;
+      }
+
       if (
         payload.type === LIVE_EVENT.SPEAK_INVITE &&
-        payload.targetUserId === myUserId
+        payload.targetUserId === ctx().myUserId
       ) {
         setMessages((prev) =>
           appendMessage(prev, {
             kind: "system",
             userName: "Host",
-            text: "invited you to speak — camera starting…",
+            text: "invited you to speak — tap Accept to join",
           }),
         );
-        void (async () => {
-          try {
-            await cam.camera.enable();
-            await mic.microphone.enable();
-          } catch (e) {
-            console.log("speak invite accept error:", e);
-          }
-        })();
         return;
       }
 
       if (
         payload.type === LIVE_EVENT.SPEAK_DENIED &&
-        payload.targetUserId === myUserId
+        payload.targetUserId === ctx().myUserId
       ) {
         setMessages((prev) =>
           appendMessage(prev, {
@@ -873,50 +1433,211 @@ function LiveCanvasJoined({
       }
     };
 
-    const onJoined = (rawEvent: unknown) => {
+    const onCustom = (rawEvent: unknown) => {
       const event = rawEvent as {
-        participant?: { user?: { id?: string; name?: string } };
+        custom?: Record<string, unknown>;
+        user?: { id?: string; name?: string };
+        cid?: string;
+        created_at?: string;
+        createdAt?: string;
       };
-      const userId = event.participant?.user?.id;
-      const name = event.participant?.user?.name || "Someone";
-      if (!userId || userId === myUserId) return;
-      if (announcedJoins.current.has(userId)) return;
-      announcedJoins.current.add(userId);
-      pushJoinToast(name);
+      const payload = resolvePayload(event);
+      if (!payload) return;
+      ingestLiveEvent(payload, {
+        senderId: event.user?.id ?? (payload.senderId as string | undefined),
+        senderName:
+          event.user?.name ?? (payload.senderName as string | undefined),
+        dedupeKey:
+          (typeof payload.messageId === "string" ? payload.messageId : undefined) ||
+          event.cid ||
+          `${event.user?.id || payload.senderId || "anon"}:${String(payload.type)}:${String(
+            payload.text || payload.emoji || payload.giftId || payload.targetUserId || "",
+          )}:${event.created_at || event.createdAt || String(payload.sentAt || "")}`,
+      });
     };
 
     const unsubCustom = call.on("custom", onCustom);
-    const unsubJoin = call.on("call.session_participant_joined", onJoined);
+
+    const mapSocketLivePayload = (
+      socketType: string,
+      data: Record<string, unknown>,
+    ) => {
+      const socketToEvent: Record<string, string> = {
+        "live:chat": LIVE_EVENT.CHAT,
+        "live:reaction": LIVE_EVENT.REACTION,
+        "live:gift": LIVE_EVENT.GIFT,
+        "live:donation": LIVE_EVENT.DONATION,
+        "live:join_ping": LIVE_EVENT.JOIN,
+        "live:leave_ping": LIVE_EVENT.LEAVE,
+        "live:speak_request": LIVE_EVENT.SPEAK_REQUEST,
+        "live:guest_on_stage": LIVE_EVENT.GUEST_ON_STAGE,
+        "live:guest_off_stage": LIVE_EVENT.GUEST_OFF_STAGE,
+        "live:guest_muted": LIVE_EVENT.GUEST_MUTED,
+        "live:guest_unmuted": LIVE_EVENT.GUEST_UNMUTED,
+      };
+
+      const mappedType = socketToEvent[socketType];
+      const userId = (data.userId || data.senderId) as string | undefined;
+      const userName = (data.userName || data.senderName) as string | undefined;
+
+      let dedupeKey: string | undefined;
+      if (typeof data.eventId === "string") {
+        dedupeKey = data.eventId;
+      } else if (mappedType === LIVE_EVENT.JOIN && userId) {
+        dedupeKey = `join:${userId}`;
+      } else if (mappedType === LIVE_EVENT.LEAVE && userId) {
+        dedupeKey = `leave:${userId}`;
+      } else if (mappedType === LIVE_EVENT.GUEST_ON_STAGE && userId) {
+        dedupeKey = `guest-on:${userId}`;
+      } else if (mappedType === LIVE_EVENT.GUEST_OFF_STAGE && userId) {
+        dedupeKey = `guest-off:${userId}:${String(data.targetUserId || userId)}`;
+      } else if (mappedType === LIVE_EVENT.GUEST_MUTED) {
+        dedupeKey = `guest-muted:${String(data.targetUserId || userId || "")}`;
+      } else if (mappedType === LIVE_EVENT.GUEST_UNMUTED) {
+        dedupeKey = `guest-unmuted:${String(data.targetUserId || userId || "")}`;
+      } else if (mappedType === LIVE_EVENT.CHAT) {
+        const mid = data.messageId as string | undefined;
+        dedupeKey =
+          mid ||
+          `chat:${userId || "anon"}:${String(data.text || "")}:${String(data.sentAt || "")}`;
+      } else if (mappedType === LIVE_EVENT.REACTION) {
+        const rid = data.reactionId as string | undefined;
+        dedupeKey =
+          rid ||
+          `reaction:${userId || "anon"}:${String(data.emoji || "")}:${String(data.sentAt || "")}`;
+      } else if (mappedType === LIVE_EVENT.GIFT) {
+        const gid = data.giftEventId as string | undefined;
+        dedupeKey =
+          gid ||
+          `gift:${userId || "anon"}:${String(data.giftId || "")}:${String(data.sentAt || "")}`;
+      } else if (mappedType === LIVE_EVENT.DONATION) {
+        const did = data.donationEventId as string | undefined;
+        dedupeKey =
+          did ||
+          `donation:${userId || "anon"}:${String(data.amount || "")}:${String(data.sentAt || "")}`;
+      }
+
+      ingestLiveEvent(
+        { ...data, type: mappedType || data.type },
+        { senderId: userId, senderName: userName, dedupeKey },
+      );
+    };
+
+    let unbindLive: (() => void) | undefined;
+    let liveSocket: ReturnType<typeof acquireLiveSocket> | undefined;
+    let pollTimer: ReturnType<typeof setInterval> | undefined;
+
+    const onGuestInvite = (payload: {
+      callId?: string;
+      guestUserId?: string;
+      token?: string;
+      uid?: number;
+    }) => {
+      const { effectiveIsHost: isHost, myUserId: uid } = ctx();
+      if (isHost) return;
+      if (payload.callId && payload.callId !== call.id) return;
+      if (payload.guestUserId !== uid) return;
+      if (!payload.token) return;
+      setPendingGuestInvite({ token: payload.token, uid: payload.uid });
+    };
+
+    if (!SOCKET_IO_DISABLED_ON_HOST) {
+      liveSocket = acquireLiveSocket(call.id);
+      liveSocketRef.current = liveSocket;
+
+      if (liveSocket) {
+        unbindLive = bindLiveSignaling(liveSocket, {
+          onLiveEvent: (socketType, data) => {
+            if (data.callId && data.callId !== call.id) return;
+            if (socketType === "live:ended") {
+              handleRemoteLiveEnded();
+              return;
+            }
+            mapSocketLivePayload(socketType, data);
+          },
+          onEnded: (data) => {
+            if (data.callId && data.callId !== call.id) return;
+            handleRemoteLiveEnded();
+          },
+          onSpeakDenied: (data) => {
+            if (data.callId && data.callId !== call.id) return;
+            ingestLiveEvent({
+              type: LIVE_EVENT.SPEAK_DENIED,
+              targetUserId: data.targetUserId,
+            });
+          },
+          onGuestInvite,
+        });
+      }
+    } else {
+      let pollCursor = Date.now() - 15_000;
+
+      const pollLiveEvents = async () => {
+        try {
+          const data = await fetchLiveEvents(call.id, pollCursor, myUserId);
+          for (const ev of data.events ?? []) {
+            const socketType =
+              typeof ev.type === "string" ? ev.type : "live:chat";
+            if (socketType === "live:ended") {
+              handleRemoteLiveEnded();
+              continue;
+            }
+            if (socketType === "live:speak_denied") {
+              ingestLiveEvent({
+                type: LIVE_EVENT.SPEAK_DENIED,
+                targetUserId: ev.targetUserId as string | undefined,
+              });
+              continue;
+            }
+            if (socketType === "live:guest_invite") {
+              onGuestInvite({
+                callId: ev.callId as string | undefined,
+                guestUserId: ev.guestUserId as string | undefined,
+                token: ev.token as string | undefined,
+                uid: typeof ev.uid === "number" ? ev.uid : undefined,
+              });
+              continue;
+            }
+            mapSocketLivePayload(socketType, ev);
+          }
+          if (typeof data.cursor === "number" && data.cursor > pollCursor) {
+            pollCursor = data.cursor;
+          } else if (typeof data.serverTime === "number") {
+            pollCursor = Math.max(pollCursor, data.serverTime - 500);
+          }
+        } catch (e) {
+          if (__DEV__) console.warn("[Live] poll error:", e);
+        }
+      };
+
+      void pollLiveEvents();
+      pollTimer = setInterval(pollLiveEvents, HOSTED_LIVE_POLL_MS);
+    }
 
     return () => {
       unsubCustom();
-      unsubJoin();
+      unbindLive?.();
+      if (pollTimer) clearInterval(pollTimer);
+      if (liveSocket) {
+        releaseLiveSocket(call.id);
+        if (liveSocketRef.current === liveSocket) {
+          liveSocketRef.current = null;
+        }
+      }
     };
-  }, [
-    call,
-    canModerate,
-    myUserId,
-    pushReaction,
-    pushGiftToast,
-    pushDonation,
-    pushJoinToast,
-    bumpLikes,
-    enqueueMessage,
-    networkTier,
-  ]);
+  }, [call?.id, effectiveIsHost, myUserId, handleRemoteLiveEnded]);
 
   const inviteToSpeak = useCallback(
     async (userId: string, userName: string) => {
       if (!call || !canModerate) return;
       try {
-        await call.grantPermissions(userId, [
-          OwnCapability.SEND_AUDIO,
-          OwnCapability.SEND_VIDEO,
-        ]);
-        await call.sendCustomEvent({
-          type: LIVE_EVENT.SPEAK_INVITE,
-          targetUserId: userId,
+        await inviteLiveGuest({
+          callId: call.id,
+          hostClerkId: hostUserId || myUserId,
+          guestUserId: userId,
+          guestName: userName,
         });
+        markGuestOnStage(userId, userName);
         setSpeakRequests((prev) => prev.filter((r) => r.userId !== userId));
         setMessages((prev) =>
           appendMessage(prev, {
@@ -929,16 +1650,17 @@ function LiveCanvasJoined({
         console.log("invite to speak error:", e);
       }
     },
-    [call, canModerate],
+    [call, canModerate, hostUserId, myUserId, markGuestOnStage],
   );
 
   const denySpeakRequest = useCallback(
     async (userId: string, userName: string) => {
       if (!call || !canModerate) return;
       try {
-        await call.sendCustomEvent({
-          type: LIVE_EVENT.SPEAK_DENIED,
-          targetUserId: userId,
+        await denyLiveGuest({
+          callId: call.id,
+          guestUserId: userId,
+          hostClerkId: hostUserId || myUserId,
         });
         setSpeakRequests((prev) => prev.filter((r) => r.userId !== userId));
         setMessages((prev) =>
@@ -952,13 +1674,16 @@ function LiveCanvasJoined({
         console.log("deny speak error:", e);
       }
     },
-    [call, canModerate],
+    [call, canModerate, hostUserId, myUserId],
   );
 
   const requestToSpeak = useCallback(async () => {
     if (!call || effectiveIsHost) return;
     try {
-      await call.sendCustomEvent({ type: LIVE_EVENT.SPEAK_REQUEST });
+      await call.sendCustomEvent({
+        type: LIVE_EVENT.SPEAK_REQUEST,
+        senderName: myName,
+      });
       setMessages((prev) =>
         appendMessage(prev, {
           kind: "system",
@@ -982,6 +1707,8 @@ function LiveCanvasJoined({
     async (giftId: string) => {
       const gift = LIVE_GIFTS.find((g) => g.id === giftId);
       if (!gift || !call) return;
+      const giftEventId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const sentAt = Date.now();
       pushGiftToast(gift.emoji, gift.label, myName, gift.amount);
       setMessages((prev) =>
         appendMessage(prev, {
@@ -996,6 +1723,8 @@ function LiveCanvasJoined({
         type: LIVE_EVENT.GIFT,
         giftId: gift.id,
         senderName: myName,
+        giftEventId,
+        sentAt,
       });
     },
     [call, myName, myUserId, pushGiftToast],
@@ -1004,11 +1733,15 @@ function LiveCanvasJoined({
   const broadcastDonation = useCallback(
     async (amount: number) => {
       if (!call) return;
+      const donationEventId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const sentAt = Date.now();
       pushDonation(myName, amount, myUserId);
       await call.sendCustomEvent({
         type: LIVE_EVENT.DONATION,
         amount,
         senderName: myName,
+        donationEventId,
+        sentAt,
       });
     },
     [call, myName, myUserId, pushDonation],
@@ -1081,11 +1814,11 @@ function LiveCanvasJoined({
     }
   }, [call?.id, custom, primaryParticipant?.name]);
 
-  const sendMessage = async () => {
+  const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || !call) return;
 
-    const msgId = `${Date.now()}-${Math.random()}`;
+    const msgId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const optimistic: LiveMessage = {
       id: msgId,
       kind: "chat",
@@ -1093,14 +1826,24 @@ function LiveCanvasJoined({
       userName: myName,
       text,
       isHost: effectiveIsHost,
+      createdAt: Date.now(),
     };
-    setMessages((prev) => [optimistic, ...prev].slice(0, LIVE_CHAT_VISIBLE_MAX));
+    setMessages((prev) => {
+      const next = [...prev, optimistic];
+      return next.length > LIVE_CHAT_VISIBLE_MAX
+        ? next.slice(-LIVE_CHAT_VISIBLE_MAX)
+        : next;
+    });
     setInput("");
+    requestAnimationFrame(() => chatInputRef.current?.focus());
 
     try {
       await call.sendCustomEvent({
         type: LIVE_EVENT.CHAT,
         text,
+        senderName: myName,
+        messageId: msgId,
+        sentAt: optimistic.createdAt,
       });
     } catch (e) {
       console.log("chat send error:", e);
@@ -1110,7 +1853,7 @@ function LiveCanvasJoined({
         "Could not send your comment. Check your connection and try again.",
       );
     }
-  };
+  }, [call, effectiveIsHost, input, myName, myUserId]);
 
   /** Socket fallback if STK completes after poll timeout */
   useEffect(() => {
@@ -1156,6 +1899,7 @@ function LiveCanvasJoined({
 
   const leaveViewer = async () => {
     try {
+      await leaveLiveViewer(call?.id || "", myUserId, myName).catch(() => {});
       await call?.leave();
     } finally {
       goToHomeScreen();
@@ -1206,6 +1950,7 @@ function LiveCanvasJoined({
         localParticipant={localParticipant}
         onTapVideo={onTapVideo}
         isHost={effectiveIsHost}
+        viewerOnStage={false}
       />
 
       <StreamConnectionOverlay />
@@ -1214,19 +1959,35 @@ function LiveCanvasJoined({
         <SmoothModeOverlay tier={networkTier} />
       )}
 
-      <LiveGuestStrip
-        guests={miniParticipants}
-        topOffset={insets.top + TT.guestTop}
-        activeSpeakerId={activeSpeaker?.sessionId}
-      />
-
-      <LiveJoinToastLayer
-        toasts={joinToasts}
-        topOffset={insets.top + 52}
-        onDismiss={(id) =>
-          setJoinToasts((prev) => prev.filter((t) => t.id !== id))
-        }
-      />
+      {!keyboardOpen ? (
+        <LiveGuestStrip
+          guests={miniParticipants}
+          requests={canModerate ? speakRequests : []}
+          topOffset={insets.top + TT.guestTop}
+          activeSpeakerId={activeSpeaker?.sessionId}
+          myUserId={myUserId}
+          canModerate={canModerate}
+          mutedUserIds={mutedGuestIds}
+          mutingUserIds={mutingIds}
+          onInvite={(userId, userName) => void inviteToSpeak(userId, userName)}
+          onDecline={(userId, userName) =>
+            void denySpeakRequest(userId, userName)
+          }
+          onToggleMute={(userId, userName, muted) =>
+            void toggleGuestMute(userId, userName, muted)
+          }
+          onMuteAll={canModerate ? muteAllGuests : undefined}
+          onRemoveGuest={(userId, userName) =>
+            void removeGuestFromStage(userId, userName)
+          }
+          selfMicMuted={
+            isGuestOnStage && !effectiveIsHost
+              ? Boolean(mic?.optimisticIsMute)
+              : false
+          }
+          profileImages={stageProfileImages}
+        />
+      ) : null}
 
       <LiveReactionsOverlay reactions={reactions} />
 
@@ -1268,89 +2029,6 @@ function LiveCanvasJoined({
         onClose={effectiveIsHost ? endLiveHost : goToHomeScreen}
         onShare={shareLive}
       />
-
-      {/* HOST — viewers & speak requests */}
-      {canModerate && !keyboardOpen && (
-        <View style={[styles.hostPanel, { top: insets.top + 56 }]}>
-          {speakRequests.length > 0 && (
-            <View style={styles.speakRequestBanner}>
-              <Text style={styles.speakRequestTitle}>
-                {speakRequests[0].userName} wants to speak
-              </Text>
-              <View style={styles.speakRequestActions}>
-                <Pressable
-                  style={styles.speakAcceptBtn}
-                  onPress={() =>
-                    inviteToSpeak(
-                      speakRequests[0].userId,
-                      speakRequests[0].userName,
-                    )
-                  }
-                >
-                  <Text style={styles.speakAcceptText}>Invite</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.speakDenyBtn}
-                  onPress={() =>
-                    denySpeakRequest(
-                      speakRequests[0].userId,
-                      speakRequests[0].userName,
-                    )
-                  }
-                >
-                  <Text style={styles.speakDenyText}>Decline</Text>
-                </Pressable>
-              </View>
-            </View>
-          )}
-
-          <Pressable
-            style={styles.guestsToggle}
-            onPress={() => setShowGuests((v) => !v)}
-          >
-            <Ionicons name="people" size={16} color="#fff" />
-            <Text style={styles.guestsToggleText}>
-              {guestViewers.length} watching · {onStage.length} on stage
-            </Text>
-            <Ionicons
-              name={showGuests ? "chevron-up" : "chevron-down"}
-              size={16}
-              color="#fff"
-            />
-          </Pressable>
-
-          {showGuests && (
-            <View style={styles.guestsList}>
-              {guestViewers.length === 0 ? (
-                <Text style={styles.guestsEmpty}>No viewers yet</Text>
-              ) : (
-                guestViewers.map((p) => (
-                  <View key={p.sessionId} style={styles.guestRow}>
-                    <PresenceAvatar userId={p.userId} size={32}>
-                      <View style={styles.guestAvatar}>
-                        <Text style={styles.guestInitial}>
-                          {(p.name || "?").charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                    </PresenceAvatar>
-                    <Text style={styles.guestName} numberOfLines={1}>
-                      {p.name || "Viewer"}
-                    </Text>
-                    <Pressable
-                      style={styles.inviteBtn}
-                      onPress={() =>
-                        inviteToSpeak(p.userId, p.name || "Viewer")
-                      }
-                    >
-                      <Text style={styles.inviteBtnText}>Invite</Text>
-                    </Pressable>
-                  </View>
-                ))
-              )}
-            </View>
-          )}
-        </View>
-      )}
 
       <LiveActionRail
         hidden={keyboardOpen}
@@ -1405,6 +2083,28 @@ function LiveCanvasJoined({
         keyboardVerticalOffset={0}
       >
         <View style={styles.bottomDockInner}>
+          {pendingGuestInvite && !effectiveIsHost ? (
+            <View style={styles.guestInviteBar}>
+              <Text style={styles.guestInviteText}>
+                Host invited you to join on stage
+              </Text>
+              <View style={styles.guestInviteActions}>
+                <Pressable
+                  style={styles.guestInviteDecline}
+                  onPress={() => void declineGuestInvite()}
+                >
+                  <Text style={styles.guestInviteDeclineText}>Decline</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.guestInviteAccept}
+                  onPress={() => void acceptGuestInvite()}
+                >
+                  <Text style={styles.guestInviteAcceptText}>Accept</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
           <LiveChatPanel
             messages={messages}
             maxHeight={chatMaxHeight}
@@ -1413,6 +2113,7 @@ function LiveCanvasJoined({
 
           <View style={styles.inputRow}>
             <TextInput
+              ref={chatInputRef}
               placeholder="Add comment..."
               placeholderTextColor="rgba(255,255,255,0.55)"
               value={input}
@@ -1420,10 +2121,14 @@ function LiveCanvasJoined({
               style={styles.input}
               returnKeyType="send"
               blurOnSubmit={false}
-              onSubmitEditing={sendMessage}
+              submitBehavior="submit"
+              onSubmitEditing={() => void sendMessage()}
             />
             {input.trim().length > 0 ? (
-              <Pressable onPress={sendMessage} style={styles.sendBtn}>
+              <Pressable
+                onPress={() => void sendMessage()}
+                style={styles.sendBtn}
+              >
                 <Ionicons name="arrow-up" size={18} color="#fff" />
               </Pressable>
             ) : (
@@ -1443,18 +2148,41 @@ function LiveCanvasJoined({
               onToggleMic={() => call?.microphone.toggle()}
               onToggleCamera={() => call?.camera.toggle()}
               onFlipCamera={() => call?.camera.flip()}
-              onInviteGuest={() => setShowGuests(true)}
               onEndStream={endLiveHost}
             />
           )}
 
           {!keyboardOpen && !effectiveIsHost && (
             <View style={styles.ttViewerBarInline}>
-              {localParticipant && !isPublishingVideo(localParticipant) && (
+              {!isGuestOnStage ? (
                 <Pressable style={styles.ttViewerPill} onPress={requestToSpeak}>
                   <Ionicons name="hand-right" size={16} color="#fff" />
                   <Text style={styles.ttViewerPillText}>Request</Text>
                 </Pressable>
+              ) : (
+                <View style={styles.ttStageActions}>
+                  <Pressable
+                    style={[styles.ttViewerPill, styles.ttLeaveStage]}
+                    onPress={() => void exitStage()}
+                  >
+                    <Ionicons name="close-circle" size={16} color="#fff" />
+                    <Text style={styles.ttViewerPillText}>Leave stage</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.ttViewerPill,
+                      styles.ttStageMic,
+                      Boolean(mic?.optimisticIsMute) && styles.ttStageMicMuted,
+                    ]}
+                    onPress={() => call?.microphone.toggle()}
+                  >
+                    <Ionicons
+                      name={mic?.optimisticIsMute ? "mic-off" : "mic"}
+                      size={18}
+                      color="#fff"
+                    />
+                  </Pressable>
+                </View>
               )}
               <Pressable
                 style={[styles.ttViewerPill, styles.ttLeave]}
@@ -1542,18 +2270,26 @@ function LiveSwipeDeck({
     transform: [{ translateY: translateY.value }],
   }));
 
-  if (!enabled) return <>{children}</>;
+  if (!playlist?.length) {
+    return <View style={styles.swipeDeck}>{children}</View>;
+  }
 
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View style={[styles.swipeDeck, style]}>
         {children}
-        <View pointerEvents="none" style={styles.preloadHintTop}>
-          {currentIndex > 0 ? <View style={styles.preloadDot} /> : null}
-        </View>
-        <View pointerEvents="none" style={styles.preloadHintBottom}>
-          {playlist?.[currentIndex + 1] ? <View style={styles.preloadDot} /> : null}
-        </View>
+        {enabled ? (
+          <>
+            <View pointerEvents="none" style={styles.preloadHintTop}>
+              {currentIndex > 0 ? <View style={styles.preloadDot} /> : null}
+            </View>
+            <View pointerEvents="none" style={styles.preloadHintBottom}>
+              {playlist[currentIndex + 1] ? (
+                <View style={styles.preloadDot} />
+              ) : null}
+            </View>
+          </>
+        ) : null}
       </Animated.View>
     </GestureDetector>
   );
@@ -1588,25 +2324,33 @@ function StageVideoLayout({
   localParticipant,
   onTapVideo,
   isHost,
+  viewerOnStage = false,
 }: {
   primary?: EnrichedRtcParticipant;
   localParticipant?: EnrichedRtcParticipant;
   onTapVideo: () => void;
   isHost: boolean;
+  viewerOnStage?: boolean;
 }) {
   const stageParticipant = isHost
     ? localParticipant ?? primary
     : primary;
+
+  const showLocalVideo =
+    Boolean(stageParticipant?.isLocalParticipant) && (isHost || viewerOnStage);
 
   return (
     <Pressable style={styles.videoTouch} onPress={onTapVideo}>
       {!stageParticipant && <StreamSkeleton />}
       {stageParticipant ? (
         <View style={styles.videoStage}>
-          {stageParticipant.isLocalParticipant || isHost ? (
+          {showLocalVideo ? (
             <RtcLocalVideoView style={styles.videoStage} />
           ) : (
-              <RtcRemoteVideoView uid={stageParticipant.uid} style={styles.videoStage} />
+            <RtcRemoteVideoView
+              uid={stageParticipant.uid}
+              style={styles.videoStage}
+            />
           )}
         </View>
       ) : (
@@ -1922,6 +2666,52 @@ const styles = StyleSheet.create({
     width: "100%",
     paddingTop: 2,
   },
+  guestInviteBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "rgba(37,244,238,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(37,244,238,0.45)",
+  },
+  guestInviteText: {
+    flex: 1,
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  guestInviteActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  guestInviteDecline: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  guestInviteDeclineText: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  guestInviteAccept: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: TT.accentCyan,
+  },
+  guestInviteAcceptText: {
+    color: "#000",
+    fontSize: 12,
+    fontWeight: "800",
+  },
   chatWrap: {
     width: "100%",
     overflow: "hidden",
@@ -1938,6 +2728,77 @@ const styles = StyleSheet.create({
     right: TT.dockRightInset,
     zIndex: 25,
   },
+  speakRequestToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(123,47,247,0.92)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: MediaColors.glassBorder,
+    alignSelf: "stretch",
+  },
+  speakRequestToggleText: {
+    flex: 1,
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  speakRequestBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  speakRequestBadgeText: {
+    color: "#7B2FF7",
+    fontWeight: "800",
+    fontSize: 11,
+  },
+  speakRequestList: {
+    marginTop: -4,
+    marginBottom: 8,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 12,
+    padding: 8,
+    maxHeight: 200,
+    borderWidth: 1,
+    borderColor: MediaColors.glassBorder,
+  },
+  speakRequestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+  speakRequestName: {
+    flex: 1,
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  speakRowInviteBtn: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  speakRowInviteText: { color: "#7B2FF7", fontWeight: "800", fontSize: 11 },
+  speakRowDenyBtn: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  speakRowDenyText: { color: "#fff", fontWeight: "700", fontSize: 11 },
   speakRequestBanner: {
     backgroundColor: "rgba(123,47,247,0.92)",
     borderRadius: 12,
@@ -2110,6 +2971,26 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   ttLeave: { backgroundColor: "rgba(220,38,38,0.85)", marginLeft: "auto" },
+  ttLeaveStage: {
+    backgroundColor: "rgba(123,47,247,0.88)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  ttStageActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  ttStageMic: {
+    paddingHorizontal: 12,
+    minWidth: 44,
+    justifyContent: "center",
+  },
+  ttStageMicMuted: {
+    backgroundColor: "rgba(239,68,68,0.88)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+  },
   ttViewerPillText: { color: "#fff", fontWeight: "700", fontSize: 12 },
 
   floatingReaction: { fontSize: 29 },

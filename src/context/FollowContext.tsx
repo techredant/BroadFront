@@ -12,6 +12,7 @@ import React from "react";
 import axios from "axios";
 import { useFocusEffect } from "expo-router";
 import { API_PUBLIC_URL } from "@/constants/api";
+import { CACHE_TTL, setCached, shouldRefetchOnFocus } from "@/utils/staleFetch";
 
 const BASE_URL = `${API_PUBLIC_URL}/api/users`;
 
@@ -86,25 +87,31 @@ const followerUsers = useMemo(() => {
   return members.filter((m) => followers.includes(m.clerkId));
 }, [members, followers]);
 
-  const fetchUsers = useCallback(async () => {
-    try {
-      setLoading(true);
+  const fetchUsers = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent ?? members.length > 0;
+      try {
+        if (!silent) setLoading(true);
 
-      const res = await axios.get(BASE_URL, {
-        params: {
-          clerkId: user?.id,
-          includeSelf: true,
-        },
-      });
+        const res = await axios.get(BASE_URL, {
+          params: {
+            clerkId: user?.id,
+            includeSelf: true,
+          },
+        });
 
-      setMembers(res.data.users || []);
-    } catch (err) {
-      console.error(err);
-      setMembers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
+        const users = res.data.users || [];
+        setMembers(users);
+        if (user?.id) setCached(`members:${user.id}`, users);
+      } catch (err) {
+        console.error(err);
+        if (!silent) setMembers([]);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [user?.id, members.length],
+  );
 
   const refreshMembers = useCallback(async () => {
     if (!user?.id) return;
@@ -162,13 +169,16 @@ const handleFollow = async (targetClerkId: string) => {
   }
 };
 
- useFocusEffect(
-   useCallback(() => {
-     if (!user?.id) return;
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
 
-     fetchUsers();
-   }, [user?.id, fetchUsers]),
- );
+      const cacheKey = `members:${user.id}`;
+      if (!shouldRefetchOnFocus(cacheKey, CACHE_TTL.members)) return;
+
+      void fetchUsers({ silent: members.length > 0 });
+    }, [user?.id, fetchUsers, members.length]),
+  );
 
   return (
     <FollowCtx.Provider

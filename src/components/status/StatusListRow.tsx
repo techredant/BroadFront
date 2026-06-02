@@ -7,6 +7,7 @@ import { StatusStoryThumb } from "@/components/status/StatusStoryThumb";
 import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 import { STATUS_RING_SIZE } from "@/constants/statusTheme";
 import { getLatestStatus, statusDisplayName } from "@/utils/statusUser";
+import { seedStatusCache } from "@/utils/statusCache";
 
 type Props = {
   userStatus: any;
@@ -30,6 +31,7 @@ export default function StatusListRow({ userStatus, currentUserId, allUserIds, u
   );
 
   const handlePress = () => {
+    seedStatusCache(userStatus.userId, userStatus.statuses ?? []);
     if (allUserIds && userIndex !== undefined) {
       const encodedList = encodeURIComponent(JSON.stringify(allUserIds));
       router.push({
@@ -79,12 +81,12 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
   middle: {
     flex: 1,
-    marginLeft: 14,
+    marginLeft: 10,
   },
   name: {
     fontSize: 16,

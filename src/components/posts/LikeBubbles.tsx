@@ -122,14 +122,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "visible",
-    zIndex: 50,
-    elevation: 50,
+    zIndex: 100,
   },
   bubble: {
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 50,
-    elevation: 50,
+    zIndex: 100,
   },
 });

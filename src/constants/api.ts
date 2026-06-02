@@ -66,3 +66,9 @@ export const SOCKET_IO_DISABLED_ON_HOST =
 
 /** Poll interval when live sockets are unavailable (hosted API). */
 export const HOSTED_FEED_REFRESH_MS = 6000;
+
+/** Faster poll for live comments/likes/gifts on Vercel (no Socket.IO). */
+export const HOSTED_LIVE_POLL_MS = 2500;
+
+/** Live home list refresh interval (live ↔ ended tabs). */
+export const LIVE_HOME_POLL_MS = 5000;

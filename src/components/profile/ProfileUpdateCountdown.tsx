@@ -5,7 +5,6 @@ import {
   formatProfileCountdown,
   isProfileUpdatePending,
   msUntilProfileUpdate,
-  PROFILE_UPDATE_DELAY_LABEL,
   ProfileUserFields,
 } from "@/utils/profileUpdate";
 
@@ -67,27 +66,11 @@ export function ProfileUpdateCountdown({
     return () => clearInterval(id);
   }, [userDetails, onExpired]);
 
-  const pendingSub = isBusiness
-    ? "Your public profile still shows your current company name and logo until the timer ends."
-    : "Your public profile still shows your current photo and name until the timer ends.";
+  if (!pending || !parts) return null;
 
-  if (!pending || !parts) {
-    return (
-      <View
-        style={[
-          styles.infoBox,
-          compact && styles.infoBoxCompact,
-          { backgroundColor: theme.card, borderColor: theme.border },
-        ]}
-      >
-        <Ionicons name="time-outline" size={16} color={theme.subtext} />
-        <Text style={[styles.infoText, { color: theme.subtext }]}>
-          Profile edits take up to {PROFILE_UPDATE_DELAY_LABEL} to appear
-          publicly.
-        </Text>
-      </View>
-    );
-  }
+  const pendingSub = isBusiness
+    ? "Your current company name stays public until the timer ends. Photos update right away."
+    : "Your current name and location stay public until the timer ends. Photos update right away.";
 
   return (
     <View
@@ -100,7 +83,7 @@ export function ProfileUpdateCountdown({
       <View style={styles.pendingHeader}>
         <Ionicons name="hourglass-outline" size={20} color={theme.primary} />
         <Text style={[styles.pendingTitle, { color: theme.text }]}>
-          Your profile will update in {PROFILE_UPDATE_DELAY_LABEL}
+          {isBusiness ? "Company name update scheduled" : "Profile update scheduled"}
         </Text>
       </View>
 
@@ -156,25 +139,6 @@ function TimeBlock({
 }
 
 const styles = StyleSheet.create({
-  infoBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 10,
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    width: "100%",
-  },
-  infoBoxCompact: {
-    marginTop: 8,
-    padding: 8,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
-  },
   pendingBox: {
     marginTop: 10,
     padding: 12,

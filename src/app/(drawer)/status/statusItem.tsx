@@ -1,25 +1,21 @@
-import useSWR from "swr";
 import {
   FlatList,
   View,
   StyleSheet,
   Text,
-  ActivityIndicator,
   Pressable,
 } from "react-native";
 import { useMemo } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import StatusListRow from "@/components/status/StatusListRow";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
 import { useUser } from "@clerk/clerk-expo";
 import { MyStatusRow } from "@/components/status/MyStatusRow";
+import { StatusRowSkeleton } from "@/components/status/StatusRowSkeleton";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { enrichStatusGroup } from "@/utils/statusUser";
-
-const BASE_URL = "https://cast-api-zeta.vercel.app/api/status";
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+import { useStatusList } from "@/hooks/useStatusList";
 
 function groupStatuses(raw: any[]) {
   return Object.values(
@@ -57,16 +53,16 @@ export default function StatusScreen() {
   const { user } = useUser();
   const viewerId = user?.id ?? null;
 
-  const { data, isLoading, error } = useSWR(BASE_URL, fetcher);
+  const { statuses, isRefreshing } = useStatusList();
 
   const { myGroup, recent, viewed } = useMemo(() => {
-    const grouped = groupStatuses(data || []);
+    const grouped = groupStatuses(statuses);
     const mine = grouped.find((g: any) => g.userId === viewerId);
     const others = grouped.filter((g: any) => g.userId !== viewerId);
     const unviewed = others.filter((g) => isGroupUnviewed(g, viewerId));
     const seen = others.filter((g) => !isGroupUnviewed(g, viewerId));
     return { myGroup: mine, recent: unviewed, viewed: seen };
-  }, [data, viewerId]);
+  }, [statuses, viewerId]);
 
   const sections = useMemo(() => {
     const items: { type: "header" | "row"; key: string; group?: any; title?: string; userIndex?: number }[] = [];
@@ -87,21 +83,7 @@ export default function StatusScreen() {
     return items;
   }, [recent, viewed]);
 
-  if (isLoading) {
-    return (
-      <View style={[styles.center, { backgroundColor: theme.background }]}>
-        <ActivityIndicator color="#3797F0" />
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={[styles.center, { backgroundColor: theme.background }]}>
-        <Text style={{ color: theme.text }}>Failed to load statuses</Text>
-      </View>
-    );
-  }
+  const showSkeleton = isRefreshing && sections.length === 0;
 
   return (
     <SafeAreaView
@@ -118,12 +100,15 @@ export default function StatusScreen() {
       </View>
 
       <FlatList
-        data={sections}
+        data={showSkeleton ? SKELETON_KEYS : sections}
         keyExtractor={(item) => item.key}
         ListHeaderComponent={
           <MyStatusRow myStatuses={myGroup?.statuses ?? []} />
         }
         renderItem={({ item }) => {
+          if (showSkeleton) {
+            return <StatusRowSkeleton />;
+          }
           if (item.type === "header") {
             return (
               <Text style={[styles.sectionTitle, { color: theme.subtext }]}>
@@ -143,7 +128,7 @@ export default function StatusScreen() {
           );
         }}
         ItemSeparatorComponent={({ leadingItem }) =>
-          leadingItem?.type === "row" ? (
+          !showSkeleton && leadingItem?.type === "row" ? (
             <View
               style={[styles.separator, { backgroundColor: theme.border }]}
             />
@@ -162,6 +147,13 @@ export default function StatusScreen() {
   );
 }
 
+const SKELETON_KEYS = [
+  { key: "sk-0" },
+  { key: "sk-1" },
+  { key: "sk-2" },
+  { key: "sk-3" },
+];
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
@@ -179,15 +171,15 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: "600",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 6,
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
   separator: {
     height: StyleSheet.hairlineWidth,
-    marginLeft: 86,
+    marginLeft: 82,
   },
   empty: {
     textAlign: "center",

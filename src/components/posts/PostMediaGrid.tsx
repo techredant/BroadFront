@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import {
   PixelRatio,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -115,6 +116,7 @@ export function PostMediaGrid({
                     playInBackground={false}
                     playWhenInactive={false}
                     muted={isMuted}
+                    {...(Platform.OS === "android" ? { useTextureView: true } : {})}
                   />
                   <TouchableOpacity
                     style={StyleSheet.absoluteFill}

@@ -100,7 +100,10 @@ export function MediaViewerProvider({ children }: { children: React.ReactNode })
 
   const currentPostId = getPostId(posts[postIndex], postIndex);
   const currentEngagement =
-    currentPostId === engagementPostId ? engagement : undefined;
+    engagement &&
+    (!engagementPostId || currentPostId === engagementPostId)
+      ? engagement
+      : undefined;
 
   const value = useMemo(
     () => ({ openMediaViewer, closeMediaViewer }),

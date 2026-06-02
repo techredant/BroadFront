@@ -75,8 +75,21 @@ export function isMarketLiveCall(call: { id: string; state?: { custom?: Record<s
   return call.id.startsWith("market_") || call.id.startsWith("mkt_");
 }
 
-export function isCommunityLiveCall(call: { id: string; state?: { custom?: Record<string, unknown> } }): boolean {
-  return !isMarketLiveCall(call);
+export function isAudioRoomCall(call: {
+  id: string;
+  state?: { custom?: Record<string, unknown> };
+}): boolean {
+  const custom = call.state?.custom as Record<string, unknown> | undefined;
+  if (custom?.callMode === "audio") return true;
+  if (custom?.streamKind === "audio") return true;
+  return call.id.startsWith("audio_");
+}
+
+export function isCommunityLiveCall(call: {
+  id: string;
+  state?: { custom?: Record<string, unknown> };
+}): boolean {
+  return !isMarketLiveCall(call) && !isAudioRoomCall(call);
 }
 
 /** Short unique id — product/host metadata lives in call `custom`, not the id string. */

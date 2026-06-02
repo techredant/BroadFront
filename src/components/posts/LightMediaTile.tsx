@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, Pressable, Platform } from "react-native";
 import type { DimensionValue } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -92,6 +92,7 @@ export function LightMediaTile({
               playInBackground={false}
               playWhenInactive={false}
               onEnd={() => setPreviewDone(true)}
+              {...(Platform.OS === "android" ? { useTextureView: true } : {})}
             />
           ) : (
             <>

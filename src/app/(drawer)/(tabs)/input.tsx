@@ -45,7 +45,7 @@ const H_PAD = 16;
 const MEDIA_GAP = 8;
 const MEDIA_COL = (SCREEN_W - H_PAD * 2 - MEDIA_GAP) / 2;
 const MAX_CHARS = 500;
-const MAX_MEDIA = 4;
+const MAX_MEDIA = 10;
 
 function LinkPreviewCard({
   preview,

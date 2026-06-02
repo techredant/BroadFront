@@ -37,6 +37,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useLevel } from "@/context/LevelContext";
+import { getNationalHomeLevel } from "@/utils/nationalHomeLevel";
 
 import {
 
@@ -96,7 +97,7 @@ type DrawerNavItem = {
 
 const MAIN_NAV: DrawerNavItem[] = [
 
-  { key: "home", label: "Home", icon: "home-outline", drawerRoute: "(tabs)" },
+  { key: "home", label: "Home", icon: "home-outline" },
 
   {
 
@@ -130,7 +131,7 @@ const MAIN_NAV: DrawerNavItem[] = [
 
     icon: "time-outline",
 
-    href: "/(drawer)/(status)/StatusInput",
+    href: "/(drawer)/status",
 
   },
 
@@ -648,7 +649,7 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
 
   const { user } = useUser();
 
-  const { userDetails, isLoadingUser } = useLevel();
+  const { userDetails, isLoadingUser, switchLevel } = useLevel();
 
   const insets = useSafeAreaInsets();
 
@@ -671,23 +672,23 @@ const CustomDrawerContent = (props: DrawerContentComponentProps) => {
 
 
   const navigateItem = (item: DrawerNavItem) => {
-
     navigation.closeDrawer();
 
-    if (item.drawerRoute) {
-
-      navigation.navigate(item.drawerRoute);
-
+    if (item.key === "home") {
+      switchLevel(getNationalHomeLevel(userDetails));
+      navigation.navigate("(tabs)");
+      router.replace("/(drawer)/(tabs)/");
       return;
+    }
 
+    if (item.drawerRoute) {
+      navigation.navigate(item.drawerRoute);
+      return;
     }
 
     if (item.href) {
-
       router.push(item.href as never);
-
     }
-
   };
 
 

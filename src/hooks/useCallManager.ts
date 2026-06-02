@@ -305,8 +305,7 @@ export function useCallManager({
     const onEnded = (payload: { channelName?: string }) => {
       if (payload.channelName !== call.id) return;
       if (call.state.callingState === RtcConnectionState.LEFT) return;
-      void call.leave().catch(() => {});
-      setError("Call ended.");
+      void call.leave({ skipBackend: true }).catch(() => {});
     };
 
     socket.on("call:ended", onEnded);

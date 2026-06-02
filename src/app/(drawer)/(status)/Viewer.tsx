@@ -4,21 +4,28 @@ import {
   StyleSheet,
   Pressable,
   Dimensions,
-  Animated,
   ActivityIndicator,
   Modal,
   FlatList,
   TextInput,
   KeyboardAvoidingView,
-  PixelRatio,
   Platform,
   Alert,
   StatusBar,
-  Image,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type ViewToken,
 } from "react-native";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
-import { useFocusEffect, useIsFocused } from "@react-navigation/native";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useIsFocused } from "@react-navigation/native";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Video from "react-native-video";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useUser } from "@clerk/clerk-expo";
@@ -33,7 +40,11 @@ import {
 import { useChatContext } from "stream-chat-expo";
 import { useAppContext } from "@/contexts/AppProvider";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { statusAvatarUri, statusDisplayName } from "@/utils/statusUser";
+import {
+  sortStatusesForViewer,
+  statusDisplayName,
+} from "@/utils/statusUser";
+import { useStatusProfileImage } from "@/hooks/useStatusProfileImage";
 import {
   isVideoMedia,
   resolveMediaUrl,
@@ -44,11 +55,23 @@ import {
   type StreamChatTarget,
 } from "@/utils/streamUser";
 import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
-
-const BASE_URL = "https://cast-api-zeta.vercel.app";
+import { writeStatusCache } from "@/utils/statusCache";
+import {
+  patchStatusViewed,
+  resolveUserStatuses,
+  warmStatusCachesForUsers,
+  STATUS_PREVIEW_USER_LIMIT,
+} from "@/utils/statusList";
+import {
+  markStatusViewedInMemory,
+  prefetchStatusMedia,
+  prefetchAdjacentUsers,
+} from "@/utils/statusEngine";
+import { useStoryPlayback } from "@/hooks/useStoryPlayback";
+import { Image as ExpoImage } from "expo-image";
+import { API_PUBLIC_URL } from "@/constants/api";
 const POSTER_REPLY_BAR_HEIGHT = 58;
 const { width, height } = Dimensions.get("window");
-const STORY_PIXEL_WIDTH = Math.round(width * PixelRatio.get());
 
 export type StatusViewRow = {
   userId: string;
@@ -153,6 +176,14 @@ export default function Viewer() {
   
   const allUserIds: string[] = userListStr ? JSON.parse(decodeURIComponent(userListStr)) : [];
 
+  const closeViewer = useCallback(() => {
+    if (navigation.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace("/(drawer)/(tabs)");
+  }, [navigation]);
+
   useLayoutEffect(() => {
     const drawer = navigation.getParent()?.getParent();
     drawer?.setOptions({
@@ -165,40 +196,46 @@ export default function Viewer() {
     };
   }, [navigation, theme.background]);
 
-  const [statuses, setStatuses] = useState<any[]>([]);
-  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+  const [statuses, setStatuses] = useState<any[]>(() =>
+    userIdStr ? resolveUserStatuses(userIdStr) : [],
+  );
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(() => {
+    if (!userIdStr) return null;
+    return resolveUserStatuses(userIdStr).length ? userIdStr : null;
+  });
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const [videoLoading, setVideoLoading] = useState(true);
-  const [duration, setDuration] = useState(5000);
+  const [playbackPaused, setPlaybackPaused] = useState(false);
+  const [videoLoading, setVideoLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const pagerRef = useRef<FlatList<any>>(null);
   const [viewsModalVisible, setViewsModalVisible] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [dmTarget, setDmTarget] = useState<StatusViewRow | null>(null);
   const [sendingDm, setSendingDm] = useState(false);
 
-  const progress = useRef(new Animated.Value(0)).current;
-  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
-  const progressAtPause = useRef(0);
-  /** True only while resuming the same slide after hold-to-pause (not on slide change). */
-  const resumeFromPauseRef = useRef(false);
   const insets = useSafeAreaInsets();
   const listMaxH = height * 0.34;
   const userId = userIdStr;
   const viewerId = clerkUser?.id;
-  const storiesReady =
-    !!userId && loadedUserId === userId && statuses.length > 0;
-  const current = storiesReady ? statuses[currentIndex] : undefined;
-  const slideKey = current?._id ? String(current._id) : null;
+
+  const effectiveStatuses = useMemo(() => {
+    if (statuses.length > 0) return statuses;
+    if (userIdStr) return resolveUserStatuses(userIdStr);
+    return [];
+  }, [statuses, userIdStr]);
+
+  const storiesReady = !!userId && effectiveStatuses.length > 0;
+  const safeStoryIndex = Math.min(
+    currentIndex,
+    Math.max(effectiveStatuses.length - 1, 0),
+  );
+  const current = storiesReady ? effectiveStatuses[safeStoryIndex] : undefined;
+  const posterImage = useStatusProfileImage(userId, current);
   const isVideo = current?.media?.[0]?.includes(".mp4");
-  const rawSlideMedia: string | undefined = current?.media?.[0];
-  const optimizedSlideMedia = useMemo(() => {
-    if (!rawSlideMedia) return rawSlideMedia;
-    return rawSlideMedia;
-  }, [rawSlideMedia, isVideo]);
   const [posterReplyText, setPosterReplyText] = useState("");
   const [posterBarFocused, setPosterBarFocused] = useState(false);
   const [sendingToPoster, setSendingToPoster] = useState(false);
+  const [longPressPaused, setLongPressPaused] = useState(false);
 
 
   const isStoryOwner = Boolean(
@@ -227,7 +264,12 @@ export default function Viewer() {
     });
   }, [current?.views, current?._id]);
 
-  const overlayBlocksProgress = menuOpen || viewsModalVisible || posterBarFocused;
+  const overlayBlocksPlayback =
+    menuOpen ||
+    viewsModalVisible ||
+    posterBarFocused ||
+    playbackPaused ||
+    longPressPaused;
 
   const recordViewPayload = useCallback(() => {
     const me = String(viewerId ?? "");
@@ -242,78 +284,109 @@ export default function Viewer() {
     };
   }, [viewerId, clerkUser, userDetails]);
 
-  const resetSlideProgress = useCallback(() => {
-    resumeFromPauseRef.current = false;
-    progressAtPause.current = 0;
-    progress.setValue(0);
-    animationRef.current?.stop();
-    setDuration(5000);
-    setPaused(false);
-  }, [progress]);
-
-  const stopViewerPlayback = useCallback(() => {
-    animationRef.current?.stop();
-    resumeFromPauseRef.current = false;
-    progressAtPause.current = 0;
-    progress.setValue(0);
-    setPaused(true);
-  }, [progress]);
-
-  useFocusEffect(
-    useCallback(() => {
-      return () => {
-        stopViewerPlayback();
-      };
-    }, [stopViewerPlayback]),
+  const scrollToSlide = useCallback(
+    (index: number, animated = true) => {
+      const len = effectiveStatuses.length;
+      const clamped = Math.max(0, Math.min(index, Math.max(len - 1, 0)));
+      setCurrentIndex(clamped);
+      if (len > 0) {
+        pagerRef.current?.scrollToIndex({ index: clamped, animated });
+      }
+    },
+    [effectiveStatuses.length],
   );
 
-  useEffect(() => {
-    return () => {
-      animationRef.current?.stop();
-    };
-  }, []);
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      const idx = viewableItems[0]?.index;
+      if (typeof idx === "number") {
+        setCurrentIndex(idx);
+      }
+    },
+  ).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 80,
+  }).current;
 
   useLayoutEffect(() => {
-    if (!userId) return;
-    setStatuses([]);
-    setLoadedUserId(null);
+    if (!userIdStr) return;
+    const hydrated = resolveUserStatuses(userIdStr);
     setCurrentIndex(0);
-    setVideoLoading(true);
+    setVideoLoading(false);
+    setPlaybackPaused(false);
     setMenuOpen(false);
     setViewsModalVisible(false);
     setPosterBarFocused(false);
     setReplyText("");
     setPosterReplyText("");
-    resetSlideProgress();
-  }, [userId, resetSlideProgress]);
+    if (hydrated.length) {
+      setStatuses(hydrated);
+      setLoadedUserId(userIdStr);
+    } else {
+      setStatuses([]);
+      setLoadedUserId(null);
+    }
+  }, [userIdStr]);
+
+  useEffect(() => {
+    if (!effectiveStatuses.length) return;
+    requestAnimationFrame(() => {
+      pagerRef.current?.scrollToIndex({ index: 0, animated: false });
+    });
+  }, [userIdStr, effectiveStatuses.length]);
 
   useEffect(() => {
     if (!userId) return;
+    if (effectiveStatuses.length > 0) return;
+    if (loadedUserId === userId && statuses.length === 0) {
+      closeViewer();
+    }
+  }, [
+    loadedUserId,
+    userId,
+    statuses.length,
+    effectiveStatuses.length,
+    closeViewer,
+  ]);
+
+  useEffect(() => {
+    if (!userId || allUserIds.length === 0) return;
+    const start = Math.max(0, userIndexNum - 1);
+    const end = Math.min(allUserIds.length, userIndexNum + STATUS_PREVIEW_USER_LIMIT);
+    warmStatusCachesForUsers(allUserIds.slice(start, end));
+  }, [userId, allUserIds, userIndexNum]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const cached = resolveUserStatuses(userIdStr);
+    if (cached.length > 0) return;
 
     const controller = new AbortController();
 
     (async () => {
       try {
-        const res = await fetch(`${BASE_URL}/api/status/user/${userId}`, {
-          signal: controller.signal,
-        });
+        const res = await fetch(
+          `${API_PUBLIC_URL}/api/status/user/${encodeURIComponent(userId)}`,
+          { signal: controller.signal },
+        );
         if (!res.ok) return;
         const data = await res.json();
         if (controller.signal.aborted) return;
 
-        const sorted = [...data].sort(
-          (a: any, b: any) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        );
+        const sorted = sortStatusesForViewer(data);
+        writeStatusCache(userIdStr, sorted);
         setStatuses(sorted);
-        setLoadedUserId(userId);
+        setLoadedUserId(userIdStr);
+        void prefetchStatusMedia(sorted, 0, 3);
       } catch {
         /* ignore abort / network */
       }
     })();
 
     return () => controller.abort();
-  }, [userId]);
+  }, [userId, userIdStr]);
 
   useEffect(() => {
     if (!storiesReady || !current?._id || !viewerId) return;
@@ -322,21 +395,41 @@ export default function Viewer() {
     const me = String(viewerId);
     if (authorId === me) return;
 
+    const alreadyViewed = (current.views ?? []).some(
+      (v: { userId?: string }) => String(v.userId) === me,
+    );
+    if (!alreadyViewed) {
+      const payload = recordViewPayload();
+      setStatuses((prev) =>
+        prev.map((s) =>
+          s._id === current._id
+            ? {
+                ...s,
+                views: [
+                  ...(s.views ?? []),
+                  { ...payload, viewedAt: new Date().toISOString() },
+                ],
+              }
+            : s,
+        ),
+      );
+      if (userIdStr) {
+        markStatusViewedInMemory(userIdStr, String(current._id), me, payload);
+      }
+    }
+
     const controller = new AbortController();
 
     (async () => {
       try {
-        const res = await fetch(`${BASE_URL}/api/status/${current._id}/view`, {
+        const enriched = await fetch(`${API_PUBLIC_URL}/api/status/${current._id}/view`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(recordViewPayload()),
           signal: controller.signal,
-        });
-        if (res.ok) {
-          const updated = await res.json();
-          setStatuses((prev) =>
-            prev.map((s) => (s._id === updated._id ? updated : s)),
-          );
+        }).then((r) => (r.ok ? r.json() : null));
+        if (enriched?.views) {
+          patchStatusViewed(String(current._id), me, enriched.views);
         }
       } catch {
         /* ignore */
@@ -351,181 +444,191 @@ export default function Viewer() {
     viewerId,
     current?.userId,
     recordViewPayload,
+    userIdStr,
   ]);
 
-  useLayoutEffect(() => {
-    if (!slideKey) return;
-    resetSlideProgress();
-    const hasMedia = (current?.media?.length ?? 0) > 0;
-    setVideoLoading(hasMedia);
-  }, [slideKey, current?.media?.length, resetSlideProgress]);
-
-  useEffect(() => {
-    if ((current?.media?.length ?? 0) === 0) return;
-
-    const fallback = setTimeout(() => {
-      setVideoLoading(false);
-    }, 8000);
-
-    return () => clearTimeout(fallback);
-  }, [slideKey, current?.media?.length]);
-
-  /** Cached images may skip onLoadEnd on replay — still start the timer. */
-  useEffect(() => {
-    if (!slideKey || isVideo || (current?.media?.length ?? 0) === 0) return;
-
-    const quickReady = setTimeout(() => {
-      setVideoLoading((loading) => {
-        if (!loading) return loading;
-        setDuration(5000);
-        progressAtPause.current = 0;
-        progress.setValue(0);
-        return false;
+  const goToNextUser = useCallback(() => {
+    if (allUserIds.length > 0 && userIndexNum < allUserIds.length - 1) {
+      const nextUserIndex = userIndexNum + 1;
+      const nextUserId = allUserIds[nextUserIndex];
+      const encodedList = encodeURIComponent(JSON.stringify(allUserIds));
+      router.replace({
+        pathname: "/(status)/Viewer",
+        params: {
+          user: nextUserId,
+          userList: encodedList,
+          userIndex: nextUserIndex.toString(),
+        },
       });
-    }, 150);
-
-    return () => clearTimeout(quickReady);
-  }, [slideKey, isVideo, current?.media?.length, progress]);
-
-  const handleNext = useCallback(() => {
-    setCurrentIndex((prev) => {
-      if (prev < statuses.length - 1) return prev + 1;
-      
-      if (allUserIds.length > 0 && userIndexNum < allUserIds.length - 1) {
-        const nextUserIndex = userIndexNum + 1;
-        const nextUserId = allUserIds[nextUserIndex];
-        const encodedList = encodeURIComponent(JSON.stringify(allUserIds));
-        router.replace({
-          pathname: "/(status)/Viewer",
-          params: {
-            user: nextUserId,
-            userList: encodedList,
-            userIndex: nextUserIndex.toString(),
-          },
-        });
-        return prev;
-      }
-      
-      router.replace("/(drawer)/(tabs)");
-      return prev;
-    });
-  }, [statuses.length, allUserIds, userIndexNum]);
-
-  const stopProgress = useCallback(() => {
-    animationRef.current?.stop();
-    progress.stopAnimation((value) => {
-      progressAtPause.current = typeof value === "number" ? value : 0;
-    });
-  }, [progress]);
-
-  const startProgress = useCallback(() => {
-    if (!statuses.length || videoLoading || overlayBlocksProgress) return;
-
-    animationRef.current?.stop();
-
-    const from = resumeFromPauseRef.current ? progressAtPause.current : 0;
-    resumeFromPauseRef.current = false;
-
-    if (from <= 0) {
-      progressAtPause.current = 0;
-      progress.setValue(0);
-    }
-
-    const remaining = Math.max((1 - from) * duration, 80);
-    progress.setValue(from);
-
-    const anim = Animated.timing(progress, {
-      toValue: 1,
-      duration: remaining,
-      useNativeDriver: false,
-    });
-
-    animationRef.current = anim;
-
-    anim.start(({ finished }) => {
-      if (finished) {
-        progressAtPause.current = 0;
-        handleNext();
-      }
-    });
-  }, [
-    statuses.length,
-    videoLoading,
-    overlayBlocksProgress,
-    duration,
-    progress,
-    handleNext,
-  ]);
-
-  useEffect(() => {
-    if (!isFocused || paused || videoLoading || overlayBlocksProgress) {
-      stopProgress();
       return;
     }
-    startProgress();
-    return () => animationRef.current?.stop();
-  }, [
-    isFocused,
-    paused,
-    videoLoading,
-    overlayBlocksProgress,
-    currentIndex,
-    slideKey,
-    duration,
-    startProgress,
-    stopProgress,
-  ]);
+    closeViewer();
+  }, [allUserIds, userIndexNum, closeViewer]);
 
-  const handleVideoLoad = (meta: any) => {
-    setVideoLoading(false);
-    const ms = Math.min(
-      Math.max((meta?.duration ?? 5) * 1000, 3000),
-      60000,
-    );
-    setDuration(ms);
-    progressAtPause.current = 0;
-    progress.setValue(0);
-  };
-
-  const handleImageLoad = () => {
-    setVideoLoading(false);
-    setDuration(5000);
-    progressAtPause.current = 0;
-    progress.setValue(0);
-  };
-
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((p) => p - 1);
+  const goToPrevUser = useCallback(() => {
+    if (allUserIds.length > 0 && userIndexNum > 0) {
+      const prevUserIndex = userIndexNum - 1;
+      const prevUserId = allUserIds[prevUserIndex];
+      const encodedList = encodeURIComponent(JSON.stringify(allUserIds));
+      router.replace({
+        pathname: "/(status)/Viewer",
+        params: {
+          user: prevUserId,
+          userList: encodedList,
+          userIndex: prevUserIndex.toString(),
+        },
+      });
     }
-  };
+  }, [allUserIds, userIndexNum]);
 
-  const handlePause = () => {
-    if (overlayBlocksProgress || paused) return;
-    resumeFromPauseRef.current = true;
-    stopProgress();
-    setPaused(true);
-  };
+  const handleNext = useCallback(() => {
+    if (currentIndex < effectiveStatuses.length - 1) {
+      scrollToSlide(currentIndex + 1);
+      return;
+    }
+    goToNextUser();
+  }, [currentIndex, effectiveStatuses.length, scrollToSlide, goToNextUser]);
 
-  const handleResume = () => {
-    if (overlayBlocksProgress) return;
-    setPaused(false);
-  };
+  const handlePrev = useCallback(() => {
+    if (currentIndex > 0) {
+      scrollToSlide(currentIndex - 1);
+      return;
+    }
+    goToPrevUser();
+  }, [currentIndex, scrollToSlide, goToPrevUser]);
+
+  useStoryPlayback({
+    items: effectiveStatuses,
+    activeIndex: safeStoryIndex,
+    isVideo: Boolean(isVideo),
+    paused: overlayBlocksPlayback,
+    enabled: storiesReady,
+    onComplete: handleNext,
+  });
+
+  useEffect(() => {
+    if (!effectiveStatuses.length) return;
+    void prefetchStatusMedia(
+      effectiveStatuses,
+      Math.max(0, currentIndex),
+      3,
+    );
+    if (allUserIds.length) {
+      prefetchAdjacentUsers(allUserIds, userIndexNum, resolveUserStatuses);
+    }
+  }, [currentIndex, effectiveStatuses, allUserIds, userIndexNum]);
+
+  const onPagerScrollEndDrag = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, velocity } = e.nativeEvent;
+      const vx = velocity?.x ?? 0;
+      const maxOffset = width * Math.max(effectiveStatuses.length - 1, 0);
+      const atStart = contentOffset.x <= 8;
+      const atEnd = contentOffset.x >= maxOffset - 8;
+
+      if (atEnd && vx > 0.2) {
+        handleNext();
+      } else if (atStart && vx < -0.2) {
+        handlePrev();
+      }
+    },
+    [width, effectiveStatuses.length, handleNext, handlePrev],
+  );
 
   const openViewsModal = () => {
     setViewsModalVisible(true);
-    stopProgress();
-    setPaused(true);
+    setPlaybackPaused(true);
     setDmTarget(null);
     setReplyText("");
   };
 
   const closeViewsModal = () => {
     setViewsModalVisible(false);
-    setPaused(false);
+    setPlaybackPaused(false);
     setDmTarget(null);
     setReplyText("");
   };
+
+  const renderStatusSlide = useCallback(
+    ({ item, index }: { item: any; index: number }) => {
+      const slideMedia = item.media?.[0];
+      const slideIsVideo = slideMedia?.includes(".mp4");
+      const mediaUri = slideMedia ? resolveMediaUrl(slideMedia) : undefined;
+      const hasSlideMedia = Boolean(slideMedia);
+      const isActive = index === currentIndex;
+      const slideCaptionPad = canMessagePoster
+        ? posterReplyBottomInset + 16
+        : hasSlideMedia
+          ? 80
+          : 0;
+      const videoPaused =
+        !isFocused || overlayBlocksPlayback || !isActive;
+
+      return (
+        <View style={{ width, height }}>
+          {hasSlideMedia && mediaUri ? (
+            slideIsVideo ? (
+              <Video
+                source={{ uri: mediaUri }}
+                style={styles.media}
+                resizeMode="contain"
+                paused={videoPaused}
+                repeat
+                onLoadStart={() => {
+                  if (isActive) setVideoLoading(true);
+                }}
+                onLoad={() => {
+                  if (isActive) setVideoLoading(false);
+                }}
+              />
+            ) : (
+              <ExpoImage
+                source={{ uri: mediaUri }}
+                style={styles.media}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+                transition={120}
+              />
+            )
+          ) : null}
+
+          {!hasSlideMedia && (
+            <View
+              style={[
+                StyleSheet.absoluteFillObject,
+                { backgroundColor: item.backgroundColor ?? "#075E54" },
+              ]}
+            />
+          )}
+
+          {item.caption ? (
+            <View
+              style={[
+                styles.textContainer,
+                {
+                  justifyContent: hasSlideMedia ? "flex-end" : "center",
+                  paddingBottom: slideCaptionPad,
+                  backgroundColor: hasSlideMedia
+                    ? "transparent"
+                    : item.backgroundColor,
+                },
+              ]}
+              pointerEvents="none"
+            >
+              <Text style={styles.text}>{item.caption}</Text>
+            </View>
+          ) : null}
+        </View>
+      );
+    },
+    [
+      canMessagePoster,
+      currentIndex,
+      isFocused,
+      overlayBlocksPlayback,
+      posterReplyBottomInset,
+    ],
+  );
 
   const sendStoryReply = async (
     target: StreamChatTarget,
@@ -535,7 +638,7 @@ export default function Viewer() {
     const targetUserId = target?.clerkId;
     if (!client?.userID || !targetUserId || !messageText.trim()) return;
 
-    stopViewerPlayback();
+    setPlaybackPaused(true);
 
     const displayName = buildStreamDisplayName(target);
     const image = (target.image ?? "").trim() || undefined;
@@ -574,7 +677,7 @@ export default function Viewer() {
 
     setSendingToPoster(true);
     try {
-      const author = statuses[0] ?? current;
+      const author = effectiveStatuses[0] ?? current;
       await sendStoryReply(
         {
           clerkId: String(userId),
@@ -640,23 +743,26 @@ export default function Viewer() {
     }
   };
 
-  if (!storiesReady || !current) {
+  if (!userId) {
+    return null;
+  }
+
+  if (!current) {
     return (
       <View style={styles.loader}>
         <StatusBar barStyle="light-content" backgroundColor="#000" />
-        <ActivityIndicator size="small" color="#fff" />
+        <Pressable
+          style={[styles.storyHeader, { top: insets.top + 8 }]}
+          onPress={closeViewer}
+          hitSlop={12}
+        >
+          <Feather name="x" size={24} color="#fff" />
+        </Pressable>
       </View>
     );
   }
 
   const posterName = statusDisplayName(current);
-  const posterImage = statusAvatarUri(current);
-
-  const captionBottomPad = canMessagePoster
-    ? posterReplyBottomInset + 16
-    : current.media?.length > 0
-      ? 80
-      : 0;
 
   return (
     <KeyboardAvoidingView
@@ -665,35 +771,13 @@ export default function Viewer() {
       keyboardVerticalOffset={insets.top}
     >
       <StatusBar barStyle="light-content" backgroundColor="#000" />
-      <View style={[styles.progressContainer, { top: insets.top + 8 }]}>
-        {statuses.map((_, i) => (
-          <View key={i} style={styles.progressBar}>
-            <Animated.View
-              style={[
-                styles.progressFill,
-                {
-                  width:
-                    i === currentIndex
-                      ? progress.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: ["0%", "100%"],
-                        })
-                      : i < currentIndex
-                        ? "100%"
-                        : "0%",
-                },
-              ]}
-            />
-          </View>
-        ))}
-      </View>
 
-      <View style={[styles.storyHeader, { top: insets.top + 20 }]}>
+      <View style={[styles.storyHeader, { top: insets.top + 16 }]}>
         <Pressable
-          onPress={() => router.replace("/(drawer)/(tabs)")}
+          onPress={closeViewer}
           hitSlop={12}
         >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+          <Feather name="x" size={24} color="#fff" />
         </Pressable>
         <PresenceAvatar
           userId={current.userId}
@@ -715,16 +799,15 @@ export default function Viewer() {
         </View>
       </View>
 
-      <View style={[styles.menuWrapper, { top: insets.top + 20 }]}>
+      <View style={[styles.menuWrapper, { top: insets.top + 8 }]}>
         <Menu
           onOpen={() => {
             setMenuOpen(true);
-            setPaused(true);
-            animationRef.current?.stop();
+            setPlaybackPaused(true);
           }}
           onClose={() => {
             setMenuOpen(false);
-            if (!viewsModalVisible) setPaused(false);
+            if (!viewsModalVisible) setPlaybackPaused(false);
           }}
         >
           <MenuTrigger>
@@ -779,67 +862,51 @@ export default function Viewer() {
       )}
 
       <View style={styles.mediaLayer} pointerEvents="box-none">
-        {current.media?.length > 0 &&
-          optimizedSlideMedia &&
-          (isVideo ? (
-            <Video
-              key={slideKey}
-              source={{ uri: optimizedSlideMedia }}
-              style={[styles.media, videoLoading && styles.mediaHidden]}
-              resizeMode="contain"
-              paused={paused || overlayBlocksProgress || !isFocused}
-              onLoad={handleVideoLoad}
-              onLoadStart={() => setVideoLoading(true)}
-            />
-          ) : (
-            <Image
-              key={slideKey}
-              source={{ uri: optimizedSlideMedia }}
-              style={[styles.media, videoLoading && styles.mediaHidden]}
-              resizeMode="contain"
-              onLoadStart={() => setVideoLoading(true)}
-              onLoadEnd={handleImageLoad}
-            />
-          ))}
-
-        {videoLoading && (
-          <ActivityIndicator size="large" color="#fff" style={styles.loader} />
-        )}
-
-        {current.caption && (
-          <View
-            style={[
-              styles.textContainer,
-              {
-                justifyContent:
-                  current.media?.length > 0 ? "flex-end" : "center",
-                paddingBottom: captionBottomPad,
-                backgroundColor:
-                  current.media?.length > 0
-                    ? "transparent"
-                    : current.backgroundColor,
-              },
-            ]}
-            pointerEvents="none"
-          >
-            <Text style={styles.text}>{current.caption}</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.touchRow} pointerEvents="box-none">
         <Pressable
-          style={styles.left}
+          style={styles.tapLeft}
           onPress={handlePrev}
-          onPressIn={handlePause}
-          onPressOut={handleResume}
+          onLongPress={() => setLongPressPaused(true)}
+          onPressOut={() => setLongPressPaused(false)}
+          delayLongPress={200}
         />
         <Pressable
-          style={styles.right}
+          style={styles.tapRight}
           onPress={handleNext}
-          onPressIn={handlePause}
-          onPressOut={handleResume}
+          onLongPress={() => setLongPressPaused(true)}
+          onPressOut={() => setLongPressPaused(false)}
+          delayLongPress={200}
         />
+        <FlatList
+          ref={pagerRef}
+          data={effectiveStatuses}
+          horizontal
+          pagingEnabled
+          bounces
+          decelerationRate="fast"
+          disableIntervalMomentum
+          showsHorizontalScrollIndicator={false}
+          style={styles.pager}
+          keyExtractor={(item) => String(item._id)}
+          renderItem={renderStatusSlide}
+          getItemLayout={(_, index) => ({
+            length: width,
+            offset: width * index,
+            index,
+          })}
+          initialScrollIndex={0}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          onScrollEndDrag={onPagerScrollEndDrag}
+          onScrollToIndexFailed={(info) => {
+            pagerRef.current?.scrollToOffset({
+              offset: info.averageItemLength * info.index,
+              animated: false,
+            });
+          }}
+          windowSize={3}
+          maxToRenderPerBatch={2}
+        />
+
       </View>
 
       <Modal
@@ -1110,6 +1177,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
   },
 
+  tapLeft: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: "38%",
+    zIndex: 20,
+  },
+  tapRight: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: "38%",
+    zIndex: 20,
+  },
   storyHeader: {
     position: "absolute",
     left: 8,
@@ -1169,6 +1252,11 @@ const styles = StyleSheet.create({
   mediaHidden: {
     opacity: 0,
   },
+  mediaSpinner: {
+    position: "absolute",
+    alignSelf: "center",
+    top: "45%",
+  },
 
   textContainer: {
     position: "absolute",
@@ -1184,24 +1272,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
 
-  progressContainer: {
-    flexDirection: "row",
-    position: "absolute",
-    left: 10,
-    right: 10,
-    gap: 3,
-    zIndex: 110,
-  },
-
-  progressBar: {
+  pager: {
     flex: 1,
-    height: 3,
-    backgroundColor: "rgba(255,255,255,0.3)",
-  },
-
-  progressFill: {
-    height: 3,
-    backgroundColor: "#fff",
+    width,
+    height,
   },
 
   loader: {
@@ -1210,16 +1284,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  touchRow: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-    flexDirection: "row",
-  },
-
-  left: { flex: 1 },
-  right: { flex: 1 },
 
   menuWrapper: {
     position: "absolute",

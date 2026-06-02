@@ -97,14 +97,20 @@ export function useActivePostTracking({
   );
 
   const setActivePost = useCallback(
-    (postIndex: number) => {
-      const boundedIndex = Math.min(Math.max(postIndex, 0), Math.max(posts.length - 1, 0));
+    (postIndex: number, options?: { haptic?: boolean }) => {
+      const boundedIndex = Math.min(
+        Math.max(postIndex, 0),
+        Math.max(posts.length - 1, 0),
+      );
       if (boundedIndex === activePostIndex) return;
 
       const restoredMediaIndex = getMediaIndex(boundedIndex);
       setActivePostIndex(boundedIndex);
       onPostChange?.(boundedIndex, restoredMediaIndex);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+
+      if (options?.haptic !== false) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      }
     },
     [activePostIndex, getMediaIndex, onPostChange, posts.length],
   );

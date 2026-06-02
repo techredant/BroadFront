@@ -5,7 +5,9 @@ import {
   BroadcastOutgoingCallControls,
 } from "@/components/call/BroadcastCallControls";
 import { BroadcastRingingCall } from "@/components/call/BroadcastRingingCall";
+import { BroadcastConnectingCall } from "@/components/call/BroadcastConnectingCall";
 import { BroadcastVideoCallLayout } from "@/components/call/BroadcastVideoCallLayout";
+import { resolveRemoteCallDisplayName } from "@/utils/callDisplayName";
 import { useCallManager } from "@/hooks/useCallManager";
 import { useCallRingtone } from "@/hooks/useCallRingtone";
 import { useWebRTC } from "@/hooks/useWebRTC";
@@ -109,6 +111,7 @@ const CallScreen = () => {
         displayNames={displayNames}
         remotePeer={remotePeer}
         channelId={channelId}
+        callAccepted={acceptedFromOverlay}
       />
     </RtcSessionProvider>
   );
@@ -120,12 +123,14 @@ function CallUI({
   displayNames,
   remotePeer,
   channelId,
+  callAccepted = false,
 }: {
   isCaller: boolean;
   callMode: CallMode;
   displayNames: Record<string, string>;
   remotePeer: { name: string; image?: string };
   channelId: string;
+  callAccepted?: boolean;
 }) {
   const isVideoCall = callMode === "video";
   const call = useCall();
@@ -133,6 +138,16 @@ function CallUI({
   const { useCallCallingState, useRemoteParticipants } = useCallStateHooks();
   const callingState = useCallCallingState();
   const remoteParticipants = useRemoteParticipants();
+
+  const peerDisplayName = useMemo(
+    () =>
+      resolveRemoteCallDisplayName(
+        remotePeer,
+        displayNames,
+        call?.currentUserId,
+      ),
+    [remotePeer, displayNames, call?.currentUserId],
+  );
 
   const calleeConnected = useMemo(() => {
     if (!isCaller || !call) return true;
@@ -165,7 +180,8 @@ function CallUI({
         ))
     : !isJoined &&
       callingState !== RtcConnectionState.LEFT &&
-      !isCalleeConnecting;
+      !isCalleeConnecting &&
+      !callAccepted;
 
   const sessionStatus = mapCallingStateToStatus(callingState);
 
@@ -205,7 +221,7 @@ function CallUI({
   if (isRinging) {
     return (
       <BroadcastRingingCall
-        remoteName={remotePeer.name}
+        remoteName={peerDisplayName}
         remoteImage={remotePeer.image}
         isCaller={isCaller}
         isVideoCall={isVideoCall}
@@ -224,6 +240,32 @@ function CallUI({
     );
   }
 
+  const isConnecting =
+    !isJoined &&
+    callingState !== RtcConnectionState.LEFT &&
+    !isRinging &&
+    (isCalleeConnecting ||
+      callAccepted ||
+      callingState === RtcConnectionState.JOINING);
+
+  if (isConnecting) {
+    const connectingStatus = isVideoCall
+      ? "Connecting video…"
+      : statusLabel(sessionStatus) || "Connecting…";
+
+    return (
+      <BroadcastConnectingCall
+        peerName={peerDisplayName}
+        peerImage={remotePeer.image}
+        statusText={connectingStatus}
+        isVideoCall={isVideoCall}
+        onToggleSpeaker={toggleSpeaker}
+        onFlipCamera={() => void flipCamera()}
+        onHangup={hangup}
+      />
+    );
+  }
+
   if (!isVideoCall || !isJoined) {
     if (!isVideoCall) {
       return (
@@ -231,7 +273,7 @@ function CallUI({
           <StreamConnectionOverlay />
           <View style={styles.audioCallBody}>
             <Ionicons name="call" size={48} color="rgba(255,255,255,0.9)" />
-            <Text style={styles.audioCallLabel}>{remotePeer.name}</Text>
+            <Text style={styles.audioCallLabel}>{peerDisplayName}</Text>
             <Text style={styles.audioCallSub}>
               {isJoined
                 ? callDuration
@@ -247,28 +289,6 @@ function CallUI({
         </SafeAreaView>
       );
     }
-
-    return (
-      <SafeAreaView style={styles.activeRoot}>
-        <BroadcastRingingCall
-          remoteName={remotePeer.name}
-          remoteImage={remotePeer.image}
-          isCaller={isCaller}
-          isVideoCall={isVideoCall}
-          statusText="Connecting video…"
-          controls={
-            <BroadcastActiveCallControls
-              showCamera
-              showSpeakerToggle
-              showFlipCamera
-              onToggleSpeaker={toggleSpeaker}
-              onFlipCamera={() => void flipCamera()}
-              onHangup={hangup}
-            />
-          }
-        />
-      </SafeAreaView>
-    );
   }
 
   return (
@@ -276,7 +296,7 @@ function CallUI({
       <StreamConnectionOverlay />
       <BroadcastVideoCallLayout
         displayNames={displayNames}
-        remotePeer={remotePeer}
+        remotePeer={{ ...remotePeer, name: peerDisplayName }}
         duration={callDuration}
         localUserId={call?.currentUserId}
       />

@@ -32,6 +32,7 @@ import {
 } from "@/utils/mediaGallery";
 import { fetchRemovedPostIds, filterRemovedPosts } from "@/utils/postVisibility";
 import type { MediaKind } from "@/utils/mediaUtils";
+import { CACHE_TTL, setCached, shouldRefetchOnFocus } from "@/utils/staleFetch";
 
 type MediaPost = {
   _id: string;
@@ -73,7 +74,7 @@ export default function MediaScreen() {
 
   const [activeTab, setActiveTab] = useState<MediaTab>("videos");
   const [mediaPosts, setMediaPosts] = useState<MediaPost[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => feedPosts.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -139,6 +140,7 @@ export default function MediaScreen() {
 
         if (pageNumber === 1) {
           hasLoadedRef.current = true;
+          setCached(`media:${levelKey}`, newPosts);
           setMediaPosts((prev) => {
             const merged = mergeMediaPosts(prev, newPosts);
             applyMerged(merged);
@@ -163,13 +165,20 @@ export default function MediaScreen() {
         }
       }
     },
-    [currentLevel],
+    [currentLevel, levelKey],
   );
 
   useFocusEffect(
     useCallback(() => {
+      const cacheKey = `media:${levelKey}`;
+      if (
+        !shouldRefetchOnFocus(cacheKey, CACHE_TTL.media) &&
+        (hasLoadedRef.current || feedMediaPosts.length > 0)
+      ) {
+        return;
+      }
       fetchMedia(1);
-    }, [fetchMedia]),
+    }, [fetchMedia, levelKey, feedMediaPosts.length]),
   );
 
   useEffect(() => {

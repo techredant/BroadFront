@@ -31,11 +31,14 @@ export type EnrichedRtcParticipant = RtcParticipant & {
 export type LiveSessionRecord = {
   callId: string;
   hostClerkId?: string;
+  hostName?: string;
   variant?: string;
   roomTitle?: string;
   level?: string;
   viewerCount?: number;
   startedAt?: string;
+  endedAt?: string;
+  status?: "live" | "ended" | "scheduled";
   custom?: Record<string, unknown>;
 };
 
@@ -60,6 +63,8 @@ export type RtcCallState = {
   participants?: unknown[];
   updatedAt?: number;
   createdAt?: number;
+  /** Agora UIDs with active voice volume (host-side speaking indicator). */
+  speakingUids?: number[];
 };
 
 export type CallRingPayload = {

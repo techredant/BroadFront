@@ -2,19 +2,24 @@
 export const LIVE_EVENT = {
   CHAT: "live_chat",
   JOIN: "live_join_ping",
+  LEAVE: "live_leave_ping",
   REACTION: "live_reaction",
   GIFT: "live_gift",
   DONATION: "live_donation",
   SPEAK_REQUEST: "speak_request",
   SPEAK_INVITE: "speak_invite",
   SPEAK_DENIED: "speak_denied",
+  GUEST_ON_STAGE: "guest_on_stage",
+  GUEST_OFF_STAGE: "guest_off_stage",
+  GUEST_MUTED: "guest_muted",
+  GUEST_UNMUTED: "guest_unmuted",
 } as const;
 
-/** Max chat rows rendered at once (performance) */
-export const LIVE_CHAT_VISIBLE_MAX = 40;
+/** Max chat rows kept in memory (newest retained) */
+export const LIVE_CHAT_VISIBLE_MAX = 48;
 
-/** Join toast visibility duration */
-export const LIVE_JOIN_TOAST_MS = 4000;
+/** Batch non-chat bursts (gifts/donations) — chat posts immediately */
+export const LIVE_JOIN_BATCH_MS = 80;
 
 export type LiveGiftDef = {
   id: string;
@@ -55,23 +60,17 @@ export const LIVE_DONATION_PRESETS = [50, 100, 500, 1000] as const;
 
 export type LiveMessage = {
   id: string;
-  kind: "chat" | "join" | "system" | "donation" | "gift";
+  kind: "chat" | "join" | "leave" | "system" | "donation" | "gift";
   userId?: string;
   userName: string;
   text: string;
   isHost?: boolean;
   giftEmoji?: string;
-  /** Auto-hide join rows after this timestamp */
-  expiresAt?: number;
+  createdAt: number;
 };
 
 export type SpeakRequest = {
   userId: string;
-  userName: string;
-};
-
-export type JoinToast = {
-  id: string;
   userName: string;
 };
 
@@ -81,19 +80,30 @@ export type DonationToast = {
   amount: number;
 };
 
+/** Append chronologically (newest at end). Drops oldest when over cap. */
 export function appendMessage(
   prev: LiveMessage[],
-  msg: Omit<LiveMessage, "id">,
+  msg: Omit<LiveMessage, "id" | "createdAt"> & { createdAt?: number },
   max = LIVE_CHAT_VISIBLE_MAX,
 ): LiveMessage[] {
-  const next = [{ ...msg, id: `${Date.now()}-${Math.random()}` }, ...prev];
-  return next.slice(0, max);
+  const row: LiveMessage = {
+    ...msg,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    createdAt: msg.createdAt ?? Date.now(),
+  };
+  const next = [...prev, row];
+  if (next.length <= max) return next;
+  return next.slice(-max);
 }
 
-/** Drop expired join rows and cap list length */
+/** Keep the most recent rows within the cap. */
 export function pruneVisibleMessages(messages: LiveMessage[]): LiveMessage[] {
-  const now = Date.now();
-  return messages
-    .filter((m) => m.kind !== "join" || !m.expiresAt || m.expiresAt > now)
-    .slice(0, LIVE_CHAT_VISIBLE_MAX);
+  return messages.slice(-LIVE_CHAT_VISIBLE_MAX);
+}
+
+/** Opacity for TikTok-style fade: oldest (top) → 0.28, newest (bottom) → 1 */
+export function liveCommentOpacity(index: number, total: number): number {
+  if (total <= 1) return 1;
+  const t = index / (total - 1);
+  return 0.28 + t * 0.72;
 }

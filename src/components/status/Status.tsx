@@ -1,9 +1,16 @@
-import React, { memo, useCallback, useMemo } from "react";
-import { FlatList, View, StyleSheet } from "react-native";
+import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { View, StyleSheet } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { CreateStatus } from "./CreateStatus";
 import { useTheme } from "@/context/ThemeContext";
 import { StatusItem } from "./StatusItem";
 import { enrichStatusGroup } from "@/utils/statusUser";
+import { STATUS_ITEM_WIDTH } from "@/constants/statusTheme";
+import {
+  STATUS_PREVIEW_USER_LIMIT,
+  warmStatusCachesForUsers,
+} from "@/utils/statusList";
+import { prefetchStatusMedia } from "@/utils/statusEngine";
 
 interface StatusModel {
   _id: string;
@@ -37,11 +44,22 @@ const StatusListHeader = memo(function StatusListHeader() {
 const StatusListItem = memo(function StatusListItem({
   item,
   currentUserId,
+  allUserIds,
+  userIndex,
 }: {
   item: any;
   currentUserId?: string | null;
+  allUserIds: string[];
+  userIndex: number;
 }) {
-  return <StatusItem userStatus={item} currentUserId={currentUserId} />;
+  return (
+    <StatusItem
+      userStatus={item}
+      currentUserId={currentUserId}
+      allUserIds={allUserIds}
+      userIndex={userIndex}
+    />
+  );
 });
 
 export function Status({ statuses, currentUserId }: StatusProps) {
@@ -73,12 +91,68 @@ export function Status({ statuses, currentUserId }: StatusProps) {
     [statuses],
   );
 
+  const browseUserIds = useMemo(
+    () => groupedStatuses.map((g: any) => g.userId),
+    [groupedStatuses],
+  );
+
+  useEffect(() => {
+    const warm = browseUserIds.slice(0, STATUS_PREVIEW_USER_LIMIT);
+    warmStatusCachesForUsers(warm);
+    for (const uid of warm) {
+      const stories = groupedStatuses.find((g: any) => g.userId === uid)?.statuses;
+      if (stories?.length) void prefetchStatusMedia(stories, 0, 3);
+    }
+  }, [browseUserIds, groupedStatuses]);
+
   const keyExtractor = useCallback((item: any) => item.userId, []);
   const renderItem = useCallback(
-    ({ item }: { item: any }) => (
-      <StatusListItem item={item} currentUserId={currentUserId} />
+    ({ item, index }: { item: any; index: number }) => (
+      <StatusListItem
+        item={item}
+        currentUserId={currentUserId}
+        allUserIds={browseUserIds}
+        userIndex={index}
+      />
     ),
-    [currentUserId],
+    [browseUserIds, currentUserId],
+  );
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 40,
+    minimumViewTime: 0,
+  }).current;
+
+  const onViewableItemsChanged = useCallback(
+    ({
+      viewableItems,
+    }: {
+      viewableItems: Array<{ index: number | null }>;
+    }) => {
+      const indices = viewableItems
+        .map((v) => v.index)
+        .filter((i): i is number => typeof i === "number" && i >= 0);
+      if (!indices.length) return;
+
+      const minIndex = Math.min(...indices);
+      const maxIndex = Math.max(...indices);
+      const endIndex = Math.min(groupedStatuses.length - 1, maxIndex + 2);
+
+      const warmIds: string[] = [];
+      for (let i = minIndex; i <= endIndex; i++) {
+        const group = groupedStatuses[i];
+        if (!group?.userId) continue;
+        warmIds.push(group.userId);
+        const stories = group.statuses;
+        if (stories?.length) {
+          void prefetchStatusMedia(stories, 0, 3);
+        }
+      }
+      if (warmIds.length) {
+        warmStatusCachesForUsers(warmIds);
+      }
+    },
+    [groupedStatuses],
   );
 
   return (
@@ -91,20 +165,19 @@ export function Status({ statuses, currentUserId }: StatusProps) {
         },
       ]}
     >
-      <FlatList
+      <FlashList
         data={groupedStatuses}
         horizontal
-        windowSize={5}
-        initialNumToRender={5}
-        maxToRenderPerBatch={5}
-        removeClippedSubviews
-        updateCellsBatchingPeriod={50}
+        estimatedItemSize={STATUS_ITEM_WIDTH}
+        drawDistance={STATUS_ITEM_WIDTH * 4}
         keyExtractor={keyExtractor}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={StatusSeparator}
         renderItem={renderItem}
         ListHeaderComponent={StatusListHeader}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
       />
     </View>
   );
@@ -112,17 +185,17 @@ export function Status({ statuses, currentUserId }: StatusProps) {
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 6,
+    paddingVertical: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
 
   listContent: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 6,
     alignItems: "flex-start",
     gap: 0,
   },
 
   separator: {
-    width: 6,
+    width: 2,
   },
 });

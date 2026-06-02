@@ -12,6 +12,7 @@ import {
   Platform,
   Keyboard,
   TouchableWithoutFeedback,
+  AppState,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,7 +25,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
 import { MediaColors, MediaGradients } from "@/constants/mediaTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { isStreamCallOnAir } from "@/utils/isStreamCallLive";
+import { isStreamCallOnAir, isStreamCallEnded } from "@/utils/isStreamCallLive";
 import {
   isMarketLiveCall,
   isCommunityLiveCall,
@@ -32,11 +33,14 @@ import {
   type MarketLiveProduct,
 } from "@/utils/marketLive";
 import { getPoliticalColors } from "@/constants/politicalTheme";
+import { syncChatMemberProfiles } from "@/utils/streamUser";
+import { LIVE_HOME_POLL_MS, SOCKET_IO_DISABLED_ON_HOST } from "@/constants/api";
+import { CACHE_TTL, setCached, shouldRefetchOnFocus } from "@/utils/staleFetch";
+import { createFeedSocket } from "@/utils/feedSocket";
+import { bindLiveSignaling } from "@/rtc/agoraSignaling";
 
 const { width } = Dimensions.get("window");
-/** Stream QueryCalls limit is ~60/min per user — avoid hammering on focus/remount */
-const MIN_QUERY_INTERVAL_MS = 45_000;
-const FOCUS_POLL_MS = 60_000;
+const MANUAL_REFRESH_COOLDOWN_MS = 2000;
 
 /** Survives HomeScreen unmount when user enters a live session */
 const liveCallsCache = {
@@ -49,7 +53,11 @@ type Props = {
   client: AgoraRtcClient;
   joinCall: (
     callId: string,
-    meta?: { playlist?: string[]; initialIndex?: number },
+    meta?: {
+      playlist?: string[];
+      initialIndex?: number;
+      hostClerkId?: string;
+    },
   ) => void;
   liveScreen: (
     callId: string,
@@ -94,6 +102,8 @@ export const HomeScreen = ({
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [title, setTitle] = useState("");
+  const [liveTab, setLiveTab] = useState<"live" | "ended">("live");
+  const [hostProfiles, setHostProfiles] = useState<Record<string, string>>({});
 
   const hasLoadedRef = useRef(cacheValid);
   const lastFetchAtRef = useRef(cacheValid ? liveCallsCache.fetchedAt : 0);
@@ -111,12 +121,22 @@ export const HomeScreen = ({
       custom: session.custom ?? {},
       createdBy: { id: session.hostClerkId },
       backstage: false,
-      endedAt: null,
+      endedAt:
+        session.status === "ended"
+          ? session.endedAt
+            ? new Date(session.endedAt).getTime()
+            : Date.now()
+          : null,
     },
+    status: session.status,
+    endedAt: session.endedAt,
   });
 
+  const isSessionEnded = (session: LiveSessionRecord) =>
+    session.status === "ended" || isStreamCallEnded(sessionAsCallLike(session));
+
   const isCallLive = (session: LiveSessionRecord) =>
-    isStreamCallOnAir(sessionAsCallLike(session));
+    !isSessionEnded(session) && isStreamCallOnAir(sessionAsCallLike(session));
 
   const fetchCalls = useCallback(
     async (options?: { force?: boolean; silent?: boolean }) => {
@@ -125,12 +145,14 @@ export const HomeScreen = ({
       const now = Date.now();
       const silent = options?.silent ?? hasLoadedRef.current;
 
-      if (
-        !options?.force &&
-        hasLoadedRef.current &&
-        now - lastFetchAtRef.current < MIN_QUERY_INTERVAL_MS
-      ) {
-        return;
+      if (!options?.force) {
+        const throttleMs = silent ? LIVE_HOME_POLL_MS : MANUAL_REFRESH_COOLDOWN_MS;
+        if (
+          hasLoadedRef.current &&
+          now - lastFetchAtRef.current < throttleMs
+        ) {
+          return;
+        }
       }
 
       fetchInFlightRef.current = true;
@@ -141,14 +163,17 @@ export const HomeScreen = ({
 
       try {
         const variant = mode === "market" ? "market" : "community";
-        const sessions = (await fetchActiveLives(variant)) as LiveSessionRecord[];
-        const visible = sessions.filter(isCallLive);
+        const sessions = (await fetchActiveLives(variant, true)) as LiveSessionRecord[];
+        const visible = sessions.filter(
+          (session) => isCallLive(session) || isSessionEnded(session),
+        );
         setCalls(visible);
         hasLoadedRef.current = true;
         lastFetchAtRef.current = Date.now();
         liveCallsCache.clientId = clientId;
         liveCallsCache.calls = visible;
         liveCallsCache.fetchedAt = lastFetchAtRef.current;
+        setCached(`live-home:${clientId}:${mode}`, visible);
       } catch (e) {
         console.log("fetchActiveLives error:", e);
       } finally {
@@ -159,7 +184,36 @@ export const HomeScreen = ({
         }
       }
     },
-    [client, clientId],
+    [client, clientId, mode],
+  );
+
+  React.useEffect(() => {
+    const ids = [
+      ...new Set(
+        calls.map((session) => session.hostClerkId).filter(Boolean) as string[],
+      ),
+    ];
+    if (!ids.length) {
+      setHostProfiles({});
+      return;
+    }
+    void syncChatMemberProfiles(ids)
+      .then((profiles) => {
+        const next: Record<string, string> = {};
+        for (const profile of profiles) {
+          next[profile.clerkId] = profile.name;
+        }
+        setHostProfiles(next);
+      })
+      .catch(() => {});
+  }, [calls]);
+
+  const resolveHostName = useCallback(
+    (session: LiveSessionRecord) =>
+      session.hostName?.trim() ||
+      (session.hostClerkId ? hostProfiles[session.hostClerkId] : undefined) ||
+      "Member",
+    [hostProfiles],
   );
 
   const refreshCalls = useCallback(() => {
@@ -169,11 +223,15 @@ export const HomeScreen = ({
 
   useFocusEffect(
     useCallback(() => {
-      void fetchCalls({ silent: false });
+      const cacheKey = `live-home:${clientId}:${mode}`;
+      void fetchCalls({
+        force: shouldRefetchOnFocus(cacheKey, CACHE_TTL.liveCalls),
+        silent: hasLoadedRef.current,
+      });
 
       const poll = setInterval(() => {
         void fetchCalls({ silent: true });
-      }, FOCUS_POLL_MS);
+      }, LIVE_HOME_POLL_MS);
 
       return () => {
         clearInterval(poll);
@@ -184,6 +242,34 @@ export const HomeScreen = ({
       };
     }, [fetchCalls]),
   );
+
+  React.useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void fetchCalls({ force: true, silent: true });
+      }
+    });
+    return () => sub.remove();
+  }, [fetchCalls]);
+
+  React.useEffect(() => {
+    if (SOCKET_IO_DISABLED_ON_HOST) return;
+
+    const socket = createFeedSocket();
+    const unbind = bindLiveSignaling(socket, {
+      onStarted: () => {
+        void fetchCalls({ force: true, silent: true });
+      },
+      onEnded: () => {
+        void fetchCalls({ force: true, silent: true });
+      },
+    });
+
+    return () => {
+      unbind();
+      socket.disconnect();
+    };
+  }, [fetchCalls]);
 
   React.useEffect(() => {
     if (!openGoLiveOnMount) return;
@@ -218,26 +304,44 @@ export const HomeScreen = ({
     void fetchCalls({ force: true, silent: true });
   };
 
-  const liveCalls = useMemo(
+  const filteredCalls = useMemo(
     () =>
       calls.filter((session) => {
         const callLike = sessionAsCallLike(session);
-        return (
-          isCallLive(session) &&
-          (mode === "market"
+        const modeMatch =
+          mode === "market"
             ? isMarketLiveCall(callLike)
-            : isCommunityLiveCall(callLike))
-        );
+            : isCommunityLiveCall(callLike);
+        return modeMatch && (isCallLive(session) || isSessionEnded(session));
       }),
     [calls, mode],
   );
 
-  const listData = liveCalls;
+  const activeLiveCalls = useMemo(
+    () => filteredCalls.filter((session) => isCallLive(session)),
+    [filteredCalls],
+  );
+
+  const endedLiveCalls = useMemo(
+    () => filteredCalls.filter((session) => isSessionEnded(session)),
+    [filteredCalls],
+  );
+
+  const listData = liveTab === "live" ? activeLiveCalls : endedLiveCalls;
+
+  const formatEndedAgo = (endedAt?: string) => {
+    if (!endedAt) return "Ended recently";
+    const ms = Date.now() - new Date(endedAt).getTime();
+    if (ms < 60_000) return "Ended just now";
+    if (ms < 3_600_000) return `Ended ${Math.max(1, Math.floor(ms / 60_000))}m ago`;
+    return `Ended ${Math.max(1, Math.floor(ms / 3_600_000))}h ago`;
+  };
 
   const openLive = (item: LiveSessionRecord) => {
+    if (isSessionEnded(item)) return;
     const createdById = item.hostClerkId;
     const me = userDetails?.clerkId;
-    const playlist = liveCalls.map((call) => call.callId);
+    const playlist = activeLiveCalls.map((call) => call.callId);
     const initialIndex = Math.max(0, playlist.indexOf(item.callId));
     const roomTitle = item.roomTitle;
     const level = item.level;
@@ -245,33 +349,57 @@ export const HomeScreen = ({
     if (createdById && me && createdById === me) {
       liveScreen(item.callId, { roomTitle, level });
     } else {
-      joinCall(item.callId, { playlist, initialIndex });
+      joinCall(item.callId, {
+        playlist,
+        initialIndex,
+        hostClerkId: createdById,
+      });
     }
   };
 
   const renderLiveRow = ({ item }: { item: LiveSessionRecord }) => {
-    const displayTitle = item.roomTitle || "Live now";
-    const host = "Broadcaster";
+    const ended = isSessionEnded(item);
+    const displayTitle = item.roomTitle || (ended ? "Live ended" : "Live now");
+    const host = resolveHostName(item);
     const viewers = item.viewerCount || 0;
 
     return (
       <Pressable
-        style={[styles.liveRow, { backgroundColor: cardBg }]}
+        style={[styles.liveRow, { backgroundColor: cardBg }, ended && styles.endedRow]}
         onPress={() => openLive(item)}
+        disabled={ended}
         accessibilityRole="button"
-        accessibilityLabel={`Join live: ${displayTitle} by ${host}`}
+        accessibilityLabel={
+          ended
+            ? `Live ended: ${displayTitle}`
+            : `Join live: ${displayTitle} by ${host}`
+        }
       >
         <LinearGradient
-          colors={[...MediaGradients.liveCard]}
-          style={styles.liveRowThumb}
+          colors={
+            ended
+              ? ["rgba(60,60,60,0.9)", "rgba(40,40,40,0.85)"]
+              : [...MediaGradients.liveCard]
+          }
+          style={[styles.liveRowThumb, ended && styles.endedThumb]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
-          <View style={styles.livePill}>
-            <View style={styles.liveDot} />
-            <Text style={styles.livePillText}>LIVE</Text>
-          </View>
-          <Ionicons name="play" size={22} color="#fff" style={styles.liveRowPlay} />
+          {ended ? (
+            <View style={styles.endedTag}>
+              <Text style={styles.endedTagText}>ENDED</Text>
+            </View>
+          ) : (
+            <View style={styles.livePill}>
+              <View style={styles.liveDot} />
+              <Text style={styles.livePillText}>LIVE</Text>
+            </View>
+          )}
+          {!ended ? (
+            <Ionicons name="play" size={22} color="#fff" style={styles.liveRowPlay} />
+          ) : (
+            <Ionicons name="videocam-off-outline" size={22} color="rgba(255,255,255,0.7)" />
+          )}
         </LinearGradient>
         <View style={styles.liveRowBody}>
           <Text style={[styles.liveRowTitle, { color: textMain }]} numberOfLines={1}>
@@ -280,36 +408,48 @@ export const HomeScreen = ({
           <Text style={[styles.liveRowHost, { color: textSub }]} numberOfLines={1}>
             {host}
           </Text>
-          <View style={styles.viewerRow}>
-            <Ionicons name="eye" size={13} color={textSub} />
-            <Text style={[styles.liveRowViewers, { color: textSub }]}>
-              {viewers} watching
+          {ended ? (
+            <Text style={[styles.endedAgo, { color: textSub }]}>
+              {formatEndedAgo(item.endedAt)}
             </Text>
-          </View>
+          ) : (
+            <View style={styles.viewerRow}>
+              <Ionicons name="eye" size={13} color={textSub} />
+              <Text style={[styles.liveRowViewers, { color: textSub }]}>
+                {viewers} watching
+              </Text>
+            </View>
+          )}
         </View>
-        <Ionicons name="chevron-forward" size={22} color={textSub} />
+        {!ended ? (
+          <Ionicons name="chevron-forward" size={22} color={textSub} />
+        ) : null}
       </Pressable>
     );
   };
 
   const listHeader = (
-    <Pressable style={styles.goLiveBanner} onPress={() => setModalVisible(true)}>
-      <LinearGradient
-        colors={[...MediaGradients.featured]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.goLiveGradient}
-      >
-        <View style={styles.goLiveIcon}>
-          <Ionicons name="videocam" size={22} color="#fff" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.goLiveTitle}>Start a live</Text>
-          <Text style={styles.goLiveSub}>Go live and connect in real time</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={22} color="#fff" />
-      </LinearGradient>
-    </Pressable>
+    <>
+      {liveTab === "live" ? (
+        <Pressable style={styles.goLiveBanner} onPress={() => setModalVisible(true)}>
+          <LinearGradient
+            colors={[...MediaGradients.featured]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.goLiveGradient}
+          >
+            <View style={styles.goLiveIcon}>
+              <Ionicons name="videocam" size={22} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.goLiveTitle}>Start a live</Text>
+              <Text style={styles.goLiveSub}>Go live and connect in real time</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="#fff" />
+          </LinearGradient>
+        </Pressable>
+      ) : null}
+    </>
   );
 
   return (
@@ -348,6 +488,35 @@ export const HomeScreen = ({
           </Pressable>
         </View>
 
+        <View style={[styles.tabBar, { backgroundColor: cardBg }]}>
+          <Pressable
+            style={[styles.tab, liveTab === "live" && styles.tabActive]}
+            onPress={() => setLiveTab("live")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                { color: liveTab === "live" ? "#fff" : textSub },
+              ]}
+            >
+              Live{activeLiveCalls.length ? ` (${activeLiveCalls.length})` : ""}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.tab, liveTab === "ended" && styles.tabActive]}
+            onPress={() => setLiveTab("ended")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                { color: liveTab === "ended" ? "#fff" : textSub },
+              ]}
+            >
+              Ended{endedLiveCalls.length ? ` (${endedLiveCalls.length})` : ""}
+            </Text>
+          </Pressable>
+        </View>
+
       <FlashList
         data={listData}
         keyExtractor={(item) => item.callId}
@@ -365,7 +534,9 @@ export const HomeScreen = ({
             />
           ) : (
             <Text style={[styles.empty, { color: textSub }]}>
-              No live streams right now. Tap + to start one.
+              {liveTab === "live"
+                ? "No live streams right now. Tap + to start one."
+                : "No ended streams yet."}
             </Text>
           )
         }

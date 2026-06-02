@@ -2,6 +2,8 @@ import {
   ChannelProfileType,
   ClientRoleType,
   ConnectionStateType,
+  RemoteAudioState,
+  RemoteVideoState,
   createAgoraRtcEngine,
   type IRtcEngine,
   type IRtcEngineEventHandler,
@@ -9,6 +11,7 @@ import {
 } from "react-native-agora";
 import { PermissionsAndroid, Platform } from "react-native";
 import { fetchAgoraToken, emitLiveEvent } from "./agoraApi";
+import { uidMatchesClerkId } from "@/utils/agoraUid";
 import {
   RtcConnectionState,
   type RtcCallState,
@@ -87,6 +90,7 @@ export class RtcCall {
     },
     ownCapabilities: [],
     createdAt: Date.now(),
+    speakingUids: [],
   };
 
   screenShare = {
@@ -107,6 +111,9 @@ export class RtcCall {
   private micEnabled = true;
   private cameraEnabled = true;
   private speakerOn = true;
+  private audienceRole = false;
+  private guestPublisher = false;
+  private mutedRemoteUids = new Set<number>();
 
   camera = {
     state: { status: "disabled" as "enabled" | "disabled" },
@@ -180,6 +187,46 @@ export class RtcCall {
 
   private emitState() {
     this.emit("stateChanged");
+  }
+
+  private resolveClerkIdForUid(uid: number): string {
+    const createdBy = this.state.createdBy?.id;
+    if (uidMatchesClerkId(uid, createdBy)) return createdBy!;
+    const hostFromCustom = this.state.custom?.hostUserId as string | undefined;
+    if (uidMatchesClerkId(uid, hostFromCustom)) return hostFromCustom;
+    const existing = this.state.remoteParticipants.find((p) => p.uid === uid);
+    if (existing?.userId && !/^\d+$/.test(existing.userId)) {
+      return existing.userId;
+    }
+    return String(uid);
+  }
+
+  private upsertRemoteParticipant(uid: number, patch: Partial<RtcParticipant> = {}) {
+    const prev = this.state.remoteParticipants.find((p) => p.uid === uid);
+    const participant: RtcParticipant = {
+      userId: patch.userId ?? prev?.userId ?? this.resolveClerkIdForUid(uid),
+      uid,
+      name: patch.name ?? prev?.name,
+      image: patch.image ?? prev?.image,
+      hasAudio: patch.hasAudio ?? prev?.hasAudio ?? false,
+      hasVideo: patch.hasVideo ?? prev?.hasVideo ?? false,
+    };
+    this.state.remoteParticipants = [
+      ...this.state.remoteParticipants.filter((p) => p.uid !== uid),
+      participant,
+    ];
+    return participant;
+  }
+
+  private patchRemoteParticipant(uid: number, patch: Partial<RtcParticipant>) {
+    const prev = this.state.remoteParticipants.find((p) => p.uid === uid);
+    if (!prev) {
+      this.upsertRemoteParticipant(uid, patch);
+      this.emitState();
+      return;
+    }
+    Object.assign(prev, patch);
+    this.emitState();
   }
 
   async get(_opts?: { ring?: boolean; video?: boolean }) {
@@ -286,11 +333,22 @@ export class RtcCall {
 
     await ensureAndroidPermissions(opts.isVideo);
 
+    this.audienceRole = opts.role === "audience";
+    this.guestPublisher = false;
+
+    const tokenContext =
+      opts.tokenContext ||
+      (this.kind === "live"
+        ? opts.role === "audience"
+          ? "liveViewer"
+          : "liveHost"
+        : "call");
+
     const tokenRes = await fetchAgoraToken({
       channelName: this.id,
       userId: this.currentUserId,
       role: opts.role === "audience" ? "subscriber" : "publisher",
-      context: opts.tokenContext || (this.kind === "live" ? "liveHost" : "call"),
+      context: tokenContext,
     });
 
     this.joinedUid = tokenRes.uid;
@@ -314,41 +372,94 @@ export class RtcCall {
       onJoinChannelSuccess: () => {
         this.setCallingState(RtcConnectionState.JOINED);
         this.state.backstage = false;
-        this.state.localParticipant = {
-          userId: this.currentUserId,
-          uid: this.joinedUid,
-          hasAudio: this.micEnabled,
-          hasVideo: this.cameraEnabled,
-        };
-        if (opts.isVideo) {
-          void this.camera.enable();
+
+        if (opts.role === "audience" && !this.guestPublisher) {
+          this.cameraEnabled = false;
+          this.micEnabled = false;
+          this.camera.state.status = "disabled";
+          this.microphone.state.status = "disabled";
+          engine.muteLocalAudioStream(true);
+          engine.muteLocalVideoStream(true);
+          this.state.localParticipant = {
+            userId: this.currentUserId,
+            uid: this.joinedUid,
+            hasAudio: false,
+            hasVideo: false,
+          };
         } else {
-          void this.camera.disable();
+          this.state.localParticipant = {
+            userId: this.currentUserId,
+            uid: this.joinedUid,
+            hasAudio: this.micEnabled,
+            hasVideo: this.cameraEnabled,
+          };
+          if (opts.isVideo) {
+            void this.camera.enable();
+          } else {
+            void this.camera.disable();
+          }
+          void this.microphone.enable();
         }
-        void this.microphone.enable();
+
         this.emit("call.session_participant_joined", {
           participant: { user: { id: this.currentUserId } },
         });
       },
       onUserJoined: (_connection, remoteUid) => {
-        const participant: RtcParticipant = {
-          userId: String(remoteUid),
-          uid: remoteUid,
-        };
-        this.state.remoteParticipants = [
-          ...this.state.remoteParticipants.filter((p) => p.uid !== remoteUid),
-          participant,
-        ];
-        this.emit("call.session_participant_joined", {
-          participant: { user: { id: String(remoteUid) } },
+        const participant = this.upsertRemoteParticipant(remoteUid, {
+          hasVideo: false,
+          hasAudio: false,
         });
-        this.emit("call.accepted", { user: { id: String(remoteUid) } });
+        this.emit("call.session_participant_joined", {
+          participant: { user: { id: participant.userId } },
+        });
+        this.emit("call.accepted", { user: { id: participant.userId } });
+        this.emitState();
+      },
+      onRemoteVideoStateChanged: (_connection, remoteUid, state) => {
+        const hasVideo =
+          state === RemoteVideoState.RemoteVideoStateStarting ||
+          state === RemoteVideoState.RemoteVideoStateDecoding ||
+          state === RemoteVideoState.RemoteVideoStateFrozen;
+        this.patchRemoteParticipant(remoteUid, { hasVideo });
+      },
+      onRemoteAudioStateChanged: (_connection, remoteUid, state) => {
+        const hasAudio =
+          state === RemoteAudioState.RemoteAudioStateStarting ||
+          state === RemoteAudioState.RemoteAudioStateDecoding ||
+          state === RemoteAudioState.RemoteAudioStateFrozen;
+        this.patchRemoteParticipant(remoteUid, { hasAudio });
+      },
+      onAudioVolumeIndication: (_connection, speakers) => {
+        const next: number[] = [];
+        for (const speaker of speakers) {
+          const uid = speaker.uid ?? 0;
+          const volume = speaker.volume ?? 0;
+          if (volume > 8 && uid >= 0) {
+            next.push(uid);
+          }
+        }
+        const prev = this.state.speakingUids ?? [];
+        if (
+          prev.length === next.length &&
+          prev.every((uid, i) => uid === next[i])
+        ) {
+          return;
+        }
+        this.state.speakingUids = next;
         this.emitState();
       },
       onUserOffline: (_connection, remoteUid) => {
         this.state.remoteParticipants = this.state.remoteParticipants.filter(
           (p) => p.uid !== remoteUid,
         );
+        if (
+          this.kind === "call" &&
+          this.state.callingState === RtcConnectionState.JOINED &&
+          this.state.remoteParticipants.length === 0
+        ) {
+          void this.leave({ skipBackend: true });
+        }
         this.emitState();
       },
       onConnectionStateChanged: (_connection, state) => {
@@ -364,14 +475,17 @@ export class RtcCall {
 
     engine.registerEventHandler(handler);
 
-    if (opts.isVideo) {
-      engine.enableVideo();
+    engine.enableVideo();
+    if (opts.role === "audience" && !this.guestPublisher) {
+      /* Audience subscribes only — no local camera preview. */
+    } else if (opts.isVideo) {
       engine.startPreview();
     } else {
       engine.disableVideo();
     }
 
     engine.setDefaultAudioRouteToSpeakerphone(this.speakerOn);
+    engine.enableAudioVolumeIndication(300, 3, true);
     engine.joinChannel(tokenRes.token, this.id, tokenRes.uid, {
       clientRoleType:
         opts.role === "audience"
@@ -428,11 +542,39 @@ export class RtcCall {
     }
   }
 
+  async unmuteUser(userId: string, _type: "audio" | "video" = "audio") {
+    const participant = this.findParticipantByUserId(userId);
+    if (!participant || !this.engine) return false;
+    this.mutedRemoteUids.delete(participant.uid);
+    this.engine.muteRemoteAudioStream(participant.uid, false);
+    this.emitState();
+    return true;
+  }
+
+  isUserMuted(userId: string): boolean {
+    const participant = this.findParticipantByUserId(userId);
+    return participant ? this.mutedRemoteUids.has(participant.uid) : false;
+  }
+
   async endCall() {
+    if (this.kind === "live") {
+      return this.markLiveEnded({ hostEnd: true });
+    }
     await this.leave();
   }
 
-  async leave(opts?: { reject?: boolean; reason?: string }) {
+  /** End live for host (API + channel) or viewers (channel only). */
+  async markLiveEnded(opts?: { hostEnd?: boolean; skipBackend?: boolean }) {
+    if (this.state.endedAt != null) {
+      this.emit("call.ended");
+      return this;
+    }
+
+    if (opts?.hostEnd && !opts?.skipBackend) {
+      const { endLiveSession } = await import("./agoraApi");
+      await endLiveSession(this.id, this.currentUserId).catch(() => {});
+    }
+
     this.setCallingState(RtcConnectionState.LEFT);
     this.state.endedAt = Date.now();
     this.ringing = false;
@@ -441,6 +583,51 @@ export class RtcCall {
     } catch {
       /* ignore */
     }
+    if (getActiveRtcCall() === this) {
+      setActiveRtcCall(null);
+    }
+    this.emit("call.ended");
+    this.emitState();
+    return this;
+  }
+
+  async leave(opts?: {
+    reject?: boolean;
+    reason?: string;
+    /** Set when reacting to remote hangup to avoid duplicate API calls. */
+    skipBackend?: boolean;
+  }) {
+    if (this.state.callingState === RtcConnectionState.LEFT) return this;
+
+    const reason = opts?.reason ?? (opts?.reject ? "decline" : "hangup");
+
+    if (!opts?.skipBackend && this.kind === "call") {
+      const { endCall, declineCall } = await import("./agoraApi");
+      if (
+        opts?.reject &&
+        (reason === "decline" || reason === "cancel" || reason === "busy")
+      ) {
+        await declineCall(
+          this.id,
+          this.currentUserId,
+          reason as "decline" | "cancel" | "busy",
+        ).catch(() => {});
+      } else {
+        await endCall(this.id, this.currentUserId, reason).catch(() => {});
+      }
+    }
+
+    this.setCallingState(RtcConnectionState.LEFT);
+    this.state.endedAt = Date.now();
+    this.ringing = false;
+    try {
+      this.engine?.leaveChannel();
+    } catch {
+      /* ignore */
+    }
+    if (getActiveRtcCall() === this) {
+      setActiveRtcCall(null);
+    }
     if (opts?.reject) {
       this.emit("call.rejected", { reason: opts.reason });
     }
@@ -448,9 +635,108 @@ export class RtcCall {
     return this;
   }
 
-  async muteUser(_userId: string, _type: "audio" | "video" = "audio") {}
+  private findParticipantByUserId(userId: string) {
+    return this.state.remoteParticipants.find(
+      (p) => p.userId === userId || uidMatchesClerkId(p.uid, userId),
+    );
+  }
 
-  async grantPermissions(_userId: string, _caps: string[]) {}
+  async muteUser(userId: string, _type: "audio" | "video" = "audio") {
+    const participant = this.findParticipantByUserId(userId);
+    if (!participant || !this.engine) return false;
+    this.mutedRemoteUids.add(participant.uid);
+    this.engine.muteRemoteAudioStream(participant.uid, true);
+    this.emitState();
+    return true;
+  }
+
+  async grantPermissions(_userId: string, caps: string[]) {
+    this.state.ownCapabilities = [
+      ...new Set([...(this.state.ownCapabilities ?? []), ...caps]),
+    ];
+    this.emitState();
+    return this;
+  }
+
+  /** Upgrade a live viewer to on-stage guest (audio only — profile pic in strip, no camera). */
+  async promoteAsLiveGuest(token: string, uid?: number) {
+    if (!this.engine || this.kind !== "live") return this;
+
+    this.guestPublisher = true;
+    this.audienceRole = false;
+
+    if (token) {
+      this.engine.renewToken(token);
+    }
+    if (typeof uid === "number" && uid > 0) {
+      this.joinedUid = uid;
+    }
+
+    this.engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
+    this.engine.updateChannelMediaOptions({
+      clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+      publishMicrophoneTrack: true,
+      publishCameraTrack: false,
+      autoSubscribeAudio: true,
+      autoSubscribeVideo: true,
+    });
+
+    await this.camera.disable();
+    await this.microphone.enable();
+
+    if (this.state.localParticipant) {
+      this.state.localParticipant.hasAudio = true;
+      this.state.localParticipant.hasVideo = false;
+    } else {
+      this.state.localParticipant = {
+        userId: this.currentUserId,
+        uid: this.joinedUid,
+        hasAudio: true,
+        hasVideo: false,
+      };
+    }
+
+    this.state.ownCapabilities = [
+      ...(this.state.ownCapabilities ?? []),
+      "send_audio",
+    ];
+    this.emitState();
+    return this;
+  }
+
+  /** Return an on-stage guest to audience viewer (no publish). */
+  async demoteToLiveViewer() {
+    if (!this.engine || this.kind !== "live") return this;
+
+    this.guestPublisher = false;
+    this.audienceRole = true;
+
+    await this.microphone.disable();
+    await this.camera.disable();
+
+    this.engine.setClientRole(ClientRoleType.ClientRoleAudience, {
+      audienceLatencyLevel:
+        AudienceLatencyLevelType.AudienceLatencyLevelUltraLow,
+    });
+    this.engine.updateChannelMediaOptions({
+      clientRoleType: ClientRoleType.ClientRoleAudience,
+      publishMicrophoneTrack: false,
+      publishCameraTrack: false,
+      autoSubscribeAudio: true,
+      autoSubscribeVideo: true,
+    });
+
+    if (this.state.localParticipant) {
+      this.state.localParticipant.hasAudio = false;
+      this.state.localParticipant.hasVideo = false;
+    }
+
+    this.state.ownCapabilities = (this.state.ownCapabilities ?? []).filter(
+      (c) => c !== "send_audio" && c !== "send_video",
+    );
+    this.emitState();
+    return this;
+  }
 
   async revokePermissions(_userId: string, _caps: string[]) {}
 
@@ -461,12 +747,41 @@ export class RtcCall {
       live_chat: "live:chat",
       live_reaction: "live:reaction",
       live_join_ping: "live:join_ping",
+      live_leave_ping: "live:leave_ping",
       speak_request: "live:speak_request",
       speak_invite: "live:guest_invite",
       speak_denied: "live:speak_denied",
+      live_gift: "live:gift",
+      live_donation: "live:donation",
+      guest_on_stage: "live:guest_on_stage",
+      guest_off_stage: "live:guest_off_stage",
+      guest_muted: "live:guest_muted",
+      guest_unmuted: "live:guest_unmuted",
     };
     const socketType = typeMap[event.type] || event.type;
-    await emitLiveEvent(this.id, socketType, event);
+    const enriched = {
+      ...event,
+      senderId: this.currentUserId,
+      senderName:
+        typeof event.senderName === "string" ? event.senderName : undefined,
+    };
+
+    // Guest invites use POST /live/guest/invite — not the broadcast live/event feed.
+    if (socketType !== "live:guest_invite") {
+      await emitLiveEvent(this.id, socketType, enriched);
+    }
+
+    this.emit("custom", {
+      custom: enriched,
+      user: {
+        id: this.currentUserId,
+        name:
+          (typeof enriched.senderName === "string" && enriched.senderName) ||
+          "You",
+      },
+    });
+
+    return this;
   }
 
   setPreferredIncomingVideoResolution(_res: { width: number; height: number }) {}

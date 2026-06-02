@@ -1,5 +1,6 @@
 import { DrawerMenuButton } from "@/components/Button/DrawerMenuButton";
 import { BroadCastChannelPreview } from "@/components/ChatChannelPreview";
+import { useFollowContext } from "@/context/FollowContext";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useAppContext } from "@/contexts/AppProvider";
@@ -24,9 +25,17 @@ const ChatsScreen = () => {
   const router = useRouter();
   const { setChannel } = useAppContext();
   const { userDetails } = useLevel();
+  const { followerUsers, followingUsers } = useFollowContext();
   const { ensureProfiles, getProfile } = useChatMemberProfiles();
   const [search, setSearch] = useState("");
   const { theme } = useTheme();
+
+  const membersCount = useMemo(() => {
+    const ids = new Set<string>();
+    followerUsers.forEach((u) => ids.add(u.clerkId));
+    followingUsers.forEach((u) => ids.add(u.clerkId));
+    return ids.size;
+  }, [followerUsers, followingUsers]);
 
   const myId = userDetails?.clerkId;
   const filters = useMemo(
@@ -82,19 +91,23 @@ const ChatsScreen = () => {
       style={{ backgroundColor: theme.background }}
     >
       <DrawerMenuButton />
-      <View className="px-5 pt-3 pb-2">
-        <Text className="text-sm text-foreground-muted mb-0.5 text-center mt-2">
+      <View className="px-5 pt-1 pb-0">
+        <Text className="text-[13px] text-foreground-muted text-center">
           {getGreetingForHour()}, {firstName}
         </Text>
       </View>
 
+
       <View
-        className="flex-row items-center  mx-5 mb-3 px-3.5 mt-2 rounded-[14px] gap-2.5 border "
-        style={{ backgroundColor: theme.background, borderColor: theme.border }}
+        className="flex-row items-center mx-5 mb-1.5 mt-1.5 px-3 rounded-xl gap-2"
+        style={{
+          backgroundColor: theme.card,
+          height: 36,
+        }}
       >
-        <Ionicons name="search" size={18} color={theme.text} />
+        <Ionicons name="search" size={16} color={theme.subtext} />
         <TextInput
-          className="flex-1 text-[14px] text-foreground"
+          className="flex-1 text-[13px] text-foreground py-0"
           placeholder="Search members..."
           placeholderTextColor={theme.subtext}
           value={search}
@@ -102,27 +115,26 @@ const ChatsScreen = () => {
         />
       </View>
 
-      <View className="flex-row items-center justify-between px-5 my-1.5">
+      <View className="flex-row items-center justify-between px-5 mb-1 mt-0.5">
         <View className="flex-row items-center gap-2">
-          <Ionicons name="chatbubbles" size={16} color={theme.text} />
+          <Ionicons name="chatbubbles" size={15} color={theme.text} />
           <Text
-            className="text-[14px] font-semibold"
+            className="text-[13px] font-semibold"
             style={{ color: theme.primary }}
           >
-            Your Chats
+            Chats
           </Text>
         </View>
         <Pressable
           onPress={() => router.push("/(drawer)/(stream)/create-group")}
-          className="flex-row items-center gap-1.5 rounded-full border px-2.5 py-2"
+          className="flex-row items-center gap-1 rounded-full px-2.5 py-1.5"
           style={{
-            backgroundColor: theme.background,
-            borderColor: theme.primary,
+            backgroundColor: theme.card,
           }}
         >
           <Ionicons name="people" size={14} color={theme.primary} />
           <Text
-            className="text-[14px] font-medium"
+            className="text-[13px] font-medium"
             style={{ color: theme.primary }}
           >
             Group

@@ -3,6 +3,7 @@
 export type MarketLiveSession = {
   callId: string;
   isHost: boolean;
+  hostClerkId?: string;
   roomTitle?: string;
   level?: string;
   productId?: string;

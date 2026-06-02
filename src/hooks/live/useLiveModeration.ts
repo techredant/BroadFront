@@ -40,6 +40,10 @@ export function useLiveModeration({ isHost, hostUserId, myUserId }: Options) {
       if (!call || !canModerate || userId === hostUserId) return;
       await withMuting(userId, async () => {
         await call.muteUser(userId, "audio");
+        await call.sendCustomEvent({
+          type: LIVE_EVENT.GUEST_MUTED,
+          targetUserId: userId,
+        });
         await call.revokePermissions(userId, [OwnCapability.SEND_AUDIO]);
       });
     },
@@ -50,6 +54,11 @@ export function useLiveModeration({ isHost, hostUserId, myUserId }: Options) {
     async (userId: string) => {
       if (!call || !canModerate || userId === hostUserId) return;
       await withMuting(userId, async () => {
+        await call.unmuteUser(userId, "audio");
+        await call.sendCustomEvent({
+          type: LIVE_EVENT.GUEST_UNMUTED,
+          targetUserId: userId,
+        });
         await call.grantPermissions(userId, [OwnCapability.SEND_AUDIO]);
       });
     },
@@ -69,40 +78,29 @@ export function useLiveModeration({ isHost, hostUserId, myUserId }: Options) {
           type: LIVE_EVENT.SPEAK_DENIED,
           targetUserId: userId,
         });
+        await call.sendCustomEvent({
+          type: LIVE_EVENT.GUEST_MUTED,
+          targetUserId: userId,
+        });
       });
     },
     [call, canModerate, hostUserId, withMuting],
   );
 
-  const muteEveryone = useCallback(() => {
-    if (!call || !canModerate) return;
-
-    Alert.alert(
-      "Mute everyone",
-      "Mute all speakers and viewers with an open mic? You will stay unmuted.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Mute all",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              try {
-                await call.muteOthers("audio");
-                await call.sendCustomEvent({ type: LIVE_EVENT.MUTE_ALL });
-              } catch (e) {
-                console.log("mute everyone error:", e);
-                Alert.alert(
-                  "Could not mute",
-                  "You may not have permission to mute participants.",
-                );
-              }
-            })();
-          },
-        },
-      ],
-    );
-  }, [call, canModerate]);
+  const muteEveryone = useCallback(
+    async (guestUserIds: string[]) => {
+      if (!call || !canModerate) return;
+      for (const userId of guestUserIds) {
+        if (!userId || userId === hostUserId) continue;
+        await call.muteUser(userId, "audio");
+        await call.sendCustomEvent({
+          type: LIVE_EVENT.GUEST_MUTED,
+          targetUserId: userId,
+        });
+      }
+    },
+    [call, canModerate, hostUserId],
+  );
 
   const handleMuteAllEvent = useCallback(async () => {
     if (!call || isHost || myUserId === hostUserId) return;

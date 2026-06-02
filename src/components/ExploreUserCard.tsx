@@ -1,5 +1,4 @@
 import { useTheme } from "@/context/ThemeContext";
-import { PoliticalPalette } from "@/constants/politicalTheme";
 import { formatNickHandle } from "@/utils/nickName";
 import type { StreamChatTarget } from "@/utils/streamUser";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +10,12 @@ import {
   Text,
   View,
 } from "react-native";
+
+/** Shared row spacing — vertical gaps match horizontal gutters. */
+export const EXPLORE_ROW_GAP = 16;
+const ROW_PADDING_V = 9;
+const ROW_PADDING_H = EXPLORE_ROW_GAP;
+const AVATAR_SIZE = 44;
 
 type ExploreUserCardProps = {
   item: StreamChatTarget & {
@@ -37,71 +42,81 @@ const ExploreUserCard = ({
   onStartChat,
   showDivider = false,
 }: ExploreUserCardProps) => {
-  const { theme, isDark } = useTheme();
-  const isCreating = creating === item.clerkId;
+  const { theme } = useTheme();
   const displayName = item.firstName
     ? `${item.firstName} ${item.lastName || ""}`.trim()
     : item.companyName || "Member";
   const handle = formatNickHandle(item.nickName) || "@member";
+  const subtitle =
+    item.companyName && item.firstName
+      ? `${handle} · ${item.companyName}`
+      : handle;
+
+  const busy = creating !== null;
+  const isCreating = creating === item.clerkId;
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={() => onStartChat(item)}
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityLabel={`Chat with ${displayName}`}
+      accessibilityHint="Opens a direct message"
+      style={({ pressed }) => [
         styles.row,
         showDivider && { borderBottomColor: theme.border },
         showDivider && styles.rowDivider,
+        pressed && !busy && styles.rowPressed,
       ]}
     >
-      <Image
-        source={{ uri: avatarUri(item) }}
-        style={styles.avatar}
-        cachePolicy="memory-disk"
-        contentFit="cover"
-      />
+      <View style={styles.rowInner}>
+        <View style={styles.identity}>
+          <Image
+            source={{ uri: avatarUri(item) }}
+            style={styles.avatar}
+            cachePolicy="memory-disk"
+            contentFit="cover"
+          />
+          <View style={styles.userInfo}>
+            <Text
+              style={[styles.name, { color: theme.text }]}
+              numberOfLines={1}
+            >
+              {displayName}
+            </Text>
+            <Text
+              style={[styles.subtitle, { color: theme.subtext }]}
+              numberOfLines={1}
+            >
+              {subtitle}
+            </Text>
+          </View>
+        </View>
 
-      <View style={styles.rowText}>
-        <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
-          {displayName}
-        </Text>
-        <Text
-          style={[styles.handle, { color: theme.subtext }]}
-          numberOfLines={1}
+        <View
+          style={[
+            styles.chatAction,
+            { opacity: busy && !isCreating ? 0.45 : 1 },
+          ]}
         >
-          {handle}
-        </Text>
-        {item.companyName && item.firstName ? (
-          <Text
-            style={[styles.meta, { color: theme.subtext }]}
-            numberOfLines={1}
-          >
-            {item.companyName}
-          </Text>
-        ) : null}
+          {isCreating ? (
+            <ActivityIndicator size="small" color={theme.primary} />
+          ) : (
+            <View style={styles.chatActionInner}>
+              <Ionicons
+                name="chatbubble-ellipses-outline"
+                size={18}
+                color={theme.primary}
+                style={styles.chatIcon}
+              />
+              <Text style={[styles.messageLabel, { color: theme.primary }]}>
+                Message
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
-
-      <Pressable
-        onPress={() => onStartChat(item)}
-        disabled={creating !== null}
-        style={({ pressed }) => [
-          styles.messageBtn,
-          {
-            backgroundColor: isDark
-              ? PoliticalPalette.navy
-              : PoliticalPalette.navy,
-            opacity: pressed || (creating !== null && !isCreating) ? 0.55 : 1,
-          },
-        ]}
-      >
-        {isCreating ? (
-          <ActivityIndicator size="small" color={theme.text} />
-        ) : (
-          <>
-            <Ionicons name="chatbubble-outline" size={20} color={theme.text} />
-            <Text style={[styles.messageBtnText, { color: theme.text }]}>Message</Text>
-          </>
-        )}
-      </Pressable>
-    </View>
+    </Pressable>
   );
 };
 
@@ -109,52 +124,69 @@ export default ExploreUserCard;
 
 const styles = StyleSheet.create({
   row: {
+    paddingVertical: ROW_PADDING_V,
+    paddingHorizontal: ROW_PADDING_H,
+  },
+  rowInner: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    width: "100%",
+    paddingHorizontal: ROW_PADDING_H,
+
+  },
+  rowPressed: {
+    opacity: 0.72,
   },
   rowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  identity: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+    marginRight: EXPLORE_ROW_GAP,
+  },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    marginRight: 12,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    marginRight: 14,
     backgroundColor: "#262626",
   },
-  rowText: {
+  userInfo: {
     flex: 1,
+    justifyContent: "center",
     minWidth: 0,
-    marginRight: 10,
   },
   name: {
     fontSize: 14,
     fontWeight: "600",
+    lineHeight: 18,
   },
-  handle: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  meta: {
+  subtitle: {
     fontSize: 11,
-    marginTop: 2,
-    opacity: 0.85,
+    lineHeight: 15,
+    marginTop: 3,
   },
-  messageBtn: {
+  chatAction: {
+    flexShrink: 0,
+    flexGrow: 0,
+    justifyContent: "center",
+    paddingLeft: 8,
+    paddingRight: 2,
+  },
+  chatActionInner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    minWidth: 96,
-    height: 34,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    justifyContent: "center",
+    flexShrink: 0,
   },
-  messageBtnText: {
-    color: "#fff",
+  chatIcon: {
+    marginRight: 6,
+  },
+  messageLabel: {
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "600",
+    flexShrink: 0,
   },
 });

@@ -17,10 +17,16 @@ export type CallLike =
 
 function readState(call: CallLike) {
   if ("callId" in call && !("state" in call)) {
+    const rec = call as LiveSessionRecord;
     return {
-      endedAt: null,
+      endedAt:
+        rec.status === "ended"
+          ? rec.endedAt
+            ? new Date(rec.endedAt).getTime()
+            : Date.now()
+          : null,
       backstage: false,
-      custom: call.custom ?? {},
+      custom: rec.custom ?? {},
     };
   }
   return call.state ?? {};
@@ -42,10 +48,14 @@ export function isStreamCallActive(call: CallLike): boolean {
 
 /** Currently broadcasting (past backstage). */
 export function isStreamCallOnAir(call: CallLike): boolean {
-  if ("callId" in call && !("state" in call)) return true;
+  if ("callId" in call && !("state" in call)) {
+    const rec = call as LiveSessionRecord;
+    if (rec.status === "ended") return false;
+    if (rec.status === "live") return true;
+  }
   if (isStreamCallEnded(call)) return false;
   const state = readState(call);
-  return state.backstage === false;
+  return state.backstage !== true;
 }
 
 /** Discovery filter for livestreams — on-air only. */

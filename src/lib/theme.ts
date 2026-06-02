@@ -72,9 +72,9 @@ export const getStreamTheme = (
     channelPreview: {
       container: {
         backgroundColor: bg,
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        borderBottomWidth: 1,
+        paddingVertical: 7,
+        paddingHorizontal: 14,
+        borderBottomWidth: 0,
       },
       contentContainer: { backgroundColor: bg },
       row: { backgroundColor: bg },

@@ -21,7 +21,6 @@ export function MyStatusRow({ myStatuses = [] }: Props) {
 
   const latest = getLatestStatus(myStatuses);
   const hasStatus = myStatuses.length > 0;
-
   const openViewer = () => {
     if (hasStatus && user?.id) {
       router.push(`/(status)/Viewer?user=${user.id}`);
@@ -82,8 +81,8 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   emptyRing: {
     width: STATUS_RING_SIZE,
@@ -105,7 +104,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#fff",
   },
-  textCol: { flex: 1, marginLeft: 14 },
+  textCol: { flex: 1, marginLeft: 10 },
   title: { fontSize: 16, fontWeight: "600" },
   sub: { fontSize: 13, marginTop: 2 },
   addBtn: { padding: 8 },

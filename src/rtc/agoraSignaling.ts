@@ -56,8 +56,13 @@ export function bindLiveSignaling(socket: Socket, handlers: LiveSignalingHandler
   socket.on("live:speak_denied", (p) => handlers.onSpeakDenied?.(p));
   socket.on("live:chat", wrap("live:chat"));
   socket.on("live:reaction", wrap("live:reaction"));
+  socket.on("live:gift", wrap("live:gift"));
+  socket.on("live:donation", wrap("live:donation"));
   socket.on("live:join_ping", wrap("live:join_ping"));
+  socket.on("live:leave_ping", wrap("live:leave_ping"));
   socket.on("live:speak_request", wrap("live:speak_request"));
+  socket.on("live:guest_on_stage", wrap("live:guest_on_stage"));
+  socket.on("live:guest_off_stage", wrap("live:guest_off_stage"));
 
   return () => {
     socket.off("live:started");
@@ -67,8 +72,13 @@ export function bindLiveSignaling(socket: Socket, handlers: LiveSignalingHandler
     socket.off("live:speak_denied");
     socket.off("live:chat");
     socket.off("live:reaction");
+    socket.off("live:gift");
+    socket.off("live:donation");
     socket.off("live:join_ping");
+    socket.off("live:leave_ping");
     socket.off("live:speak_request");
+    socket.off("live:guest_on_stage");
+    socket.off("live:guest_off_stage");
   };
 }
 

@@ -1,6 +1,7 @@
 export type UserPresenceSnapshot = {
   isOnline: boolean;
   isLive: boolean;
+  isInAudio: boolean;
 };
 
 type UserListener = () => void;
@@ -8,6 +9,7 @@ type UserListener = () => void;
 class PresenceStore {
   private onlineUsers = new Set<string>();
   private liveUsers = new Set<string>();
+  private audioUsers = new Set<string>();
   private listeners = new Map<string, Set<UserListener>>();
   private snapshotCache = new Map<string, UserPresenceSnapshot>();
 
@@ -29,15 +31,17 @@ class PresenceStore {
   getSnapshot(userId: string): UserPresenceSnapshot {
     const isOnline = this.onlineUsers.has(userId);
     const isLive = this.liveUsers.has(userId);
+    const isInAudio = this.audioUsers.has(userId);
     const cached = this.snapshotCache.get(userId);
     if (
       cached &&
       cached.isOnline === isOnline &&
-      cached.isLive === isLive
+      cached.isLive === isLive &&
+      cached.isInAudio === isInAudio
     ) {
       return cached;
     }
-    const snapshot: UserPresenceSnapshot = { isOnline, isLive };
+    const snapshot: UserPresenceSnapshot = { isOnline, isLive, isInAudio };
     this.snapshotCache.set(userId, snapshot);
     return snapshot;
   }
@@ -100,6 +104,21 @@ class PresenceStore {
     }
 
     this.liveUsers = next;
+    changed.forEach((id) => this.notify(id));
+  }
+
+  setAudioUsers(userIds: Iterable<string>) {
+    const next = new Set(Array.from(userIds, String));
+    const changed = new Set<string>();
+
+    for (const id of this.audioUsers) {
+      if (!next.has(id)) changed.add(id);
+    }
+    for (const id of next) {
+      if (!this.audioUsers.has(id)) changed.add(id);
+    }
+
+    this.audioUsers = next;
     changed.forEach((id) => this.notify(id));
   }
 }

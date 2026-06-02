@@ -1,4 +1,4 @@
-import ExploreUserCard from "@/components/ExploreUserCard";
+import ExploreUserCard, { EXPLORE_ROW_GAP } from "@/components/ExploreUserCard";
 import { useFollowContext } from "@/context/FollowContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useAppContext } from "@/contexts/AppProvider";
@@ -83,53 +83,22 @@ const ExploreScreen = () => {
         item={item}
         creating={creating}
         onStartChat={handleStartChat}
-        showDivider
       />
     ),
     [creating, handleStartChat],
   );
 
+  const renderItemSeparator = useCallback(
+    () => <View style={styles.listSeparator} />,
+    [],
+  );
+
   const ListHeader = (
     <>
-      <View style={styles.statsRow}>
-        <View
-          style={[
-            styles.statCard,
-            {
-              backgroundColor: civic.chipBg,
-              borderColor: civic.cardBorder,
-            },
-          ]}
-        >
-          <Text style={[styles.statValue, { color: theme.text }]}>
-            {followerUsers.length}
-          </Text>
-          <Text style={[styles.statLabel, { color: theme.subtext }]}>
-            Followers
-          </Text>
-        </View>
-        <View
-          style={[
-            styles.statCard,
-            {
-              backgroundColor: civic.chipBg,
-              borderColor: civic.cardBorder,
-            },
-          ]}
-        >
-          <Text style={[styles.statValue, { color: theme.text }]}>
-            {followingUsers.length}
-          </Text>
-          <Text style={[styles.statLabel, { color: theme.subtext }]}>
-            Following
-          </Text>
-        </View>
-      </View>
-
       <View
         style={[
           styles.searchWrap,
-          { backgroundColor: isDark ? "#262626" : "#EFEFEF" },
+          { backgroundColor: theme.card },
         ]}
       >
         <Ionicons name="search" size={16} color={theme.subtext} />
@@ -149,11 +118,17 @@ const ExploreScreen = () => {
         ) : null}
       </View>
 
-      <View style={[styles.tabs, { borderBottomColor: theme.border }]}>
+      <View style={styles.tabs}>
         {(
           [
-            { key: "followers" as const, label: "Followers" },
-            { key: "following" as const, label: "Following" },
+            {
+              key: "followers" as const,
+              label: `Followers (${followerUsers.length})`,
+            },
+            {
+              key: "following" as const,
+              label: `Following (${followingUsers.length})`,
+            },
           ] as const
         ).map((tab) => {
           const active = activeTab === tab.key;
@@ -187,11 +162,23 @@ const ExploreScreen = () => {
         })}
       </View>
 
-      <Text style={[styles.resultHint, { color: theme.subtext }]}>
-        {filteredUsers.length}{" "}
-        {filteredUsers.length === 1 ? "person" : "people"}
-        {activeTab === "followers" ? " follow you" : " you follow"}
-      </Text>
+      <View style={styles.resultRow}>
+        <Text style={[styles.resultHint, { color: theme.subtext }]}>
+          {filteredUsers.length}{" "}
+          {filteredUsers.length === 1 ? "person" : "people"}
+          {activeTab === "followers" ? " follow you" : " you follow"}
+        </Text>
+        <View style={styles.chatHint}>
+          <Ionicons
+            name="chatbubble-ellipses-outline"
+            size={12}
+            color={theme.primary}
+          />
+          <Text style={[styles.chatHintText, { color: theme.primary }]}>
+            Tap to chat
+          </Text>
+        </View>
+      </View>
     </>
   );
 
@@ -207,7 +194,7 @@ const ExploreScreen = () => {
         style={[
           styles.hero,
           {
-            paddingTop: insets.top + 6,
+            paddingTop: insets.top + 4,
             backgroundColor: isDark
               ? PoliticalPalette.navyDark
               : PoliticalPalette.navy,
@@ -239,6 +226,7 @@ const ExploreScreen = () => {
         data={filteredUsers}
         keyExtractor={(item) => item.clerkId}
         renderItem={renderUserItem}
+        ItemSeparatorComponent={renderItemSeparator}
         ListHeaderComponent={ListHeader}
         contentContainerStyle={[
           styles.list,
@@ -286,7 +274,7 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   hero: {
     paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingBottom: 10,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
     overflow: "hidden",
@@ -305,12 +293,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   menuBtn: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
   },
-  menuBtnPlaceholder: { width: 40 },
+  menuBtnPlaceholder: { width: 36 },
   heroTitle: {
     color: "#fff",
     fontSize: 17,
@@ -318,50 +306,27 @@ const styles = StyleSheet.create({
   },
   heroSubtitle: {
     color: "rgba(255,255,255,0.72)",
-    fontSize: 12,
+    fontSize: 11,
     textAlign: "center",
-    marginTop: 8,
-    lineHeight: 18,
+    marginTop: 4,
+    lineHeight: 15,
     paddingHorizontal: 12,
   },
   list: { paddingBottom: 100 },
   listEmpty: { flexGrow: 1 },
-  statsRow: {
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: "center",
-  },
-  statValue: {
-    fontSize: 21,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    marginTop: 2,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
+  listSeparator: {
+    height: EXPLORE_ROW_GAP,
   },
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: 16,
-    marginTop: 14,
+    marginTop: 8,
     marginBottom: 4,
-    paddingHorizontal: 12,
-    height: 40,
+    paddingHorizontal: 10,
+    height: 36,
     borderRadius: 10,
-    gap: 8,
+    gap: 6,
   },
   searchInput: {
     flex: 1,
@@ -370,16 +335,15 @@ const styles = StyleSheet.create({
   },
   tabs: {
     flexDirection: "row",
-    marginTop: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginTop: 2,
   },
   tab: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 8,
     position: "relative",
   },
-  tabLabel: { fontSize: 13 },
+  tabLabel: { fontSize: 12 },
   tabIndicator: {
     position: "absolute",
     bottom: 0,
@@ -388,11 +352,27 @@ const styles = StyleSheet.create({
     height: 2,
     borderRadius: 1,
   },
-  resultHint: {
-    fontSize: 11,
+  resultRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 4,
+    paddingTop: 4,
+    paddingBottom: 2,
+    gap: 8,
+  },
+  resultHint: {
+    flex: 1,
+    fontSize: 10,
+  },
+  chatHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  chatHintText: {
+    fontSize: 10,
+    fontWeight: "600",
   },
   empty: {
     alignItems: "center",

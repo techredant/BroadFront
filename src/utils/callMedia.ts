@@ -101,8 +101,9 @@ export async function joinLivestreamAsHost(
   });
 }
 
-export function configureLivestreamViewerMedia(_call: RtcCall): void {
-  /* ultra-low latency configured in joinChannel */
+export function configureLivestreamViewerMedia(call: RtcCall): void {
+  void call.camera.disable();
+  void call.microphone.disable();
 }
 
 export async function leaveCallWithReason(
@@ -111,7 +112,7 @@ export async function leaveCallWithReason(
   reason: "decline" | "cancel" | "busy" = "decline",
 ) {
   await declineCall(call.id, userId, reason).catch(() => {});
-  await call.leave({ reject: true, reason });
+  await call.leave({ reject: true, reason, skipBackend: true });
   setActiveRtcCall(null);
 }
 

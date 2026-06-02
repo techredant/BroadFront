@@ -22,9 +22,8 @@ import { imagePickerMediaOptions } from "@/utils/mediaUtils";
 import Video from "react-native-video";
 import { Image } from "expo-image";
 import { WA_GREEN } from "@/constants/statusTheme";
-import axios from "axios";
-
-const BASE_URL = "https://cast-api-zeta.vercel.app";
+import { postStatusWithOptimistic } from "@/utils/statusUpload";
+import { refreshStatusList } from "@/utils/statusList";
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
 const TEXT_BACKGROUNDS = [
@@ -60,18 +59,25 @@ export default function StatusInput() {
 
     try {
       setLoading(true);
-      const uploaded = await uploadMediaItems(media);
 
-      await axios.post(`${BASE_URL}/api/status`, {
-        userId: userDetails?.clerkId,
-        lastName: userDetails?.lastName,
-        firstName: userDetails?.firstName,
-        companyName: userDetails?.companyName,
-        nickName: userDetails?.nickName,
-        image: userDetails?.image,
-        caption: status.trim(),
-        media: uploaded,
-        backgroundColor: TEXT_BACKGROUNDS[bgIndex],
+      await postStatusWithOptimistic(
+        media,
+        {
+          userId: userDetails?.clerkId ?? "",
+          lastName: userDetails?.lastName,
+          firstName: userDetails?.firstName,
+          companyName: userDetails?.companyName,
+          nickName: userDetails?.nickName,
+          image: userDetails?.image,
+          caption: status.trim(),
+          backgroundColor: TEXT_BACKGROUNDS[bgIndex],
+        },
+        uploadMediaItems,
+      );
+
+      void refreshStatusList({
+        force: true,
+        viewerId: userDetails?.clerkId,
       });
 
       setStatus("");

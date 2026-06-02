@@ -46,6 +46,7 @@ export function RtcVideoView({
   return (
     <RtcSurfaceView
       style={[styles.video, style]}
+      zOrderMediaOverlay={zOrderMediaOverlay}
       canvas={{
         uid: remoteUid,
         sourceType: VideoSourceType.VideoSourceRemote,

@@ -33,6 +33,8 @@ import {
   MemberListRow,
   ProfilePeopleListHint,
 } from "@/components/profile/MemberListRow";
+import { ProfileHeaderSkeleton } from "@/components/profile/ProfileHeaderSkeleton";
+import { PostCardSkeleton } from "@/components/PostCardSkeleton";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -47,6 +49,12 @@ export default function ProfileScreen() {
   const [posts, setPosts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const postsLoadedOnce = useRef(false);
+
+  const memberSeed = useMemo(
+    () => members.find((m) => m.clerkId === id),
+    [members, id],
+  );
 
   const [profileUser, setProfileUser] = useState<any>(null);
   const [modalProfileVisible, setModalProfileVisible] = useState(false);
@@ -58,45 +66,43 @@ export default function ProfileScreen() {
 
   const isOwner = userDetails?.clerkId === profileUser?.clerkId;
 
-  /* ---------------- FETCH PROFILE USER ---------------- */
-  const fetchUser = useCallback(async () => {
-    if (!id) return;
-
-    try {
-      const res = await axios.get(`${BASE_URL}/api/users/${id}`);
-      setProfileUser(res.data);
-    } catch (err) {
-      console.error("❌ Error fetching user:", err);
+  useEffect(() => {
+    if (memberSeed && !profileUser) {
+      setProfileUser(memberSeed);
     }
-  }, [id]);
+  }, [memberSeed, profileUser]);
 
-  /* ---------------- FETCH POSTS ---------------- */
-  const fetchPosts = useCallback(async () => {
-    if (!id) return;
+  const loadProfile = useCallback(async () => {
+    if (!id || !currentLevel?.type || !currentLevel?.value) return;
+
+    const silent = postsLoadedOnce.current || !!memberSeed;
+    if (!silent) setLoading(true);
 
     try {
-      setLoading(true);
+      const [userRes, postsRes] = await Promise.all([
+        axios.get(`${BASE_URL}/api/users/${id}`),
+        axios.get(`${BASE_URL}/api/posts/${id}`, {
+          params: {
+            levelType: currentLevel.type,
+            levelValue: currentLevel.value,
+          },
+        }),
+      ]);
 
-      const res = await axios.get(`${BASE_URL}/api/posts/${id}`, {
-        params: {
-          levelType: currentLevel?.type,
-          levelValue: currentLevel?.value,
-        },
-      });
-
-      setPosts(res.data);
+      setProfileUser(userRes.data);
+      setPosts(postsRes.data ?? []);
+      postsLoadedOnce.current = true;
     } catch (err) {
-      console.error("❌ Error fetching posts:", err);
+      console.error("❌ Error loading profile:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [id, currentLevel]);
+  }, [id, currentLevel?.type, currentLevel?.value, memberSeed]);
 
   useEffect(() => {
-    fetchUser();
-    fetchPosts();
-  }, [fetchUser, fetchPosts]);
+    void loadProfile();
+  }, [loadProfile]);
 
   /* ---------------- SOCKET ---------------- */
   useEffect(() => {
@@ -156,14 +162,37 @@ export default function ProfileScreen() {
   /* ---------------- REFRESH ---------------- */
   const onRefresh = () => {
     setRefreshing(true);
-    fetchPosts();
+    void loadProfile();
   };
 
   /* ---------------- LOADING ---------------- */
-  if (isLoadingUser || loading) {
+  if (isLoadingUser && !profileUser) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="small" color={theme.text} />
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <Pressable
+          onPress={() => router.push("/(tabs)")}
+          style={{ padding: 20, paddingTop: 50, position: "absolute" }}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.text} />
+        </Pressable>
+        <ProfileHeaderSkeleton />
+        <PostCardSkeleton />
+        <PostCardSkeleton />
+      </View>
+    );
+  }
+
+  if (!profileUser) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <Pressable
+          onPress={() => router.push("/(tabs)")}
+          style={{ padding: 20, paddingTop: 50, position: "absolute" }}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.text} />
+        </Pressable>
+        <ProfileHeaderSkeleton />
+        <PostCardSkeleton />
       </View>
     );
   }
@@ -293,13 +322,22 @@ export default function ProfileScreen() {
         renderItem={renderItem}
         ListHeaderComponent={peopleListHeader}
         ListEmptyComponent={
-          activeTab !== "posts" ? (
+          activeTab === "posts" && loading && posts.length === 0 ? (
+            <>
+              <PostCardSkeleton />
+              <PostCardSkeleton />
+            </>
+          ) : activeTab !== "posts" ? (
             <Text style={[styles.emptyPeople, { color: theme.subtext }]}>
               {activeTab === "followers"
                 ? "No followers yet"
                 : "Not following anyone yet"}
             </Text>
-          ) : null
+          ) : (
+            <Text style={[styles.emptyPeople, { color: theme.subtext }]}>
+              No posts yet
+            </Text>
+          )
         }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />

@@ -77,14 +77,15 @@ export const BroadcastVideoCallLayout = memo(function BroadcastVideoCallLayout({
 
       <View style={styles.stage}>
         {mainIsLocal ? (
-          <RtcLocalVideoView style={styles.fullVideo} />
+          <RtcLocalVideoView key="main-local" style={styles.fullVideo} />
         ) : remoteParticipant ? (
           <RtcRemoteVideoView
+            key={`main-remote-${remoteParticipant.uid}`}
             uid={remoteParticipant.uid}
             style={styles.fullVideo}
           />
         ) : localParticipant ? (
-          <RtcLocalVideoView style={styles.fullVideo} />
+          <RtcLocalVideoView key="main-local-fallback" style={styles.fullVideo} />
         ) : (
           <WaitingForRemote remotePeer={remotePeer} remoteName={remoteName} />
         )}
@@ -103,14 +104,24 @@ export const BroadcastVideoCallLayout = memo(function BroadcastVideoCallLayout({
           }
         >
           {localInPip ? (
-            <RtcLocalVideoView style={styles.pipVideo} zOrderMediaOverlay />
+            <RtcLocalVideoView
+              key="pip-local"
+              style={styles.pipVideo}
+              zOrderMediaOverlay
+            />
           ) : remoteParticipant ? (
             <RtcRemoteVideoView
+              key={`pip-remote-${remoteParticipant.uid}`}
               uid={remoteParticipant.uid}
               style={styles.pipVideo}
+              zOrderMediaOverlay
             />
           ) : (
-            <RtcLocalVideoView style={styles.pipVideo} />
+            <RtcLocalVideoView
+              key="pip-local-fallback"
+              style={styles.pipVideo}
+              zOrderMediaOverlay
+            />
           )}
           <View style={styles.pipBadge}>
             <Ionicons

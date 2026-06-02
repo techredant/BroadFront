@@ -86,22 +86,31 @@ export function useRtcState() {
       remoteParticipants: call?.state.remoteParticipants ?? [],
       localParticipant: call?.state.localParticipant,
       backstage: call?.state.backstage ?? true,
+      speakingUids: call?.state.speakingUids ?? [],
     }),
-    [call, call?.state.callingState, call?.state.remoteParticipants.length, call?.state.localParticipant?.uid],
+    [
+      call,
+      call?.state.callingState,
+      call?.state.remoteParticipants.length,
+      call?.state.localParticipant?.uid,
+      call?.state.speakingUids?.join(","),
+    ],
   );
 }
 
 function enrichParticipant(
   p: import("./types").RtcParticipant,
   localUserId: string | undefined,
+  speakingUids: number[] = [],
 ): EnrichedRtcParticipant {
   const hasVideo = p.hasVideo ?? false;
   const hasAudio = p.hasAudio ?? false;
+  const isSpeaking = speakingUids.includes(p.uid) && hasAudio;
   return {
     ...p,
     sessionId: `${p.userId}-${p.uid}`,
     isLocalParticipant: p.userId === localUserId,
-    isSpeaking: hasAudio,
+    isSpeaking,
     publishedTracks: [
       ...(hasAudio ? ["audioTrack"] : []),
       ...(hasVideo ? ["videoTrack"] : []),
@@ -117,13 +126,20 @@ export function useCallStateHooks() {
   const participants = useMemo(() => {
     const all: EnrichedRtcParticipant[] = [];
     if (state.localParticipant) {
-      all.push(enrichParticipant(state.localParticipant, localUserId));
+      all.push(
+        enrichParticipant(state.localParticipant, localUserId, state.speakingUids),
+      );
     }
     for (const p of state.remoteParticipants) {
-      all.push(enrichParticipant(p, localUserId));
+      all.push(enrichParticipant(p, localUserId, state.speakingUids));
     }
     return all;
-  }, [state.localParticipant, state.remoteParticipants, localUserId]);
+  }, [
+    state.localParticipant,
+    state.remoteParticipants,
+    state.speakingUids,
+    localUserId,
+  ]);
 
   const ownCapabilities = call?.state.ownCapabilities ?? [];
   const isHost = Boolean(call?.isCreatedByMe);
@@ -132,10 +148,16 @@ export function useCallStateHooks() {
     useCallCallingState: () => state.callingState,
     useLocalParticipant: () =>
       state.localParticipant
-        ? enrichParticipant(state.localParticipant, localUserId)
+        ? enrichParticipant(
+            state.localParticipant,
+            localUserId,
+            state.speakingUids,
+          )
         : undefined,
     useRemoteParticipants: () =>
-      state.remoteParticipants.map((p) => enrichParticipant(p, localUserId)),
+      state.remoteParticipants.map((p) =>
+        enrichParticipant(p, localUserId, state.speakingUids),
+      ),
     useRawParticipants: () => participants,
     useParticipants: () => participants,
     useParticipantCount: () =>

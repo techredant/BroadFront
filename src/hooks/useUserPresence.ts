@@ -4,6 +4,7 @@ import { presenceStore, type UserPresenceSnapshot } from "@/lib/presenceStore";
 const OFFLINE_SNAPSHOT: UserPresenceSnapshot = {
   isOnline: false,
   isLive: false,
+  isInAudio: false,
 };
 
 export function useUserPresence(userId?: string | null): UserPresenceSnapshot {

@@ -1,26 +1,41 @@
-const COOLDOWN_MS = 60 * 1000;
-// const COOLDOWN_MS = 48 * 60 * 60 * 1000; // production: 48 hours
+const COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 /** User-facing delay copy — keep in sync with COOLDOWN_MS */
-export const PROFILE_UPDATE_DELAY_LABEL = "60 seconds";
-// export const PROFILE_UPDATE_DELAY_LABEL = "48 hours";
+export const PROFILE_UPDATE_DELAY_LABEL = "24 hours";
 
 export type ProfileUserFields = {
+  firstName?: string | null;
+  lastName?: string | null;
+  companyName?: string | null;
+  county?: string | null;
+  constituency?: string | null;
+  ward?: string | null;
   profileUpdateAt?: string | Date | null;
   pendingFirstName?: string | null;
   pendingLastName?: string | null;
   pendingCompanyName?: string | null;
+  pendingCounty?: string | null;
+  pendingConstituency?: string | null;
+  pendingWard?: string | null;
   pendingImage?: string | null;
   updatedAt?: string | Date | null;
 };
 
+const norm = (value?: string | null) => (value ?? "").trim();
+
 export function hasPendingProfileFields(user?: ProfileUserFields | null): boolean {
   if (!user) return false;
   return Boolean(
-    (user.pendingFirstName && user.pendingFirstName.length > 0) ||
-      (user.pendingLastName && user.pendingLastName.length > 0) ||
-      (user.pendingCompanyName && user.pendingCompanyName.length > 0) ||
-      (user.pendingImage && user.pendingImage.length > 0),
+    (user.pendingFirstName &&
+      norm(user.pendingFirstName) !== norm(user.firstName)) ||
+      (user.pendingLastName &&
+        norm(user.pendingLastName) !== norm(user.lastName)) ||
+      (user.pendingCompanyName &&
+        norm(user.pendingCompanyName) !== norm(user.companyName)) ||
+      (user.pendingCounty && norm(user.pendingCounty) !== norm(user.county)) ||
+      (user.pendingConstituency &&
+        norm(user.pendingConstituency) !== norm(user.constituency)) ||
+      (user.pendingWard && norm(user.pendingWard) !== norm(user.ward)),
   );
 }
 
@@ -53,6 +68,7 @@ export function getProfileUpdateTarget(
 export function isProfileUpdatePending(
   user?: ProfileUserFields | string | Date | null,
 ): boolean {
+  if (!hasPendingProfileFields(user as ProfileUserFields)) return false;
   const target = getProfileUpdateTarget(user);
   if (!target) return false;
   return target.getTime() > Date.now();
@@ -66,7 +82,7 @@ export function msUntilProfileUpdate(
   return Math.max(0, target.getTime() - Date.now());
 }
 
-/** e.g. "47h 12m 05s" — null when cooldown finished */
+/** e.g. "23h 12m 05s" — null when cooldown finished */
 export function formatProfileCountdown(
   user?: ProfileUserFields | string | Date | null,
 ): string | null {

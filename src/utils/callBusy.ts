@@ -42,7 +42,7 @@ export async function rejectRingingCall(
     await call.get().catch(() => {});
     if (call.state.callingState !== RtcConnectionState.LEFT) {
       await declineCall(videoCallId, call.currentUserId, reason).catch(() => {});
-      await call.leave({ reject: true, reason });
+      await call.leave({ reject: true, reason, skipBackend: true });
       callDebug.log("reject", { videoCallId, reason });
     }
   } catch (err) {

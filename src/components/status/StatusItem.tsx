@@ -9,13 +9,23 @@ import {
   STATUS_RING_SIZE,
 } from "@/constants/statusTheme";
 import { getLatestStatus, statusDisplayName } from "@/utils/statusUser";
+import { seedStatusCache } from "@/utils/statusCache";
+import {
+  STATUS_PREVIEW_USER_LIMIT,
+  warmStatusCachesForUsers,
+} from "@/utils/statusList";
+import { prefetchStatusMedia } from "@/utils/statusEngine";
 
 export function StatusItem({
   userStatus,
   currentUserId,
+  allUserIds,
+  userIndex,
 }: {
   userStatus: any;
   currentUserId?: string | null;
+  allUserIds?: string[];
+  userIndex?: number;
 }) {
   const router = useRouter();
   const { theme } = useTheme();
@@ -23,6 +33,27 @@ export function StatusItem({
   const displayName = statusDisplayName(latest, userStatus);
 
   const handlePress = () => {
+    const stories = userStatus.statuses ?? [];
+    seedStatusCache(userStatus.userId, stories);
+    void prefetchStatusMedia(stories, 0, 3);
+    if (allUserIds?.length && userIndex !== undefined) {
+      const warmStart = Math.max(0, userIndex);
+      const warmEnd = Math.min(
+        allUserIds.length,
+        userIndex + STATUS_PREVIEW_USER_LIMIT,
+      );
+      warmStatusCachesForUsers(allUserIds.slice(warmStart, warmEnd));
+      const encodedList = encodeURIComponent(JSON.stringify(allUserIds));
+      router.push({
+        pathname: "/(status)/Viewer",
+        params: {
+          user: userStatus.userId,
+          userList: encodedList,
+          userIndex: String(userIndex),
+        },
+      });
+      return;
+    }
     router.push(`/(status)/Viewer?user=${userStatus.userId}`);
   };
 

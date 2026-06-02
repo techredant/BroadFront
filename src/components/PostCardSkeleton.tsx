@@ -6,7 +6,7 @@ import { useTheme } from "@/context/ThemeContext";
 export const PostCardSkeleton = () => {
     const { theme } = useTheme()
   return (
-    <View style={{ padding: 12, marginBottom: 12 }}>
+    <View style={{ padding: 12, marginBottom: 4 }}>
       {/* HEADER */}
       <MotiView
         from={{ opacity: 0.3 }}

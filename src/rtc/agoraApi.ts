@@ -157,8 +157,11 @@ export async function endLiveSession(callId: string, hostClerkId?: string) {
   return postJson("/api/agora/live/end", { callId, hostClerkId });
 }
 
-export async function fetchActiveLives(variant?: string) {
-  const qs = variant ? `?variant=${encodeURIComponent(variant)}` : "";
+export async function fetchActiveLives(variant?: string, includeEnded = false) {
+  const params = new URLSearchParams();
+  if (variant) params.set("variant", variant);
+  if (includeEnded) params.set("includeEnded", "true");
+  const qs = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(`${BASE}/api/agora/live/active${qs}`);
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || "Failed to fetch lives");
@@ -169,8 +172,12 @@ export async function joinLiveViewer(callId: string, userId?: string, userName?:
   return postJson("/api/agora/live/viewer/join", { callId, userId, userName });
 }
 
-export async function leaveLiveViewer(callId: string) {
-  return postJson("/api/agora/live/viewer/leave", { callId });
+export async function leaveLiveViewer(
+  callId: string,
+  userId?: string,
+  userName?: string,
+) {
+  return postJson("/api/agora/live/viewer/leave", { callId, userId, userName });
 }
 
 export async function inviteLiveGuest(body: Record<string, unknown>) {
@@ -187,4 +194,44 @@ export async function emitLiveEvent(
   payload: Record<string, unknown> = {},
 ) {
   return postJson("/api/agora/live/event", { callId, type, payload });
+}
+
+export type PolledLiveEvent = Record<string, unknown> & {
+  type?: string;
+  eventId?: string;
+  createdAt?: number;
+};
+
+export async function fetchLiveEvents(
+  callId: string,
+  sinceMs: number,
+  userId?: string,
+): Promise<{
+  ok: boolean;
+  events: PolledLiveEvent[];
+  cursor: number;
+  serverTime: number;
+}> {
+  const params = new URLSearchParams();
+  if (sinceMs > 0) params.set("since", String(sinceMs));
+  if (userId) params.set("userId", userId);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetch(
+    `${BASE}/api/agora/live/${encodeURIComponent(callId)}/events${qs}`,
+  );
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`Request failed (${res.status}): live events — invalid JSON`);
+  }
+  if (!res.ok || (data as { ok?: boolean })?.ok === false) {
+    throw new Error(formatApiError(data, `/api/agora/live/${callId}/events`, res.status));
+  }
+  return data as {
+    ok: boolean;
+    events: PolledLiveEvent[];
+    cursor: number;
+    serverTime: number;
+  };
 }

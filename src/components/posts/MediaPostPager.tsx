@@ -4,7 +4,9 @@ import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import Animated, {
   Extrapolate,
   interpolate,
+  runOnJS,
   type SharedValue,
+  useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -34,6 +36,7 @@ type Props = {
   pinchGesture?: any;
   isZooming?: boolean;
   onBufferingChange?: (buffering: boolean) => void;
+  showVideoControls?: boolean;
 };
 
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList<MediaPost>);
@@ -56,6 +59,7 @@ function MediaPostPage({
   isZooming,
   pixelWidth,
   onBufferingChange,
+  showVideoControls = true,
   scrollY,
 }: {
   post: MediaPost;
@@ -71,6 +75,7 @@ function MediaPostPage({
   isZooming?: boolean;
   pixelWidth: number;
   onBufferingChange?: (buffering: boolean) => void;
+  showVideoControls?: boolean;
   scrollY: SharedValue<number>;
 }) {
   const pageStyle = useAnimatedStyle(() => {
@@ -112,6 +117,7 @@ function MediaPostPage({
         onBufferingChange={
           index === activePostIndex ? onBufferingChange : undefined
         }
+        showVideoControls={showVideoControls}
       />
     </Animated.View>
   );
@@ -133,6 +139,7 @@ export function MediaPostPager({
   pinchGesture,
   isZooming,
   onBufferingChange,
+  showVideoControls = true,
 }: Props) {
   const listRef = useRef<FlashListRef<MediaPost>>(null);
   const initialScrollDoneRef = useRef(false);
@@ -173,15 +180,39 @@ export function MediaPostPager({
   }, [activePostIndex, posts]);
 
   const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 82,
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 0,
   }).current;
 
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: { index: number | null }[] }) => {
       const nextIndex = viewableItems[0]?.index;
-      if (typeof nextIndex === "number") setActivePost(nextIndex);
+      if (typeof nextIndex === "number") {
+        setActivePost(nextIndex, { haptic: true });
+      }
     },
   ).current;
+
+  const syncIndexFromScroll = useCallback(
+    (rawIndex: number) => {
+      const nextIndex = Math.min(
+        Math.max(rawIndex, 0),
+        Math.max(posts.length - 1, 0),
+      );
+      setActivePost(nextIndex, { haptic: false });
+    },
+    [posts.length, setActivePost],
+  );
+
+  useAnimatedReaction(
+    () => (height > 0 ? Math.round(scrollY.value / height) : 0),
+    (nextIndex, prevIndex) => {
+      if (nextIndex !== prevIndex) {
+        runOnJS(syncIndexFromScroll)(nextIndex);
+      }
+    },
+    [height, syncIndexFromScroll],
+  );
 
   const onScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -205,6 +236,7 @@ export function MediaPostPager({
         isZooming={isZooming}
         pixelWidth={pixelWidth}
         onBufferingChange={onBufferingChange}
+        showVideoControls={showVideoControls}
         scrollY={scrollY}
       />
     ),
@@ -219,6 +251,7 @@ export function MediaPostPager({
       pixelWidth,
       scrollY,
       setMediaIndexForPost,
+      showVideoControls,
       width,
       zoomStyle,
     ],

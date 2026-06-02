@@ -7,6 +7,6 @@ export const WA_GREEN_DARK = STATUS_RING_UNSEEN_DARK;
 export const WA_RING_VIEWED = "#8696a0";
 export const WA_RING_MUTED = "#c4c4c4";
 
-export const STATUS_RING_SIZE = 68;
-export const STATUS_AVATAR_INSET = 3;
-export const STATUS_ITEM_WIDTH = 76;
+export const STATUS_RING_SIZE = 60;
+export const STATUS_AVATAR_INSET = 2;
+export const STATUS_ITEM_WIDTH = 64;

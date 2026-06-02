@@ -8,6 +8,7 @@ import React, {
   useCallback,
 } from "react";
 import { AppState } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import axios from "axios";
 import { useAuth, useUser } from "@clerk/clerk-expo";
@@ -26,6 +27,24 @@ import { getFeedRoomsForViewer } from "@/utils/feedRooms";
 import { fetchRemovedPostIds, filterRemovedPosts } from "@/utils/postVisibility";
 
 const BASE_URL = API_PUBLIC_URL;
+const BOOT_LEVEL_KEY = "broadcast_boot_level_v1";
+const FALLBACK_HOME_LEVEL: Level = { type: "home", value: "Home" };
+
+async function readCachedBootLevel(): Promise<Level | null> {
+  try {
+    const raw = await AsyncStorage.getItem(BOOT_LEVEL_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Level;
+    if (parsed?.type && parsed?.value) return parsed;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function persistBootLevel(level: Level) {
+  void AsyncStorage.setItem(BOOT_LEVEL_KEY, JSON.stringify(level));
+}
 
 /** Keep feed lists free of duplicate _id keys (FlatList / React warnings). */
 function dedupePostsById<T extends { _id?: string }>(posts: T[]): T[] {
@@ -166,34 +185,29 @@ export const LevelProvider = ({ children }: { children: React.ReactNode }) => {
       setUserDetails(data);
 
       if (!hasInitializedLevel.current) {
+        let level: Level = FALLBACK_HOME_LEVEL;
         if (data?.home) {
-          setCurrentLevel({
-            type: "home",
-            value: data.home,
-          });
+          level = { type: "home", value: data.home };
         } else if (data?.county) {
-          setCurrentLevel({
-            type: "county",
-            value: data.county,
-          });
+          level = { type: "county", value: data.county };
         } else if (data?.constituency) {
-          setCurrentLevel({
-            type: "constituency",
-            value: data.constituency,
-          });
-        } else {
-          setCurrentLevel({
-            type: "ward",
-            value: data.ward || "ward",
-          });
+          level = { type: "constituency", value: data.constituency };
+        } else if (data?.ward) {
+          level = { type: "ward", value: data.ward };
         }
-
+        setCurrentLevel(level);
+        persistBootLevel(level);
         hasInitializedLevel.current = true;
       }
     } catch (err: unknown) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       if (status !== 404) {
         console.log(err);
+      }
+      if (!hasInitializedLevel.current) {
+        setCurrentLevel(FALLBACK_HOME_LEVEL);
+        persistBootLevel(FALLBACK_HOME_LEVEL);
+        hasInitializedLevel.current = true;
       }
     } finally {
       if (showLoading) {
@@ -315,8 +329,8 @@ const fetchPosts = useCallback(
         setHasMorePosts(true);
       }
 
-      // ✅ switch immediately
       setCurrentLevel(level);
+      persistBootLevel(level);
 
       // 🌐 background refresh
       setTimeout(() => {
@@ -486,9 +500,27 @@ const fetchPosts = useCallback(
   /* ---------------- INIT ---------------- */
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setCurrentLevel(null);
+      setUserDetails(null);
+      hasInitializedLevel.current = false;
+      return;
+    }
 
-    refreshUserDetails();
+    let cancelled = false;
+
+    void (async () => {
+      const cached = await readCachedBootLevel();
+      if (cancelled) return;
+      if (cached) {
+        setCurrentLevel(cached);
+      }
+      await refreshUserDetails();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id, refreshUserDetails]);
 
   /* ---------------- INITIAL FETCH ---------------- */

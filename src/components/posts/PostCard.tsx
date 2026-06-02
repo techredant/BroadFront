@@ -40,6 +40,7 @@ import { useLevel } from "@/context/LevelContext";
 import { useMediaViewer } from "@/context/MediaViewerContext";
 import {
   PresenceAvatar,
+  PresenceAudioLabel,
   PresenceLiveLabel,
 } from "@/components/presence/PresenceAvatar";
 import { EditModal } from "./EditModal";
@@ -204,6 +205,31 @@ export function PostCard({
   const [menuVisible, setMenuVisible] = useState(false);
   const [loadingDelete, setLoadingDelete] = useState(false);
   const [likeBurstKey, setLikeBurstKey] = useState(0);
+  const cardRef = useRef<View>(null);
+  const likeButtonRef = useRef<View>(null);
+  const [likeBubbleAnchor, setLikeBubbleAnchor] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  const triggerLikeBurst = useCallback(() => {
+    const card = cardRef.current;
+    const likeBtn = likeButtonRef.current;
+    if (!card || !likeBtn) {
+      setLikeBurstKey((key) => key + 1);
+      return;
+    }
+    likeBtn.measureLayout(
+      card,
+      (left, top, width, height) => {
+        setLikeBubbleAnchor({ left, top, width, height });
+        setLikeBurstKey((key) => key + 1);
+      },
+      () => setLikeBurstKey((key) => key + 1),
+    );
+  }, []);
 
   const closeMenu = () => setMenuVisible(false);
   const runMenuAction = (action: () => void) => {
@@ -425,7 +451,7 @@ export function PostCard({
     updatePost(updatedPost);
     onUpdatePost?.(updatedPost);
     if (!alreadyLiked) {
-      setLikeBurstKey((key) => key + 1);
+      triggerLikeBurst();
     }
 
     // Animate like button for feedback
@@ -759,9 +785,11 @@ export function PostCard({
   return (
     <>
       <Animated.View
+        ref={cardRef}
+        collapsable={false}
         style={[
           styles.card,
-          { backgroundColor: civic.cardBg, borderColor: civic.cardBorder },
+          { backgroundColor: theme.card },
           {
             opacity: deleteOpacity,
             transform: [{ scale: deleteScale }],
@@ -789,6 +817,7 @@ export function PostCard({
                   {displayName}
                 </Text>
                 <PresenceLiveLabel userId={authorLiveId} />
+                <PresenceAudioLabel userId={authorLiveId} />
                 <VerifiedBadge isVerified={isVerifiedUser} size={13} />
               </View>
               <Text
@@ -938,7 +967,7 @@ export function PostCard({
             >
               {/* RECITE TEXT */}
               {postCard.caption ? (
-                <View style={{ marginTop: 6 }}>
+                <View>
                   <Text
                     numberOfLines={isExpanded ? undefined : 3}
                     style={{
@@ -1009,11 +1038,6 @@ export function PostCard({
 
         {postCard.type == "recite" && (
           <View style={styles.attributionBar}>
-            <MaterialCommunityIcons
-              name="account-voice"
-              size={14}
-              color={civic.chipText}
-            />
             <Text style={[styles.attributionText, { color: theme.subtext }]}>
               Recited by{" "}
               <Link
@@ -1027,11 +1051,6 @@ export function PostCard({
         )}
         {postCard.type == "recast" && (
           <View style={styles.attributionBar}>
-            <MaterialCommunityIcons
-              name="bullhorn"
-              size={14}
-              color={civic.chipText}
-            />
             <Text style={[styles.attributionText, { color: theme.subtext }]}>
               Recasted by{" "}
               <Link
@@ -1098,11 +1117,11 @@ export function PostCard({
           </Animated.View>
 
           <Animated.View style={animatedLike}>
-            <Pressable
-              onPress={handleLike}
-              style={[styles.actionItem, styles.actionBubbleHost]}
-            >
-              <LikeBubbles burstKey={likeBurstKey} color={LIKE_COLOR} />
+            <View ref={likeButtonRef} collapsable={false}>
+              <Pressable
+                onPress={handleLike}
+                style={[styles.actionItem, styles.actionBubbleHost]}
+              >
               {isLiked ? (
                 <AntDesign name="heart" size={17} color={LIKE_COLOR} />
               ) : (
@@ -1116,7 +1135,8 @@ export function PostCard({
               >
                 {postCard.likes?.length > 0 ? postCard.likes.length : ""}
               </Text>
-            </Pressable>
+              </Pressable>
+            </View>
           </Animated.View>
 
           <View style={styles.actionItem}>
@@ -1126,6 +1146,23 @@ export function PostCard({
             </Text>
           </View>
         </View>
+
+        {likeBurstKey > 0 && likeBubbleAnchor ? (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.likeBubbleOverlay,
+              {
+                left: likeBubbleAnchor.left,
+                top: Math.max(0, likeBubbleAnchor.top - 56),
+                width: likeBubbleAnchor.width,
+                height: likeBubbleAnchor.height + 56,
+              },
+            ]}
+          >
+            <LikeBubbles burstKey={likeBurstKey} color={LIKE_COLOR} />
+          </View>
+        ) : null}
       </Animated.View>
 
       {/* POST OPTIONS BOTTOM SHEET */}
@@ -1383,16 +1420,15 @@ function PostMenuRow({
 
 const styles = StyleSheet.create({
   card: {
-    // marginHorizontal: 10,
-    marginBottom: 10,
+    marginBottom: 2,
     borderRadius: 14,
-    borderWidth: 1,
     overflow: "hidden",
+    position: "relative",
   },
   mainMediaWrap: {
     paddingHorizontal: 10,
     marginTop: 6,
-    zIndex: 10,
+    zIndex: 1,
   },
   typeRibbon: {
     flexDirection: "row",
@@ -1502,8 +1538,6 @@ const styles = StyleSheet.create({
   },
   captionBlock: {
     paddingHorizontal: 14,
-    marginTop: 10,
-    paddingBottom: 4,
   },
   captionText: {
     fontSize: 14,
@@ -1558,7 +1592,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    // paddingVertical: 8,
   },
   attributionText: { fontSize: 11, fontWeight: "600", flex: 1, lineHeight: 18 },
   actionBar: {
@@ -1572,6 +1606,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderRadius: 50,
     borderWidth: StyleSheet.hairlineWidth,
+    zIndex: 30,
   },
   actionItem: {
     alignItems: "center",
@@ -1584,6 +1619,14 @@ const styles = StyleSheet.create({
   actionBubbleHost: {
     position: "relative",
     overflow: "visible",
+    zIndex: 40,
+  },
+  likeBubbleOverlay: {
+    position: "absolute",
+    overflow: "visible",
+    zIndex: 200,
+    alignItems: "center",
+    justifyContent: "flex-end",
   },
   actionCount: {
     fontSize: 10,

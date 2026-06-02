@@ -6,7 +6,6 @@ import { StatusStoryThumb } from "./StatusStoryThumb";
 import {
   STATUS_ITEM_WIDTH,
   STATUS_RING_SIZE,
-  WA_GREEN,
 } from "@/constants/statusTheme";
 import { useTheme } from "@/context/ThemeContext";
 import { getLatestStatus } from "@/utils/statusUser";
@@ -29,10 +28,18 @@ export function AvatarWithStatus({
   const { theme } = useTheme();
   const latest = getLatestStatus(statuses);
   const showRing = hasStatus && statuses.length > 0;
+  const openViewerOrInput = () => {
+    if (hasStatus && currentUserId) {
+      router.push(`/(status)/Viewer?user=${currentUserId}`);
+      return;
+    }
+    router.push("/(status)/StatusInput");
+  };
+  const openStatusInput = () => router.push("/(status)/StatusInput");
 
   return (
     <Pressable
-      onPress={onPress || (() => router.push("/(status)/StatusInput"))}
+      onPress={onPress || openViewerOrInput}
       style={styles.wrap}
     >
       <View style={styles.ringWrap}>
@@ -63,9 +70,9 @@ export function AvatarWithStatus({
           </View>
         )}
 
-        <View style={styles.plusBadge}>
+        <Pressable onPress={openStatusInput} hitSlop={8} style={styles.plusBadge}>
           <Ionicons name="add" size={16} color="#fff" />
-        </View>
+        </Pressable>
       </View>
 
       {showLabel && (
@@ -73,7 +80,7 @@ export function AvatarWithStatus({
           style={[styles.label, { color: theme.text }]}
           numberOfLines={1}
         >
-          My status
+          {hasStatus ? "My status" : "Add status"}
         </Text>
       )}
     </Pressable>
@@ -84,7 +91,6 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: "center",
     width: STATUS_ITEM_WIDTH,
-    marginRight: 2,
   },
   ringWrap: {
     width: STATUS_RING_SIZE,
@@ -98,16 +104,17 @@ const styles = StyleSheet.create({
   },
   plusBadge: {
     position: "absolute",
-    bottom: 0,
-    right: 0,
-    backgroundColor: WA_GREEN,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    bottom: -2,
+    right: -2,
+    backgroundColor: "#2F80ED",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
     borderColor: "#fff",
+    zIndex: 5,
   },
   label: {
     marginTop: 4,

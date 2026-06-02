@@ -1,3 +1,11 @@
+/** Oldest → newest for story playback (WhatsApp order). */
+export function sortStatusesForViewer(statuses: any[]) {
+  return [...statuses].sort(
+    (a, b) =>
+      new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime(),
+  );
+}
+
 /** Pick the newest status in a user group (API may return mixed order). */
 export function getLatestStatus(statuses: any[] | undefined) {
   if (!statuses?.length) return null;
@@ -7,21 +15,15 @@ export function getLatestStatus(statuses: any[] | undefined) {
   )[0];
 }
 
-/** Display name for status list rings / rows */
+/** Display name for status UI — first name only, else company. */
 export function statusDisplayName(
   latest: any | null,
-  group?: { firstName?: string; lastName?: string; companyName?: string; nickName?: string },
+  group?: { firstName?: string; companyName?: string },
 ): string {
   const first = (latest?.firstName || group?.firstName || "").trim();
-  const last = (latest?.lastName || group?.lastName || "").trim();
   const company = (latest?.companyName || group?.companyName || "").trim();
-  const nick = (latest?.nickName || group?.nickName || "").trim();
-
-  if (first && last) return `${first} ${last}`;
   if (first) return first;
   if (company) return company;
-  if (nick) return nick.startsWith("@") ? nick : `@${nick.replace(/^@+/, "")}`;
-
   return "Contact";
 }
 

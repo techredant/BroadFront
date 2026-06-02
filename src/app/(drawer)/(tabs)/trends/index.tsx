@@ -20,6 +20,7 @@ import {
 } from "@/context/TabBarVisibilityContext";
 import { getPoliticalColors, PoliticalPalette } from "@/constants/politicalTheme";
 import { SmartSearchBar } from "@/components/ai/SmartSearchBar";
+import { TrendRowSkeleton } from "@/components/trends/TrendRowSkeleton";
 
 type Trend = {
   id: string;
@@ -92,7 +93,7 @@ function rankStyle(index: number) {
 }
 
 export default function TrendsScreen() {
-  const { currentLevel, userDetails } = useLevel();
+  const { currentLevel, userDetails, posts: levelPosts } = useLevel();
   const { theme, isDark } = useTheme();
   const civic = useMemo(() => getPoliticalColors(isDark), [isDark]);
   const onTabBarScroll = useTabBarScrollHandler();
@@ -133,8 +134,13 @@ export default function TrendsScreen() {
   );
 
   useEffect(() => {
+    if (levelPosts.length > 0) {
+      setTrends(extractTrends(levelPosts as Post[]));
+      setLoading(false);
+      return;
+    }
     fetchTrends();
-  }, [fetchTrends]);
+  }, [fetchTrends, levelPosts]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -297,26 +303,12 @@ export default function TrendsScreen() {
     </View>
   );
 
-  if (loading && !refreshing) {
-    return (
-      <View style={[styles.centered, { backgroundColor: theme.background }]}>
-        <DrawerMenuButton />
-        <View style={[styles.loadingCard, { backgroundColor: theme.card }]}>
-          <ActivityIndicator size="small" color={theme.primary} />
-          <Text style={[styles.loadingText, { color: theme.subtext }]}>
-            Scanning conversations…
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <DrawerMenuButton />
 
       <FlatList
-        data={trends}
+        data={loading && !refreshing ? [] : trends}
         keyExtractor={(item) => item.id}
         renderItem={renderTrend}
         onScroll={onTabBarScroll}
@@ -336,18 +328,22 @@ export default function TrendsScreen() {
         ListHeaderComponent={listHeader}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            <View style={[styles.emptyIcon, { backgroundColor: civic.chipBg }]}>
-              <Ionicons name="trending-up" size={32} color={civic.chipText} />
+          loading && !refreshing ? (
+            <TrendRowSkeleton />
+          ) : (
+            <View style={styles.emptyWrap}>
+              <View style={[styles.emptyIcon, { backgroundColor: civic.chipBg }]}>
+                <Ionicons name="trending-up" size={32} color={civic.chipText} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                No trends yet
+              </Text>
+              <Text style={[styles.emptySub, { color: theme.subtext }]}>
+                Post with hashtags or political keywords to start a trend in{" "}
+                {levelLabel}.
+              </Text>
             </View>
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>
-              No trends yet
-            </Text>
-            <Text style={[styles.emptySub, { color: theme.subtext }]}>
-              Post with hashtags or political keywords to start a trend in{" "}
-              {levelLabel}.
-            </Text>
-          </View>
+          )
         }
       />
     </View>

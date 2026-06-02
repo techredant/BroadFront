@@ -22,7 +22,7 @@ import {
 } from "@/utils/groupChat";
 import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View, Pressable } from "react-native";
 import { PresenceAvatar } from "@/components/presence/PresenceAvatar";
 import {
   Menu,
@@ -84,7 +84,7 @@ function BroadCastPreviewAvatar({ channel }: ChannelAvatarProps) {
         image={image}
         ImageComponent={ImageComponent}
         name={name}
-        size={48}
+        size={44}
       />
     );
   }
@@ -107,17 +107,17 @@ function BroadCastPreviewAvatar({ channel }: ChannelAvatarProps) {
 
   if (image) {
     return (
-      <PresenceAvatar userId={remoteId} size={48} imageUri={image} />
+      <PresenceAvatar userId={remoteId} size={44} imageUri={image} />
     );
   }
 
   return (
-    <PresenceAvatar userId={remoteId} size={48}>
+    <PresenceAvatar userId={remoteId} size={44}>
       <Avatar
         image={image}
         ImageComponent={ImageComponent}
         name={name}
-        size={48}
+        size={44}
       />
     </PresenceAvatar>
   );
@@ -166,78 +166,108 @@ export function BroadCastChannelPreview(props: ChannelPreviewMessengerProps) {
           style={{ marginRight: 2 }}
         />
       ) : null}
-   <Menu>
-  <MenuTrigger>
-    <View
-      accessibilityLabel="Chat options"
-      accessibilityRole="button"
-      className="mr-1 h-11 w-11 items-center justify-center rounded-full"
-    >
-      <Ionicons name="ellipsis-vertical" size={20} color={theme.text} />
-    </View>
-  </MenuTrigger>
-
-  <MenuOptions
-    customStyles={{
-      optionsContainer: {
-        backgroundColor: theme.card,
-        borderRadius: 16,
-        paddingVertical: 8,
-        width: 190,
-
-        shadowColor: "#000",
-        shadowOpacity: 0.15,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 6,
-      },
-    }}
-  >
-    {/* PIN */}
-    <MenuOption onSelect={togglePin}>
-      <View className="flex-row items-center px-4 py-4">
-        <Ionicons
-          name={isPinned ? "pin-outline" : "pin"}
-          size={18}
-          color={theme.text}
-        />
-        <Text
-          className="ml-3 text-[14px] font-bold"
-          style={{ color: theme.text }}
+      <Menu>
+        <MenuTrigger
+          customStyles={{
+            TriggerTouchableComponent: Pressable,
+            triggerTouchable: {
+              hitSlop: { top: 8, bottom: 8, left: 8, right: 8 },
+            },
+          }}
         >
-          {isPinned ? "Unpin chat" : "Pin chat"}
-        </Text>
-      </View>
-    </MenuOption>
+          <View
+            accessibilityLabel="Chat options"
+            accessibilityRole="button"
+            style={[
+              menuStyles.trigger,
+              { backgroundColor: theme.card },
+            ]}
+          >
+            <Ionicons
+              name="ellipsis-vertical"
+              size={16}
+              color={theme.subtext}
+            />
+          </View>
+        </MenuTrigger>
 
-    {/* MUTE */}
-    <MenuOption onSelect={toggleMute}>
-      <View className="flex-row items-center px-4 py-4">
-        <Ionicons
-          name={isMuted ? "notifications-outline" : "notifications-off"}
-          size={18}
-          color={theme.text}
-        />
-        <Text
-          className="ml-3 text-[14px] font-bold"
-          style={{ color: theme.text }}
+        <MenuOptions
+          customStyles={{
+            optionsContainer: {
+              backgroundColor: theme.card,
+              borderRadius: 12,
+              paddingVertical: 4,
+              width: 200,
+              marginTop: 4,
+              shadowColor: "#000",
+              shadowOpacity: 0.12,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 8,
+            },
+            optionWrapper: {
+              paddingHorizontal: 4,
+            },
+          }}
         >
-          {isMuted ? "Unmute chat" : "Mute chat"}
-        </Text>
-      </View>
-    </MenuOption>
+          <MenuOption onSelect={togglePin}>
+            <View style={menuStyles.optionRow}>
+              <Ionicons
+                name={isPinned ? "pin-outline" : "pin"}
+                size={17}
+                color={theme.text}
+              />
+              <Text style={[menuStyles.optionText, { color: theme.text }]}>
+                {isPinned ? "Unpin chat" : "Pin chat"}
+              </Text>
+            </View>
+          </MenuOption>
 
-    {/* DELETE */}
-    <MenuOption onSelect={deleteChat}>
-      <View className="flex-row items-center px-4 py-4">
-        <Ionicons name="trash-outline" size={18} color="#ef4444" />
-        <Text className="ml-3 text-[14px] font-bold text-red-500">
-          Delete chat
-        </Text>
-      </View>
-    </MenuOption>
-  </MenuOptions>
-</Menu>
+          <MenuOption onSelect={toggleMute}>
+            <View style={menuStyles.optionRow}>
+              <Ionicons
+                name={isMuted ? "notifications-outline" : "notifications-off"}
+                size={17}
+                color={theme.text}
+              />
+              <Text style={[menuStyles.optionText, { color: theme.text }]}>
+                {isMuted ? "Unmute chat" : "Mute chat"}
+              </Text>
+            </View>
+          </MenuOption>
+
+          <MenuOption onSelect={deleteChat}>
+            <View style={menuStyles.optionRow}>
+              <Ionicons name="trash-outline" size={17} color="#ef4444" />
+              <Text style={[menuStyles.optionText, { color: "#ef4444" }]}>
+                Delete chat
+              </Text>
+            </View>
+          </MenuOption>
+        </MenuOptions>
+      </Menu>
     </View>
   );
 }
+
+const menuStyles = StyleSheet.create({
+  trigger: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
+  },
+  optionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    gap: 12,
+  },
+  optionText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+});

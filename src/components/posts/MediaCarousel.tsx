@@ -22,6 +22,7 @@ type MediaCarouselProps = {
   onIndexChange: (postIndex: number, mediaIndex: number) => void;
   onEdgeHint?: (direction: "up" | "down") => void;
   onBufferingChange?: (buffering: boolean) => void;
+  showVideoControls?: boolean;
 };
 
 function MediaCarouselComponent({
@@ -38,6 +39,7 @@ function MediaCarouselComponent({
   onIndexChange,
   onEdgeHint,
   onBufferingChange,
+  showVideoControls = true,
 }: MediaCarouselProps) {
   const listRef = useRef<FlashListRef<string>>(null);
   const currentIndexRef = useRef(initialIndex);
@@ -98,6 +100,7 @@ function MediaCarouselComponent({
         onBufferingChange={
           active && index === currentIndexRef.current ? onBufferingChange : undefined
         }
+        showVideoControls={showVideoControls}
       />
     ),
     [
@@ -107,6 +110,7 @@ function MediaCarouselComponent({
       onBufferingChange,
       pinchGesture,
       pixelWidth,
+      showVideoControls,
       width,
       zoomStyle,
     ],

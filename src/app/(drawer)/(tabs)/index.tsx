@@ -12,7 +12,6 @@ import { FlashList } from "@shopify/flash-list";
 import type { FlashListRef } from "@shopify/flash-list";
 
 import axios from "axios";
-import { useFocusEffect } from "expo-router";
 import { useLevel } from "@/context/LevelContext";
 import { useTheme } from "@/context/ThemeContext";
 import { FloatingLevelButton } from "@/modals/LevelFloatingAction";
@@ -27,6 +26,7 @@ import {
 } from "@/context/TabBarVisibilityContext";
 import { MemoizedHomeFeedHeader } from "@/components/home/HomeFeedHeader";
 import { setVisibleFeedItems } from "@/utils/feedVisibility";
+import { useStatusList } from "@/hooks/useStatusList";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -51,7 +51,7 @@ export default function HomeScreen() {
   const onTabBarScroll = useTabBarScrollHandler();
   useShowTabBarOnFocus();
 
-  const [statuses, setStatuses] = useState<any[]>([]);
+  const { statuses } = useStatusList();
   const listRef = useRef<FlashListRef<any>>(null);
   const lastPrependedId = useRef<string | null>(null);
   const showScrollTopRef = useRef(false);
@@ -92,27 +92,6 @@ export default function HomeScreen() {
   }).current;
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
-
-  const fetchStatuses = useCallback(async () => {
-    try {
-      const res = await axios.get(`${BASE_URL}/api/status`);
-      setStatuses(res.data);
-    } catch {
-      /* non-blocking */
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStatuses();
-    const interval = setInterval(fetchStatuses, 5000);
-    return () => clearInterval(interval);
-  }, [fetchStatuses]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchStatuses();
-    }, [fetchStatuses]),
-  );
 
   useEffect(() => {
     const firstId = posts[0]?._id;

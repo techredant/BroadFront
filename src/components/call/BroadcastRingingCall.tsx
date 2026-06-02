@@ -55,7 +55,7 @@ export function BroadcastRingingCall({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#0b0b0f",
+    backgroundColor: "#000",
   },
   body: {
     flex: 1,

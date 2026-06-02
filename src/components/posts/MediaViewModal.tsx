@@ -41,6 +41,7 @@ import { LikeBubbles } from "@/components/posts/LikeBubbles";
 import { isVideoMedia, resolveMediaUrls } from "@/utils/mediaUtils";
 import { formatNickHandle } from "@/utils/nickName";
 import { useActivePostTracking } from "@/hooks/useActivePostTracking";
+import { useMediaViewerPostActions } from "@/hooks/useMediaViewerPostActions";
 import { formatConstituency } from "@/constants/politicalTheme";
 import { useTheme } from "@/context/ThemeContext";
 
@@ -227,6 +228,10 @@ export function MediaViewerModal({
     activePost?.levelType,
   );
 
+  const fallbackEngagement = useMediaViewerPostActions(activePost, {
+    onAfterLike: () => setLikeBurstKey((key) => key + 1),
+  });
+
   const baseEngagement = useMemo<MediaViewerEngagement>(() => {
     const likes = Array.isArray(activePost?.likes)
       ? activePost.likes.length
@@ -235,21 +240,28 @@ export function MediaViewerModal({
       commentsCount:
         engagement?.commentsCount ??
         activePost?.commentsCount ??
-        activePost?.commentCount,
+        activePost?.commentCount ??
+        fallbackEngagement.commentsCount,
       quoteCount:
-        engagement?.quoteCount ?? activePost?.quoteCount ?? activePost?.reciteCount,
-      recastCount: engagement?.recastCount ?? activePost?.recastCount,
-      likesCount: engagement?.likesCount ?? likes,
-      views: engagement?.views ?? activePost?.views,
-      isLiked: engagement?.isLiked,
+        engagement?.quoteCount ??
+        activePost?.quoteCount ??
+        activePost?.reciteCount ??
+        fallbackEngagement.quoteCount,
+      recastCount:
+        engagement?.recastCount ??
+        activePost?.recastCount ??
+        fallbackEngagement.recastCount,
+      likesCount: engagement?.likesCount ?? likes ?? fallbackEngagement.likesCount,
+      views: engagement?.views ?? activePost?.views ?? fallbackEngagement.views,
+      isLiked: engagement?.isLiked ?? fallbackEngagement.isLiked,
       recited: engagement?.recited,
       reposted: engagement?.reposted,
       onComment: engagement?.onComment,
       onRecite: engagement?.onRecite,
       onRecast: engagement?.onRecast,
-      onLike: engagement?.onLike,
+      onLike: engagement?.onLike ?? fallbackEngagement.onLike,
     };
-  }, [activePost, engagement]);
+  }, [activePost, engagement, fallbackEngagement]);
 
   const viewerEngagement = useMemo<MediaViewerEngagement>(
     () => ({
@@ -359,8 +371,27 @@ export function MediaViewerModal({
       },
     }));
 
-    setLikeBurstKey((key) => key + 1);
+    if (!viewerEngagement.isLiked) {
+      setLikeBurstKey((key) => key + 1);
+    }
     runAction(viewerEngagement.onLike);
+  };
+
+  const runReciteAction = () => {
+    if (!viewerEngagement.onRecite) return;
+    close();
+    setTimeout(() => runAction(viewerEngagement.onRecite), 0);
+  };
+
+  const runRecastAction = () => {
+    if (!viewerEngagement.onRecast) return;
+    close();
+    setTimeout(() => runAction(viewerEngagement.onRecast), 0);
+  };
+
+  const runCommentAction = () => {
+    if (!viewerEngagement.onComment) return;
+    runAction(viewerEngagement.onComment);
   };
 
   const effectivePinchStyle = pinchStyle ?? localPinchStyle;
@@ -376,22 +407,25 @@ export function MediaViewerModal({
     >
       <ExpoStatusBar style="light" backgroundColor="#000000" />
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
-      <View style={styles.root}>
-        <MediaPostPager
-          posts={viewerPosts}
-          width={width}
-          height={height}
-          activePostIndex={activePostIndex}
-          getPostId={getId}
-          getMediaIndex={getMediaIndex}
-          setActivePost={setActivePost}
-          setMediaIndexForPost={setMediaIndexForPost}
-          onEdgeHint={showEdgeHint}
-          zoomStyle={effectivePinchStyle}
-          pinchGesture={enhancedPinchGesture}
-          isZooming={isZooming}
-          onBufferingChange={setVideoBuffering}
-        />
+      <View style={styles.root} pointerEvents="box-none">
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          <MediaPostPager
+            posts={viewerPosts}
+            width={width}
+            height={height}
+            activePostIndex={activePostIndex}
+            getPostId={getId}
+            getMediaIndex={getMediaIndex}
+            setActivePost={setActivePost}
+            setMediaIndexForPost={setMediaIndexForPost}
+            onEdgeHint={showEdgeHint}
+            zoomStyle={effectivePinchStyle}
+            pinchGesture={enhancedPinchGesture}
+            isZooming={isZooming}
+            onBufferingChange={setVideoBuffering}
+            showVideoControls={false}
+          />
+        </View>
 
         <LinearGradient
           colors={["rgba(0,0,0,0.78)", "rgba(0,0,0,0.4)", "transparent"]}
@@ -423,13 +457,21 @@ export function MediaViewerModal({
         </LinearGradient>
 
         {showBottomChrome ? (
-          <LinearGradient
-            colors={["transparent", "rgba(0,0,0,0.55)", "rgba(0,0,0,0.92)"]}
-            style={styles.bottomGradient}
-            pointerEvents="box-none"
-          >
+          <View style={styles.bottomChrome} pointerEvents="box-none">
+            {totalMedia > 1 ? (
+              <View style={styles.dotsRow}>
+                {activeMedia.map((_, i) => (
+                  <PageDot key={i} active={i === activeMediaIndex} />
+                ))}
+              </View>
+            ) : null}
+
             {activePost ? (
-              <View style={styles.postMeta} pointerEvents="box-none">
+              <View
+                key={activePostId}
+                style={styles.postMeta}
+                pointerEvents="box-none"
+              >
                 <Pressable
                   style={styles.authorRow}
                   onPress={() => {
@@ -510,22 +552,14 @@ export function MediaViewerModal({
                 </Text>
               </View>
             ) : null}
-
-            {totalMedia > 1 ? (
-              <View style={styles.dotsRow}>
-                {activeMedia.map((_, i) => (
-                  <PageDot key={i} active={i === activeMediaIndex} />
-                ))}
-              </View>
-            ) : null}
-          </LinearGradient>
+          </View>
         ) : null}
 
         {hasEngagement ? (
           <View style={styles.actionRail} pointerEvents="box-none">
             <View style={styles.actionRailInner} pointerEvents="auto">
               <ActionItem
-                onPress={() => runAction(viewerEngagement.onComment)}
+                onPress={runCommentAction}
                 count={viewerEngagement.commentsCount}
               >
                 <View style={styles.actionIconWrap}>
@@ -538,7 +572,7 @@ export function MediaViewerModal({
               </ActionItem>
 
               <ActionItem
-                onPress={() => runAction(viewerEngagement.onRecite)}
+                onPress={runReciteAction}
                 count={viewerEngagement.quoteCount}
                 countColor={
                   viewerEngagement.recited
@@ -560,7 +594,7 @@ export function MediaViewerModal({
               </ActionItem>
 
               <ActionItem
-                onPress={() => runAction(viewerEngagement.onRecast)}
+                onPress={runRecastAction}
                 count={viewerEngagement.recastCount}
                 countColor={
                   viewerEngagement.reposted
@@ -641,7 +675,7 @@ const styles = StyleSheet.create({
     paddingTop: 48,
     paddingBottom: 32,
   },
-  bottomGradient: {
+  bottomChrome: {
     position: "absolute",
     bottom: 0,
     left: 0,
@@ -679,8 +713,23 @@ const styles = StyleSheet.create({
   avatarFallback: { alignItems: "center", justifyContent: "center" },
   authorTextCol: { flex: 1 },
   authorNameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  authorName: { color: "#fff", fontSize: 15, fontWeight: "700", flexShrink: 1 },
-  authorHandle: { color: "rgba(255,255,255,0.72)", fontSize: 12, marginTop: 2 },
+  authorName: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+    flexShrink: 1,
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  authorHandle: {
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 12,
+    marginTop: 2,
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
   levelChip: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -701,14 +750,22 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.35,
   },
-  caption: { color: "#fff", fontSize: 14, lineHeight: 21 },
+  caption: {
+    color: "#fff",
+    fontSize: 14,
+    lineHeight: 21,
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
   captionMore: { color: "rgba(255,255,255,0.65)", fontSize: 13, fontWeight: "600", marginTop: 4 },
   actionRail: {
     position: "absolute",
     right: 10,
     top: 120,
     bottom: 160,
-    zIndex: 12,
+    zIndex: 100,
+    elevation: 100,
     justifyContent: "center",
     alignItems: "flex-end",
   },
@@ -735,7 +792,13 @@ const styles = StyleSheet.create({
   actionCountSpacer: { height: 0 },
   mediaTypeRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 10 },
   mediaTypeLabel: { color: "rgba(255,255,255,0.88)", fontSize: 12, fontWeight: "500", letterSpacing: 0.2 },
-  dotsRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  dotsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 80,
+  },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.35)", overflow: "hidden" },
   dotActive: {
     width: 22,

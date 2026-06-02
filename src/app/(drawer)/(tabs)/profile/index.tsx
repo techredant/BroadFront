@@ -33,6 +33,9 @@ import {
   useShowTabBarOnFocus,
   useTabBarScrollHandler,
 } from "@/context/TabBarVisibilityContext";
+import { CACHE_TTL, setCached, shouldRefetchOnFocus } from "@/utils/staleFetch";
+import { ProfileHeaderSkeleton } from "@/components/profile/ProfileHeaderSkeleton";
+import { PostCardSkeleton } from "@/components/PostCardSkeleton";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
 
@@ -88,8 +91,12 @@ export default function ProfileScreen() {
             levelValue,
           },
         });
-        setPosts(res.data ?? []);
+        const data = res.data ?? [];
+        setPosts(data);
         postsLoadedOnce.current = true;
+        if (clerkId) {
+          setCached(`profile-posts:${clerkId}:${levelType}-${levelValue}`, data);
+        }
       } catch (err) {
         console.error("Error fetching profile posts:", err);
       } finally {
@@ -142,6 +149,8 @@ export default function ProfileScreen() {
     const mine = feedPosts.filter((p) => p.userId === clerkId);
     if (mine.length === 0) return;
 
+    postsLoadedOnce.current = true;
+
     setPosts((prev) => {
       let next = prev;
       for (const post of mine) {
@@ -153,9 +162,11 @@ export default function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!clerkId) return;
+      if (!clerkId || !levelType || !levelValue) return;
+      const cacheKey = `profile-posts:${clerkId}:${levelType}-${levelValue}`;
+      if (!shouldRefetchOnFocus(cacheKey, CACHE_TTL.profilePosts)) return;
       fetchMedia({ silent: true });
-    }, [clerkId, fetchMedia]),
+    }, [clerkId, levelType, levelValue, fetchMedia]),
   );
 
   const onRefresh = useCallback(async () => {
@@ -174,25 +185,24 @@ export default function ProfileScreen() {
   const showPostsLoader =
     activeTab === "posts" && postsLoading && !postsLoadedOnce.current;
 
-  if (showInitialLoader) {
+  if (showInitialLoader || !userDetails) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="small" color={theme.text} />
-      </View>
-    );
-  }
-
-  if (!userDetails) {
-    return (
-      <View style={[styles.center, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="small" color={theme.text} />
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <DrawerMenuButton />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <ProfileHeaderSkeleton />
+          <PostCardSkeleton />
+          <PostCardSkeleton />
+        </ScrollView>
       </View>
     );
   }
 
   const isPersonal = userDetails?.accountType === "Personal Account";
   const profileUpdatePending = isProfileUpdatePending(userDetails);
-  const isWaiting = profileUpdatePending;
 
   const tabData =
     activeTab === "posts"
@@ -282,31 +292,6 @@ export default function ProfileScreen() {
             compact
           />
 
-          {__DEV__ ? (
-            <TouchableOpacity
-              style={[styles.devTestBtn, { borderColor: theme.border }]}
-              onPress={() => {
-                updateUserDetails({
-                  ...userDetails,
-                  profileUpdateAt: new Date(
-                    Date.now() + 60 * 1000,
-                    // Date.now() + 48 * 60 * 60 * 1000,
-                  ).toISOString(),
-                  pendingFirstName: isPersonal ? userDetails?.firstName : "",
-                  pendingLastName: isPersonal ? userDetails?.lastName : "",
-                  pendingCompanyName: !isPersonal
-                    ? userDetails?.companyName
-                    : "",
-                  pendingImage: userDetails?.image,
-                });
-              }}
-            >
-              <Text style={{ color: theme.subtext, fontSize: 11 }}>
-                Dev: preview 60s countdown
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-
           <View style={styles.bio}>
             <Text style={[styles.name, { color: theme.text }]}>
               {isPersonal
@@ -323,14 +308,7 @@ export default function ProfileScreen() {
 
           <View style={styles.actionsRow}>
             <TouchableOpacity
-              disabled={isWaiting}
-              style={[
-                styles.primaryBtn,
-                {
-                  backgroundColor: isWaiting ? theme.border : theme.primary,
-                  opacity: isWaiting ? 0.7 : 1,
-                },
-              ]}
+              style={[styles.primaryBtn, { backgroundColor: theme.primary }]}
               onPress={() => setModalProfileVisible(true)}
             >
               <Ionicons name="create-outline" size={16} color="#fff" />
@@ -392,9 +370,10 @@ export default function ProfileScreen() {
           ) : null}
 
           {showPostsLoader ? (
-            <View style={styles.postsLoader}>
-              <ActivityIndicator size="small" color={theme.primary} />
-            </View>
+            <>
+              <PostCardSkeleton />
+              <PostCardSkeleton />
+            </>
           ) : tabData.length === 0 ? (
             <Text style={[styles.empty, { color: theme.subtext }]}>
               {activeTab === "posts"

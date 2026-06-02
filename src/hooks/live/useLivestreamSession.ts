@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgoraRtcClient, RtcCall } from "@/rtc/RtcCall";
-import { startLiveSession } from "@/rtc/agoraApi";
+import { startLiveSession, fetchActiveLives, joinLiveViewer, leaveLiveViewer } from "@/rtc/agoraApi";
 import {
   configureLivestreamViewerMedia,
   joinLivestreamAsHost,
@@ -16,6 +16,18 @@ import {
   clearActiveCommunityLiveSession,
   setActiveCommunityLiveSession,
 } from "@/utils/communityLiveSession";
+import { useLevel } from "@/context/LevelContext";
+
+function liveViewerDisplayName(userDetails?: {
+  nickName?: string;
+  firstName?: string;
+} | null): string {
+  return (
+    userDetails?.nickName?.trim() ||
+    userDetails?.firstName?.trim() ||
+    "Member"
+  );
+}
 
 type UseLivestreamSessionOptions = {
   client: AgoraRtcClient | null | undefined;
@@ -43,6 +55,7 @@ export function useLivestreamSession({
   onEnded,
   onHostEnded,
 }: UseLivestreamSessionOptions) {
+  const { userDetails } = useLevel();
   const [call, setCall] = useState<RtcCall | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
   const joinGenRef = useRef(0);
@@ -144,8 +157,46 @@ export function useLivestreamSession({
             });
           }
         } else {
-          await streamCall.join({ create: false, maxJoinRetries: 3, role: "audience" });
+          let resolvedHostId =
+            hostClerkId ||
+            (streamCall.state.custom?.hostUserId as string | undefined);
+
+          if (!resolvedHostId) {
+            try {
+              const sessions = await fetchActiveLives(variant);
+              const match = sessions.find(
+                (s: { callId?: string }) => s.callId === callId,
+              );
+              resolvedHostId =
+                typeof match?.hostClerkId === "string"
+                  ? match.hostClerkId
+                  : undefined;
+            } catch {
+              /* ignore */
+            }
+          }
+
+          if (resolvedHostId) {
+            streamCall.state.createdBy = { id: resolvedHostId };
+            streamCall.state.custom = {
+              ...streamCall.state.custom,
+              hostUserId: resolvedHostId,
+            };
+          }
+
+          await streamCall.join({
+            create: false,
+            maxJoinRetries: 3,
+            role: "audience",
+            video: false,
+          });
           configureLivestreamViewerMedia(streamCall);
+          const viewerName = liveViewerDisplayName(userDetails);
+          await joinLiveViewer(
+            callId,
+            streamCall.currentUserId,
+            viewerName,
+          ).catch(() => {});
         }
 
         if (!active || joinGenRef.current !== gen) {
@@ -179,6 +230,14 @@ export function useLivestreamSession({
     return () => {
       active = false;
       streamCall.off("call.ended", handleEnded);
+      if (!isHost) {
+        const viewerName = liveViewerDisplayName(userDetails);
+        void leaveLiveViewer(
+          callId,
+          streamCall.currentUserId,
+          viewerName,
+        ).catch(() => {});
+      }
       void streamCall.leave().catch(() => {});
       stopCallMedia();
       setCall(null);
@@ -192,6 +251,8 @@ export function useLivestreamSession({
     hostClerkId,
     variant,
     initialMarketProduct,
+    userDetails?.nickName,
+    userDetails?.firstName,
   ]);
 
   return { call, joinError };

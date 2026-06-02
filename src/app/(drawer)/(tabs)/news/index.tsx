@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 
 import { View, Text, StatusBar, RefreshControl, FlatList } from "react-native";
 
@@ -40,7 +40,7 @@ interface Post {
 }
 
 export default function NewsScreen() {
-  const { currentLevel, isLoadingUser } = useLevel();
+  const { currentLevel, isLoadingUser, posts: levelPosts } = useLevel();
   const { theme, isDark } = useTheme();
   const onTabBarScroll = useTabBarScrollHandler();
   useShowTabBarOnFocus();
@@ -69,37 +69,57 @@ export default function NewsScreen() {
 
   /* ---------------- Fetch News ---------------- */
 
-  const fetchNews = useCallback(async () => {
-    if (!currentLevel?.type || !currentLevel?.value) return;
+  const newsFromFeed = useMemo(
+    () =>
+      levelPosts.filter((item) => {
+        const accountType =
+          (item as Post).user?.accountType || (item as { accountType?: string }).accountType;
+        return accountType !== "Personal Account";
+      }) as Post[],
+    [levelPosts],
+  );
 
-    setLoading(true);
+  const fetchNews = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!currentLevel?.type || !currentLevel?.value) return;
 
-    try {
-      const res = await axios.get(`${BASE_URL}/api/posts`, {
-        params: {
-          levelType: currentLevel.type,
-          levelValue: currentLevel.value,
-        },
-      });
+      if (!opts?.silent) setLoading(true);
 
-      const filteredNews = res.data.filter(
-        (item: Post) => item.user.accountType !== "Personal Account",
-      );
+      try {
+        const res = await axios.get(`${BASE_URL}/api/posts`, {
+          params: {
+            levelType: currentLevel.type,
+            levelValue: currentLevel.value,
+          },
+        });
 
-      setNews(filteredNews);
-    } catch (err) {
-      console.error("Error fetching news:", err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [currentLevel?.type, currentLevel?.value]);
+        const filteredNews = res.data.filter(
+          (item: Post) => item.user.accountType !== "Personal Account",
+        );
+
+        setNews(filteredNews);
+      } catch (err) {
+        console.error("Error fetching news:", err);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [currentLevel?.type, currentLevel?.value],
+  );
 
   /* ---------------- Initial Load ---------------- */
 
   useEffect(() => {
-    fetchNews();
-  }, [fetchNews]);
+    if (newsFromFeed.length > 0) {
+      setNews(newsFromFeed);
+      setLoading(false);
+      return;
+    }
+    if (!isLoadingUser && currentLevel?.type && currentLevel?.value) {
+      fetchNews({ silent: false });
+    }
+  }, [newsFromFeed, isLoadingUser, currentLevel?.type, currentLevel?.value, fetchNews]);
 
   /* ---------------- Pull To Refresh ---------------- */
 

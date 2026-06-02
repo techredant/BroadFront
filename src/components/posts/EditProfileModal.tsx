@@ -1,5 +1,5 @@
 // EditProfile.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -19,13 +19,13 @@ import axios from "axios";
 import { useUser } from "@clerk/clerk-expo";
 import { useTheme } from "@/context/ThemeContext";
 import { useLevel } from "@/context/LevelContext";
-import {
-  formatProfileCountdown,
-  PROFILE_UPDATE_DELAY_LABEL,
-  isProfileUpdatePending,
-} from "@/utils/profileUpdate";
+import { Dropdown } from "react-native-element-dropdown";
+import iebc from "../../../assets/data/iebc.json";
+import { isProfileUpdatePending } from "@/utils/profileUpdate";
 
 const BASE_URL = "https://cast-api-zeta.vercel.app";
+
+const norm = (value?: string | null) => (value ?? "").trim();
 
 export const EditProfileModal = ({ visible, onClose, userDetails }: any) => {
   const { user } = useUser();
@@ -33,33 +33,19 @@ export const EditProfileModal = ({ visible, onClose, userDetails }: any) => {
   const { updateUserDetails, refreshUserDetails } = useLevel();
 
   const [loading, setLoading] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(false);
-  const [countdown, setCountdown] = useState<string | null>(null);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [county, setCounty] = useState<string | null>(null);
+  const [constituency, setConstituency] = useState<string | null>(null);
+  const [ward, setWard] = useState<string | null>(null);
   const [image, setImage] = useState("");
   const prevVisibleRef = useRef(false);
 
   const accountType = userDetails?.accountType;
   const isPersonal = accountType === "Personal Account";
-  const updatePending = isProfileUpdatePending(userDetails);
-
-  useEffect(() => {
-    if (!visible) {
-      setCountdown(null);
-      return;
-    }
-
-    const tick = () => {
-      setCountdown(formatProfileCountdown(userDetails));
-    };
-
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [userDetails, visible]);
+  const textUpdatePending = isProfileUpdatePending(userDetails);
 
   /** Hydrate form only when the modal opens — not on every userDetails refresh */
   useEffect(() => {
@@ -75,12 +61,56 @@ export const EditProfileModal = ({ visible, onClose, userDetails }: any) => {
     setCompanyName(
       userDetails.pendingCompanyName ?? userDetails.companyName ?? "",
     );
-    setImage(userDetails.pendingImage ?? userDetails.image ?? "");
+    setCounty(userDetails.pendingCounty ?? userDetails.county ?? null);
+    setConstituency(
+      userDetails.pendingConstituency ?? userDetails.constituency ?? null,
+    );
+    setWard(userDetails.pendingWard ?? userDetails.ward ?? null);
+    setImage(userDetails.image ?? "");
   }, [visible, userDetails]);
 
-  const pickImage = async () => {
-    if (updatePending) return;
+  const constituencies = useMemo(() => {
+    if (!county) return [];
+    const match = iebc.counties.find((item) => item.name === county);
+    return match?.constituencies ?? [];
+  }, [county]);
 
+  const wards = useMemo(() => {
+    if (!constituency) return [];
+    const match = constituencies.find((item) => item.name === constituency);
+    return match?.wards ?? [];
+  }, [constituency, constituencies]);
+
+  const dropdownStyle = {
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 10,
+    backgroundColor: theme.background,
+  };
+
+  const dropdownProps = {
+    style: dropdownStyle,
+    containerStyle: {
+      backgroundColor: theme.card,
+      borderRadius: 10,
+      borderColor: theme.border,
+    },
+    itemContainerStyle: { backgroundColor: theme.card },
+    itemTextStyle: { color: theme.text },
+    selectedTextStyle: { color: theme.text },
+    placeholderStyle: { color: theme.subtext },
+    searchInputStyle: {
+      color: theme.text,
+      backgroundColor: theme.background,
+      borderRadius: 8,
+    },
+    searchPlaceholderTextColor: theme.subtext,
+  };
+
+  const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
@@ -92,19 +122,54 @@ export const EditProfileModal = ({ visible, onClose, userDetails }: any) => {
     }
   };
 
-  const handleSave = async (): Promise<boolean> => {
-    if (updatePending) {
-      Alert.alert(
-        "Update scheduled",
-        `Your profile update will go live in ${countdown ?? `less than ${PROFILE_UPDATE_DELAY_LABEL}`}.`,
+  const hasScheduledFieldChanges = () => {
+    if (isPersonal) {
+      const baseFirst = textUpdatePending
+        ? (userDetails?.pendingFirstName ?? userDetails?.firstName)
+        : userDetails?.firstName;
+      const baseLast = textUpdatePending
+        ? (userDetails?.pendingLastName ?? userDetails?.lastName)
+        : userDetails?.lastName;
+      const baseCounty = textUpdatePending
+        ? (userDetails?.pendingCounty ?? userDetails?.county)
+        : userDetails?.county;
+      const baseConstituency = textUpdatePending
+        ? (userDetails?.pendingConstituency ?? userDetails?.constituency)
+        : userDetails?.constituency;
+      const baseWard = textUpdatePending
+        ? (userDetails?.pendingWard ?? userDetails?.ward)
+        : userDetails?.ward;
+      return (
+        norm(firstName) !== norm(baseFirst) ||
+        norm(lastName) !== norm(baseLast) ||
+        norm(county) !== norm(baseCounty) ||
+        norm(constituency) !== norm(baseConstituency) ||
+        norm(ward) !== norm(baseWard)
       );
-      return false;
+    }
+    const baseCompany = textUpdatePending
+      ? (userDetails?.pendingCompanyName ?? userDetails?.companyName)
+      : userDetails?.companyName;
+    return norm(companyName) !== norm(baseCompany);
+  };
+
+  const hasImageChanges = () =>
+    Boolean(image && image !== (userDetails?.image ?? ""));
+
+  const handleSave = async () => {
+    if (textUpdatePending && hasScheduledFieldChanges()) {
+      return;
+    }
+
+    if (!hasImageChanges() && !hasScheduledFieldChanges()) {
+      onClose();
+      return;
     }
 
     try {
       setLoading(true);
 
-      let finalImage = image;
+      let finalImage = userDetails?.image ?? "";
       if (image && isLocalMediaUri(image)) {
         const uploaded = await uploadProfileImage(image);
         if (!uploaded) {
@@ -112,9 +177,11 @@ export const EditProfileModal = ({ visible, onClose, userDetails }: any) => {
             "Upload failed",
             "Could not upload your profile photo. Please try again.",
           );
-          return false;
+          return;
         }
         finalImage = uploaded;
+      } else if (hasImageChanges()) {
+        finalImage = image;
       }
 
       const payload = {
@@ -123,7 +190,14 @@ export const EditProfileModal = ({ visible, onClose, userDetails }: any) => {
         firstName: isPersonal ? firstName.trim() : "",
         lastName: isPersonal ? lastName.trim() : "",
         companyName: !isPersonal ? companyName.trim() : "",
-        image: finalImage,
+        ...(isPersonal
+          ? {
+              county: county ?? "",
+              constituency: constituency ?? "",
+              ward: ward ?? "",
+            }
+          : {}),
+        image: finalImage || undefined,
         nickName: userDetails?.nickName,
         accountType: userDetails?.accountType,
         provider: userDetails?.provider || "clerk",
@@ -137,233 +211,187 @@ export const EditProfileModal = ({ visible, onClose, userDetails }: any) => {
       }
 
       await refreshUserDetails();
-
-      Alert.alert(
-        "Update scheduled",
-        `Your profile changes will be visible to everyone after ${PROFILE_UPDATE_DELAY_LABEL}.`,
-      );
-
-      return true;
+      onClose();
     } catch (err: any) {
-      const msg =
-        err?.response?.data?.message ||
-        "Could not save your profile. Try again later.";
       const serverUser = err?.response?.data?.user;
       if (serverUser) {
         updateUserDetails(serverUser);
       }
+      const msg =
+        err?.response?.data?.message ||
+        "Could not save your profile. Try again later.";
       Alert.alert("Could not update", msg);
-      return false;
     } finally {
       setLoading(false);
     }
   };
 
-  const openConfirm = () => {
-    if (updatePending) {
-      Alert.alert(
-        "Please wait",
-        `A profile update is already pending. It goes live in ${countdown ?? PROFILE_UPDATE_DELAY_LABEL}.`,
-      );
-      return;
-    }
-    setConfirmModal(true);
-  };
-
   return (
-    <>
-      <Modal visible={visible} animationType="slide" transparent>
-        <View style={styles.overlay}>
-          <View style={[styles.container, { backgroundColor: theme.card }]}>
-            <ScrollView>
-              <Text style={[styles.title, { color: theme.text }]}>
-                Edit Profile
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.overlay}>
+        <View style={[styles.container, { backgroundColor: theme.card }]}>
+          <ScrollView>
+            <Text style={[styles.title, { color: theme.text }]}>
+              Edit Profile
+            </Text>
+
+            <TouchableOpacity onPress={pickImage} style={styles.imageBox}>
+              <Image
+                key={image || "profile-photo"}
+                source={image ? { uri: image } : undefined}
+                style={styles.image}
+                contentFit="cover"
+                cachePolicy="none"
+              />
+              <Text style={{ color: theme.subtext }}>Change Photo</Text>
+            </TouchableOpacity>
+
+            <View style={[styles.lockedBox, { borderColor: theme.border }]}>
+              <Text style={[styles.lockLabel, { color: theme.subtext }]}>
+                Account Type (locked)
               </Text>
+              <Text style={[styles.lockValue, { color: theme.text }]}>
+                {accountType}
+              </Text>
+            </View>
 
-              {updatePending && countdown ? (
-                <View
-                  style={[
-                    styles.countdownBox,
-                    {
-                      backgroundColor: theme.background,
-                      borderColor: theme.primary,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.countdownTitle, { color: theme.text }]}>
-                    Update scheduled
-                  </Text>
-                  <Text
-                    style={[styles.countdownText, { color: theme.subtext }]}
-                  >
-                    Your new profile will be visible in
-                  </Text>
-                  <Text style={[styles.countdownTimer, { color: theme.primary }]}>
-                    {countdown}
-                  </Text>
-                  <Text style={[styles.countdownHint, { color: theme.subtext }]}>
-                    You can submit another change after this update goes live.
-                  </Text>
-                </View>
-              ) : (
-                <View
-                  style={[
-                    styles.infoBanner,
-                    { backgroundColor: theme.background, borderColor: theme.border },
-                  ]}
-                >
-                  <Text style={{ color: theme.subtext, fontSize: 12 }}>
-                    Changes take up to {PROFILE_UPDATE_DELAY_LABEL} to appear
-                    publicly after you confirm.
-                  </Text>
-                </View>
-              )}
-
-              <TouchableOpacity
-                onPress={pickImage}
-                style={styles.imageBox}
-                disabled={updatePending}
-              >
-                <Image
-                  key={image || "profile-photo"}
-                  source={image ? { uri: image } : undefined}
-                  style={styles.image}
-                  contentFit="cover"
-                  cachePolicy="none"
-                />
-                <Text style={{ color: theme.subtext }}>
-                  {updatePending ? "Photo locked until update goes live" : "Change Photo"}
-                </Text>
-              </TouchableOpacity>
-
-              <View style={[styles.lockedBox, { borderColor: theme.border }]}>
-                <Text style={[styles.lockLabel, { color: theme.subtext }]}>
-                  Account Type (locked)
-                </Text>
-                <Text style={[styles.lockValue, { color: theme.text }]}>
-                  {accountType}
-                </Text>
-              </View>
-
-              {isPersonal ? (
-                <>
-                  <TextInput
-                    value={firstName}
-                    onChangeText={setFirstName}
-                    placeholder="First Name"
-                    placeholderTextColor={theme.subtext}
-                    editable={!updatePending}
-                    style={[
-                      styles.input,
-                      { color: theme.text, borderColor: theme.border },
-                    ]}
-                  />
-                  <TextInput
-                    value={lastName}
-                    onChangeText={setLastName}
-                    placeholder="Last Name"
-                    placeholderTextColor={theme.subtext}
-                    editable={!updatePending}
-                    style={[
-                      styles.input,
-                      { color: theme.text, borderColor: theme.border },
-                    ]}
-                  />
-                </>
-              ) : (
+            {isPersonal ? (
+              <>
                 <TextInput
-                  value={companyName}
-                  onChangeText={setCompanyName}
-                  placeholder="Company Name"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  placeholder="First Name"
                   placeholderTextColor={theme.subtext}
-                  editable={!updatePending}
+                  editable={!textUpdatePending}
                   style={[
                     styles.input,
                     { color: theme.text, borderColor: theme.border },
                   ]}
                 />
-              )}
-
-              <View style={[styles.lockedBox, { borderColor: theme.border }]}>
-                <Text style={[styles.lockLabel, { color: theme.subtext }]}>
-                  Nickname (cannot be changed)
-                </Text>
-                <Text style={[styles.lockValue, { color: theme.text }]}>
-                  {userDetails?.nickName}
-                </Text>
-              </View>
-
-              <View style={styles.btnRow}>
-                <TouchableOpacity
-                  onPress={onClose}
-                  style={[styles.cancelBtn, { borderColor: theme.border }]}
-                >
-                  <Text style={{ color: theme.text }}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={openConfirm}
-                  disabled={updatePending || loading}
+                <TextInput
+                  value={lastName}
+                  onChangeText={setLastName}
+                  placeholder="Last Name"
+                  placeholderTextColor={theme.subtext}
+                  editable={!textUpdatePending}
                   style={[
-                    styles.saveBtn,
-                    {
-                      backgroundColor: updatePending
-                        ? theme.border
-                        : theme.primary,
-                    },
+                    styles.input,
+                    { color: theme.text, borderColor: theme.border },
                   ]}
-                >
-                  <Text style={{ color: "#fff" }}>
-                    {updatePending ? "Update pending" : "Update"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+                />
 
-      <Modal visible={confirmModal} transparent animationType="fade">
-        <View style={styles.infoOverlay}>
-          <View style={[styles.infoBox, { backgroundColor: theme.card }]}>
-            <Text style={[styles.infoTitle, { color: theme.text }]}>
-              Confirm update
-            </Text>
+                <Text style={[styles.fieldLabel, { color: theme.subtext }]}>
+                  County
+                </Text>
+                <Dropdown
+                  {...dropdownProps}
+                  data={iebc.counties}
+                  labelField="name"
+                  valueField="name"
+                  placeholder="Select County"
+                  value={county}
+                  search
+                  searchPlaceholder="Search county..."
+                  disable={textUpdatePending}
+                  onChange={(item) => {
+                    setCounty(item.name);
+                    setConstituency(null);
+                    setWard(null);
+                  }}
+                />
 
-            <Text style={[styles.infoMessage, { color: theme.subtext }]}>
-              Your profile update will be visible to everyone after{" "}
-              {PROFILE_UPDATE_DELAY_LABEL}. Until then, your current public
-              profile stays the same.
-            </Text>
+                <Text style={[styles.fieldLabel, { color: theme.subtext }]}>
+                  Constituency
+                </Text>
+                <Dropdown
+                  {...dropdownProps}
+                  data={constituencies}
+                  labelField="name"
+                  valueField="name"
+                  placeholder="Select Constituency"
+                  value={constituency}
+                  search
+                  searchPlaceholder="Search constituency..."
+                  disable={textUpdatePending || !county}
+                  onChange={(item) => {
+                    setConstituency(item.name);
+                    setWard(null);
+                  }}
+                />
 
-            <View style={{ flexDirection: "row", gap: 10 }}>
+                <Text style={[styles.fieldLabel, { color: theme.subtext }]}>
+                  Ward
+                </Text>
+                <Dropdown
+                  {...dropdownProps}
+                  data={wards}
+                  labelField="name"
+                  valueField="name"
+                  placeholder="Select Ward"
+                  value={ward}
+                  search
+                  searchPlaceholder="Search ward..."
+                  disable={textUpdatePending || !constituency}
+                  onChange={(item) => {
+                    setWard(item.name);
+                  }}
+                />
+              </>
+            ) : (
+              <TextInput
+                value={companyName}
+                onChangeText={setCompanyName}
+                placeholder="Company Name"
+                placeholderTextColor={theme.subtext}
+                editable={!textUpdatePending}
+                style={[
+                  styles.input,
+                  { color: theme.text, borderColor: theme.border },
+                ]}
+              />
+            )}
+
+            <View style={[styles.lockedBox, { borderColor: theme.border }]}>
+              <Text style={[styles.lockLabel, { color: theme.subtext }]}>
+                Nickname (cannot be changed)
+              </Text>
+              <Text style={[styles.lockValue, { color: theme.text }]}>
+                {userDetails?.nickName}
+              </Text>
+            </View>
+
+            <View style={styles.btnRow}>
               <TouchableOpacity
-                onPress={() => setConfirmModal(false)}
-                style={[styles.infoBtn, { backgroundColor: "#999" }]}
+                onPress={onClose}
+                style={[styles.cancelBtn, { borderColor: theme.border }]}
               >
-                <Text style={{ color: "#fff" }}>Cancel</Text>
+                <Text style={{ color: theme.text }}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={async () => {
-                  const ok = await handleSave();
-                  setConfirmModal(false);
-                  if (ok) onClose();
-                }}
-                disabled={loading}
-                style={[styles.infoBtn, { backgroundColor: theme.primary }]}
+                onPress={() => void handleSave()}
+                disabled={loading || (textUpdatePending && !hasImageChanges())}
+                style={[
+                  styles.saveBtn,
+                  {
+                    backgroundColor:
+                      loading || (textUpdatePending && !hasImageChanges())
+                        ? theme.border
+                        : theme.primary,
+                  },
+                ]}
               >
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={{ color: "#fff" }}>Schedule update</Text>
+                  <Text style={{ color: "#fff" }}>Save</Text>
                 )}
               </TouchableOpacity>
             </View>
-          </View>
+          </ScrollView>
         </View>
-      </Modal>
-    </>
+      </View>
+    </Modal>
   );
 };
 
@@ -379,66 +407,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     paddingBottom: 30,
-  },
-  infoOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  infoBox: {
-    width: "85%",
-    padding: 20,
-    borderRadius: 15,
-    alignItems: "center",
-  },
-  infoTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    marginBottom: 10,
-  },
-  infoMessage: {
-    fontSize: 13,
-    textAlign: "center",
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  infoBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 25,
-    borderRadius: 10,
-  },
-  countdownBox: {
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 14,
-    alignItems: "center",
-  },
-  countdownTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  countdownText: {
-    fontSize: 12,
-  },
-  countdownTimer: {
-    fontSize: 21,
-    fontWeight: "800",
-    marginVertical: 6,
-    fontVariant: ["tabular-nums"],
-  },
-  countdownHint: {
-    fontSize: 11,
-    textAlign: "center",
-    lineHeight: 17,
-  },
-  infoBanner: {
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginBottom: 14,
   },
   title: {
     fontSize: 17,
@@ -476,6 +444,10 @@ const styles = StyleSheet.create({
   lockValue: {
     fontSize: 13,
     fontWeight: "600",
+  },
+  fieldLabel: {
+    fontSize: 11,
+    marginBottom: 4,
   },
   btnRow: {
     flexDirection: "row",

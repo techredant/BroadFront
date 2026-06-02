@@ -1,8 +1,9 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInUp } from "react-native-reanimated";
 import {
+  liveCommentOpacity,
   pruneVisibleMessages,
   type LiveMessage,
 } from "@/utils/livestreamSession";
@@ -11,59 +12,79 @@ import { TT } from "@/utils/liveTikTokLayout";
 const ChatRow = memo(function ChatRow({
   item,
   hostUserId,
+  opacity,
+  isNewest,
 }: {
   item: LiveMessage;
   hostUserId?: string;
+  opacity: number;
+  isNewest?: boolean;
 }) {
   const isHost =
     item.isHost || (hostUserId && item.userId === hostUserId);
 
+  const wrap = (node: React.ReactNode) =>
+    isNewest ? (
+      <Animated.View entering={FadeInUp.duration(260).springify().damping(18)}>
+        <View style={{ opacity }}>{node}</View>
+      </Animated.View>
+    ) : (
+      <View style={{ opacity }}>{node}</View>
+    );
+
+  if (item.kind === "join" || item.kind === "leave") {
+    return wrap(
+      <View style={styles.presenceRow}>
+        <Text style={styles.presenceText} numberOfLines={1}>
+          <Text style={styles.presenceName}>{item.userName}</Text>
+          {item.kind === "join" ? " joined" : " left"}
+        </Text>
+      </View>,
+    );
+  }
+
   if (item.kind === "chat") {
-    return (
-      <View style={[styles.chatBubble, isHost && styles.hostBubble]}>
+    return wrap(
+      <View style={styles.chatRow}>
         <Text style={styles.chatText} numberOfLines={4}>
           <Text style={[styles.chatUser, isHost && styles.hostUser]}>
             {item.userName}{" "}
           </Text>
           {item.text}
         </Text>
-      </View>
+      </View>,
     );
   }
 
   if (item.kind === "gift") {
-    return (
-      <View style={styles.giftBubble}>
-        <Text style={styles.giftEmoji}>{item.giftEmoji || "🎁"}</Text>
+    return wrap(
+      <View style={styles.chatRow}>
         <Text style={styles.giftText} numberOfLines={2}>
+          <Text style={styles.giftEmoji}>{item.giftEmoji || "🎁"} </Text>
           <Text style={styles.giftUser}>{item.userName}</Text> {item.text}
         </Text>
-      </View>
+      </View>,
     );
-  }
-
-  if (item.kind === "join") {
-    return null;
   }
 
   if (item.kind === "donation") {
-    return (
-      <View style={styles.donationBubble}>
+    return wrap(
+      <View style={styles.chatRow}>
         <Text style={styles.donationText} numberOfLines={2}>
           <Text style={styles.donationUser}>{item.userName}</Text> {item.text}
         </Text>
-      </View>
+      </View>,
     );
   }
 
-  return (
-    <View style={styles.sysBubble}>
+  return wrap(
+    <View style={styles.chatRow}>
       <Text style={styles.sysText}>{item.text}</Text>
-    </View>
+    </View>,
   );
 });
 
-/** TikTok-style live comments — glass bubbles, host highlight, gift lines */
+/** TikTok-style live comments — newest at bottom, scroll up, fade toward top */
 export const LiveChatPanel = memo(function LiveChatPanel({
   messages,
   maxHeight,
@@ -73,52 +94,48 @@ export const LiveChatPanel = memo(function LiveChatPanel({
   maxHeight: number;
   hostUserId?: string;
 }) {
-  const [tick, setTick] = useState(0);
   const listRef = useRef<FlashList<LiveMessage> | null>(null);
+  const lastSeenIdRef = useRef<string | null>(null);
+
+  const visible = useMemo(
+    () => pruneVisibleMessages(messages),
+    [messages],
+  );
+
+  const newestId = visible[visible.length - 1]?.id;
 
   useEffect(() => {
-    const id = setInterval(() => setTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const visible = useMemo(() => {
-    void tick;
-    return [...pruneVisibleMessages(messages)]
-      .filter((m) => m.kind !== "join")
-      .reverse();
-  }, [messages, tick]);
-
-  useEffect(() => {
+    if (!visible.length) return;
+    if (lastSeenIdRef.current === newestId) return;
+    lastSeenIdRef.current = newestId ?? null;
     requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd?.({ animated: true });
+      const last = visible.length - 1;
+      if (last < 0) return;
+      listRef.current?.scrollToIndex?.({ index: last, animated: true });
     });
-  }, [visible.length]);
+  }, [newestId, visible.length]);
 
   return (
-    <View style={[styles.wrap, { maxHeight }]}>
+    <View style={[styles.wrap, { height: maxHeight, maxHeight }]}>
       <FlashList
         ref={listRef}
         data={visible}
+        extraData={newestId}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        estimatedItemSize={32}
-        drawDistance={140}
-        removeClippedSubviews
-        style={[
-          styles.list,
-          { height: Math.min(maxHeight, Math.max(48, visible.length * 32 + 28)) },
-        ]}
+        estimatedItemSize={36}
+        drawDistance={200}
+        style={styles.list}
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <ChatRow item={item} hostUserId={hostUserId} />
+        renderItem={({ item, index }) => (
+          <ChatRow
+            item={item}
+            hostUserId={hostUserId}
+            opacity={liveCommentOpacity(index, visible.length)}
+            isNewest={item.id === newestId}
+          />
         )}
-      />
-      <LinearGradient
-        colors={["rgba(0,0,0,0.65)", "rgba(0,0,0,0.2)", "transparent"]}
-        locations={[0, 0.4, 1]}
-        style={styles.topFade}
-        pointerEvents="none"
       />
     </View>
   );
@@ -128,95 +145,84 @@ const styles = StyleSheet.create({
   wrap: {
     width: "100%",
     overflow: "hidden",
+    backgroundColor: "transparent",
   },
-  list: { flexGrow: 0 },
-  listContent: { paddingTop: 24, paddingBottom: 6 },
-  topFade: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 52,
-    zIndex: 2,
+  list: { flex: 1, backgroundColor: "transparent" },
+  listContent: {
+    flexGrow: 1,
+    justifyContent: "flex-end",
+    paddingTop: 8,
+    paddingBottom: 4,
   },
-  chatBubble: {
+  chatRow: {
     alignSelf: "flex-start",
-    maxWidth: "88%",
+    maxWidth: "92%",
     marginBottom: 6,
-    backgroundColor: TT.pillBg,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: TT.glassBorder,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  hostBubble: {
-    backgroundColor: "rgba(37,244,238,0.18)",
-    borderColor: "rgba(37,244,238,0.45)",
+    paddingHorizontal: 2,
+    paddingVertical: 2,
   },
   chatText: {
     fontSize: 13,
     lineHeight: 19,
     color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   chatUser: {
     fontWeight: "800",
-    color: "rgba(255,255,255,0.92)",
+    color: "rgba(255,255,255,0.95)",
   },
   hostUser: {
     color: TT.accentCyan,
   },
-  giftBubble: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    alignSelf: "flex-start",
-    maxWidth: "92%",
-    marginBottom: 6,
-    backgroundColor: "rgba(254,44,85,0.32)",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,215,0,0.45)",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  giftEmoji: { fontSize: 22 },
+  giftEmoji: { fontSize: 14 },
   giftText: {
-    flex: 1,
     fontSize: 12,
     color: "#fff",
     fontWeight: "700",
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   giftUser: { fontWeight: "900", color: TT.accentGold },
-  donationBubble: {
-    alignSelf: "flex-start",
-    maxWidth: "92%",
-    marginBottom: 6,
-    backgroundColor: "rgba(254,44,85,0.38)",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(254,44,85,0.55)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
   donationText: {
     fontSize: 12,
     color: "#fff",
     fontWeight: "700",
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
-  donationUser: { fontWeight: "900" },
-  sysBubble: {
-    alignSelf: "flex-start",
-    maxWidth: "88%",
-    marginBottom: 6,
-    backgroundColor: TT.pillBg,
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
+  donationUser: { fontWeight: "900", color: "#FE2C55" },
   sysText: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.82)",
+    color: "rgba(255,255,255,0.88)",
     fontWeight: "600",
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  presenceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    maxWidth: "92%",
+    marginBottom: 6,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+  },
+  presenceText: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.88)",
+    fontWeight: "600",
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  presenceName: {
+    fontWeight: "800",
+    color: "#fff",
   },
 });

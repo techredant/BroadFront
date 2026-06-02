@@ -25,7 +25,7 @@ export function LivestreamAutoJoin({
     if (callingState !== RtcConnectionState.IDLE) return;
 
     void call
-      .join({ create: false, maxJoinRetries: 3, role: "audience" })
+      .join({ create: false, maxJoinRetries: 3, role: "audience", video: false })
       .then(() => {
         configureLivestreamViewerMedia(call);
       })

@@ -16,6 +16,7 @@ import {
 type Session = {
   callId: string;
   isHost: boolean;
+  hostClerkId?: string;
   roomTitle?: string;
   level?: string;
   playlist?: string[];
@@ -45,7 +46,14 @@ export default function App() {
   );
 
   const joinAsViewer = useCallback(
-    (id: string, meta?: { playlist?: string[]; initialIndex?: number }) => {
+    (
+      id: string,
+      meta?: {
+        playlist?: string[];
+        initialIndex?: number;
+        hostClerkId?: string;
+      },
+    ) => {
       setSession({ callId: id, isHost: false, ...meta });
     },
     [],
@@ -90,7 +98,12 @@ export default function App() {
         if (me && match?.hostClerkId === me) {
           startAsHost(id, { roomTitle, level });
         } else {
-          joinAsViewer(id);
+          joinAsViewer(id, {
+            hostClerkId:
+              typeof match?.hostClerkId === "string"
+                ? match.hostClerkId
+                : undefined,
+          });
         }
       } catch {
         joinAsViewer(id);
@@ -116,6 +129,7 @@ export default function App() {
           onSwitchLive={switchViewerLive}
           callId={session.callId}
           isHost={session.isHost}
+          hostClerkId={session.hostClerkId}
           roomTitle={session.roomTitle}
           level={session.level}
           playlist={session.playlist}

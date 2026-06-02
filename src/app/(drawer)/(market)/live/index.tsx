@@ -86,12 +86,15 @@ export default function MarketLiveRoute() {
     [enterHostSession],
   );
 
-  const joinAsViewer = useCallback((id: string) => {
-    setHostPending(null);
-    const next: Session = { callId: id, isHost: false };
-    setActiveMarketLiveSession(next);
-    setSession(next);
-  }, []);
+  const joinAsViewer = useCallback(
+    (id: string, meta?: { hostClerkId?: string }) => {
+      setHostPending(null);
+      const next: Session = { callId: id, isHost: false, ...meta };
+      setActiveMarketLiveSession(next);
+      setSession(next);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (
@@ -167,7 +170,12 @@ export default function MarketLiveRoute() {
               typeof match?.level === "string" ? match.level : undefined,
           });
         } else {
-          joinAsViewer(id);
+          joinAsViewer(id, {
+            hostClerkId:
+              typeof match?.hostClerkId === "string"
+                ? match.hostClerkId
+                : undefined,
+          });
         }
       } catch {
         joinAsViewer(id);
@@ -207,6 +215,7 @@ export default function MarketLiveRoute() {
           onHostEnded={() => clearActiveMarketLiveSession()}
           callId={session.callId}
           isHost={session.isHost}
+          hostClerkId={session.hostClerkId}
           roomTitle={session.roomTitle}
           level={session.level}
           productId={session.productId}
